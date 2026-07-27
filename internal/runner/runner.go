@@ -622,17 +622,9 @@ func readResult(runDir string) (*Result, error) {
 	return &res, nil
 }
 
-// ensureWorkspace finds bermuda's workspace or creates it.
+// ensureWorkspace returns the workspace bermuda owns, creating it when there is
+// none. It is bermuda's own by having been created by bermuda and recorded —
+// not by being called Bermuda, which is a name anybody may already have used.
 func (r *Runner) ensureWorkspace(ctx context.Context, cwd string) (*herdrcli.Workspace, error) {
-	spaces, err := r.Herdr.WorkspaceList(ctx)
-	if err != nil {
-		return nil, err
-	}
-	for i := range spaces {
-		if IsWorkspaceLabel(spaces[i].Label) {
-			return &spaces[i], nil
-		}
-	}
-	ws, _, err := r.Herdr.WorkspaceCreate(ctx, WorkspaceLabel, cwd, nil)
-	return ws, err
+	return EnsureWorkspace(ctx, r.Herdr, r.StateDir, cwd)
 }

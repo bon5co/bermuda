@@ -117,18 +117,11 @@ func pinBoard() error {
 //
 // Runs create it on their way past, so most of the time this only looks it up.
 // Creating it here is what makes the pinned board work on a fresh machine,
-// where the alternative is a board opened into the user's workspace.
+// where the alternative is a board opened into the user's workspace — and it is
+// the same space the runs will use, because both go through the record bermuda
+// keeps of the one it made.
 func bermudaWorkspace(ctx context.Context, h *herdrcli.Client) (string, error) {
-	spaces, err := h.WorkspaceList(ctx)
-	if err != nil {
-		return "", err
-	}
-	for _, w := range spaces {
-		if runner.IsWorkspaceLabel(w.Label) {
-			return w.WorkspaceID, nil
-		}
-	}
-	ws, _, err := h.WorkspaceCreate(ctx, runner.WorkspaceLabel, os.Getenv("HOME"), nil)
+	ws, err := runner.EnsureWorkspace(ctx, h, stateDir(), os.Getenv("HOME"))
 	if err != nil {
 		return "", err
 	}
