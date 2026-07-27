@@ -1,6 +1,6 @@
 ---
-name: bermuda
-description: Coordinate with other agents and run multi-step work through the bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, and flows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, and whenever a task has a step that must not be skipped.
+name: Bermuda
+description: Coordinate with other agents and run multi-step work through the Bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, and flows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, and whenever a task has a step that must not be skipped.
 ---
 
 # Bermuda
@@ -14,7 +14,7 @@ Check it is there before relying on it:
 bermuda --version
 ```
 
-If that is not found, bermuda is installed as a herdr plugin but not on `$PATH`.
+If that is not found, Bermuda is installed as a herdr plugin but not on `$PATH`.
 The plugin's own copy lives under the herdr-managed checkout; `go install
 github.com/bon5co/bermuda/cmd/bermuda@latest` puts one where you can type it.
 Both talk to the same store.
