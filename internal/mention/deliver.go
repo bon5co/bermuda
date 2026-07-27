@@ -333,9 +333,17 @@ func Report(w io.Writer, r Result) {
 		fmt.Fprintln(w, "bermuda: @"+name+" is you, so nothing was delivered")
 	}
 	for _, name := range r.Refused {
-		fmt.Fprintln(w, "bermuda: @"+name+" needs a workspace to mean anything, and this "+
-			"thread has none — post it in the thread for the space you mean, or name "+
-			"the agents you want; the message is in the thread either way")
+		// A warning, not an error, and the distinction is the whole message: the
+		// post succeeded and nothing was lost. What the author has to understand
+		// is the change in *timing* — nobody was interrupted, so this will be read
+		// when other agents next look at the thread rather than now. An author who
+		// thinks it was pushed will sit waiting for an answer to a message nobody
+		// has been handed.
+		fmt.Fprintln(w, "bermuda: warning: @"+name+" delivered to nobody — this thread has "+
+			"no workspace to bound it to, and global reaches everyone or no one. The "+
+			"message is posted, so other agents will read it at leisure, whenever they "+
+			"next run `bermuda thread log`. If it needs attention now, post it in your "+
+			"workspace's thread or name the agents you want.")
 	}
 }
 
@@ -360,7 +368,8 @@ func Status(r Result) string {
 		parts = append(parts, "nobody answers to @"+strings.Join(r.Missed, ", @"))
 	}
 	if len(r.Refused) > 0 {
-		parts = append(parts, "@"+strings.Join(r.Refused, ", @")+" needs a workspace thread")
+		parts = append(parts, "@"+strings.Join(r.Refused, ", @")+
+			" delivered to nobody, will be read at leisure")
 	}
 	return strings.Join(parts, "; ")
 }

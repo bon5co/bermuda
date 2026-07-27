@@ -143,10 +143,18 @@ func TestAllInGlobalReachesNobodyAndSaysSo(t *testing.T) {
 		t.Fatalf("refused %v, want @all reported as refused", r.Refused)
 	}
 	// Silence would be the real failure: the sender believes it broadcast.
+	//
+	// The warning has to carry two things, and neither is optional. Why nothing
+	// was delivered, so the author knows what to do differently — and that the
+	// message is still posted and will be read when other agents next look, so
+	// the author does not repost it, escalate it, or sit waiting for a reply to
+	// something it thinks vanished.
 	var out strings.Builder
 	Report(&out, r)
-	if !strings.Contains(out.String(), "workspace") {
-		t.Errorf("report was %q, want it to say why nothing was delivered", out.String())
+	for _, want := range []string{"warning", "workspace", "posted", "at leisure", "thread log"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("report %q is missing %q", out.String(), want)
+		}
 	}
 	if r.Empty() {
 		t.Error("a refused @all reported as nothing to do")

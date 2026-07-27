@@ -259,10 +259,20 @@ space you mean, or name the agents you want:
 ```
 $ bermuda thread post '@all camoufox is gone'
 20:14 note (global): @all camoufox is gone
-bermuda: @all needs a workspace to mean anything, and this thread has none —
-post it in the thread for the space you mean, or name the agents you want;
-the message is in the thread either way
+bermuda: warning: @all delivered to nobody — this thread has no workspace to
+bound it to, and global reaches everyone or no one. The message is posted, so
+other agents will read it at leisure, whenever they next run `bermuda thread
+log`. If it needs attention now, post it in your workspace's thread or name the
+agents you want.
 ```
+
+The warning is deliberate about what actually changed, which is the *timing*
+rather than the outcome. Nothing was lost — the message is in the thread, and
+the thread is passive by design, so every agent that reads it will see this the
+next time it looks. What did not happen is the interruption. An author that
+believes it pushed to everybody will sit waiting for a reply nobody has been
+handed, or repost it louder; one that knows it will be read at leisure can
+decide whether that is good enough, and name somebody if it is not.
 
 **A registered name wins.** Herdr detects agents but does not name them: `herdr
 agent list` reports the kind (`claude`), the pane, and the working directory,
