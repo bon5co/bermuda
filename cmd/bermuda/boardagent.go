@@ -30,7 +30,10 @@ import (
 // Herdr highlights as needing attention. The row asks to be looked at on its
 // own, without a notification anybody has to have configured.
 const (
-	boardAgentLabel = "bermuda"
+	// boardAgentLabel lives in herdrcli because two packages need to agree on
+	// it: this one claims the pane under it, and mention delivery uses it to
+	// refuse to prompt what it identifies.
+	boardAgentLabel = herdrcli.BoardAgent
 	// boardAgentInterval is how often the row's state is re-derived. It reads
 	// two indexed queries against a local sqlite file and is left running for
 	// as long as the board is open, so it is deliberately unhurried.

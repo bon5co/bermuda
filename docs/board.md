@@ -13,6 +13,14 @@ bermuda's own workspace (`bermuda board --pin`), so the row exists before
 anybody has asked for it, and reopening it is a click rather than a command you
 have to remember.
 
+The row is a place to look, not somebody to talk to. Mentions skip it on
+purpose: the board is a TUI, a delivered message arrives as keystrokes, and one
+of its single-key actions runs the selected job. Nothing would have aimed at it
+deliberately — the board sits in a directory called `bermuda`, and an agent
+nobody has named answers to the basename of its directory, so `@bermuda` would
+have found it and `@all` would have found it every time. `@bermuda` reaches the
+agents working in bermuda's checkout, as it did before the row existed.
+
 ## Keys
 
 A workflow run is one row until `space` opens it, and then each step is a row of
