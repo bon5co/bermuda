@@ -149,6 +149,15 @@ func (m *Model) renderFlows(start, end int) string {
 	widths := layout(cols, m.contentWidth())
 	b.WriteString("  " + dimStyle.Render(row(titles(cols), widths)) + "\n")
 
+	// How wide a row of this table actually is. Every other row is built from
+	// the columns and lands on it exactly; the broken row below is free text and
+	// has to be held to it, or the table's widest line is a parse error and the
+	// inspector beside it gets pushed off the right of the pane.
+	tableW := len(cols) - 1
+	for _, w := range widths {
+		tableW += w
+	}
+
 	for i := start; i < end; i++ {
 		fr := rows[i]
 		cursor := "  "
@@ -159,9 +168,10 @@ func (m *Model) renderFlows(start, end int) string {
 		if fr.err != nil {
 			// A broken file has no columns to fill: it did not parse, so there
 			// are no steps to count and no input to declare. What it has is the
-			// path and the reason, which is what fixing it takes.
+			// path and the reason, which is what fixing it takes — cut to the
+			// table's width here, and shown whole on the inspector beside it.
 			b.WriteString(cursor + outcomeStyles["failed"].Render(
-				truncate(flowErrorLine(fr.err), m.contentWidth())) + "\n")
+				truncate(flowErrorLine(fr.err), tableW)) + "\n")
 			continue
 		}
 

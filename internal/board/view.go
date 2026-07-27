@@ -3,8 +3,6 @@ package board
 import (
 	"strings"
 	"time"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // Composing the screen: which view is showing, and how the list, inspector, and
@@ -65,21 +63,9 @@ func (m *Model) listPane() pane {
 	var body strings.Builder
 	switch m.focus {
 	case focusJobs:
-		table := m.renderJobs(start, end)
-		// Put the inspector in the space to the right of the table, when there
-		// is enough of it to be readable.
-		if w := m.inspectorWidth(); w > 0 {
-			// JoinHorizontal does not end with a newline, and the inspector is
-			// usually taller than the table, so without one the next line is
-			// appended to the panel's last row of padding — which pushed the
-			// page counter past the right edge of the pane.
-			body.WriteString(lipgloss.JoinHorizontal(lipgloss.Top,
-				table, strings.Repeat(" ", inspectorGap), m.renderInspector(w)) + "\n")
-		} else {
-			body.WriteString(table)
-		}
+		body.WriteString(beside(m.renderJobs(start, end), m.inspector(m.renderInspector)))
 	case focusFlows:
-		body.WriteString(m.renderFlows(start, end))
+		body.WriteString(beside(m.renderFlows(start, end), m.inspector(m.renderFlowInspector)))
 	default:
 		body.WriteString(m.renderRuns(start, end))
 	}

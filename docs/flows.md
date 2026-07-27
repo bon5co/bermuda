@@ -203,6 +203,16 @@ ran. `enter` runs one, asking for the input first. `u` unparks a parked run — 
 board could always *show* a parked flow and never act on it, which was the
 sharper of the two gaps.
 
+The tab fills the space to the right of the table with an inspector for the
+selected flow: its file path, what it is about, what input it takes, the steps
+in order with the model each agent step runs on, whether the permission bypass
+is on, and how the last run went. The step list is the point of it — the table
+has room for a count, and `4` says nothing about whether the fourth step is the
+one that verifies. A long sequence is cut with the rest counted out loud, and a
+flow that would not parse gets the parser's own complaint here rather than an
+empty panel. As on the jobs tab, the panel is dropped when the pane is too
+narrow to render it legibly.
+
 A flow *run* stays one row in RUNS, because it was launched once, reading
 `2/4 · verify`: how many steps are done, of how many, and which one it is on.
 Space opens the steps under it.
