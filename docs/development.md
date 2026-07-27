@@ -121,9 +121,15 @@ the container, and the parked one actually failed.
 ## The skill
 
 `skills/bermuda/` is an [Agent Skill](https://agentskills.io) — what an agent
-should read before it writes to a thread, takes a claim, or calls a flow. A
-skill is just a folder with a `SKILL.md` in it, so installing it is a copy or a
-symlink and nothing more.
+should read before it writes to a thread, takes a claim, or calls a flow.
+
+```bash
+npx skills add bon5co/bermuda
+```
+
+That is the whole installation. A skill is just a folder with a `SKILL.md` in
+it, so if you would rather place it yourself, copying or symlinking into any of
+these does the same job:
 
 | where it goes | who reads it |
 |---|---|
