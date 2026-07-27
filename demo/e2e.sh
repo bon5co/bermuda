@@ -115,10 +115,18 @@ YAML
 check "flow run completes"       "done"       bermuda flow run greenfield --input xyzzy
 check "run is recorded"          "greenfield" bermuda run list
 
+# latest_run picks the newest run of one flow.
+#
+# By job, never by row position: `run list` prints oldest-first, so taking the
+# first data row silently inspected an *earlier* flow's run and then asserted
+# against its steps. That is a check that passes for the wrong reason, which is
+# worse than one that fails.
+latest_run() { bermuda run list 2>/dev/null | awk -v j="$1" '$2==j{id=$1} END{print id}'; }
+
 # The feature itself: the caller's x reaches the first step, and the first
 # step's published result reaches the second. A flow whose steps cannot see
 # each other is just two jobs.
-run_id=$(bermuda run list 2>/dev/null | awk 'NR==2{print $1}')
+run_id=$(latest_run greenfield)
 out=$(bermuda flow status "$run_id" 2>&1)
 grep -q "one saw \[xyzzy\]" <<<"$out" && ok "the input reaches the first step" || bad "input did not reach step one" "$out"
 grep -q "two saw \[one saw \[xyzzy\]\]" <<<"$out" && ok "a step's result reaches the next" || bad "the chain did not carry" "$out"
@@ -138,7 +146,7 @@ YAML
 out=$(bermuda flow run breaks 2>&1); status=$?
 grep -q "parked" <<<"$out" && ok "a failing step parks the run" || bad "failing step did not park" "$out"
 [ $status -ne 0 ] && ok "a parked flow exits nonzero" || bad "parked flow exited 0"
-run_id=$(bermuda run list 2>/dev/null | awk 'NR==2{print $1}')
+run_id=$(latest_run breaks)
 out=$(bermuda flow status "$run_id" 2>&1)
 grep -q "never .*pending" <<<"$out" && ok "the step after a failure never starts" || bad "a step ran behind a failed one" "$out"
 
