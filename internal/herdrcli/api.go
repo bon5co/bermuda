@@ -135,6 +135,22 @@ func (c *Client) WorkspaceList(ctx context.Context) ([]Workspace, error) {
 	return out.Workspaces, nil
 }
 
+// WorkspaceGet looks one workspace up by id.
+//
+// Herdr answers with an error when it is gone, which is the useful half: a
+// workspace id bermuda recorded in an earlier session is how it recognises the
+// space it owns, and "no such workspace" is how it learns it must make a new
+// one.
+func (c *Client) WorkspaceGet(ctx context.Context, workspaceID string) (*Workspace, error) {
+	var out struct {
+		Workspace Workspace `json:"workspace"`
+	}
+	if err := c.run(ctx, &out, "workspace", "get", workspaceID); err != nil {
+		return nil, err
+	}
+	return &out.Workspace, nil
+}
+
 // ProcessInfo describes what is running in a pane.
 type ProcessInfo struct {
 	PaneID                  string `json:"pane_id"`

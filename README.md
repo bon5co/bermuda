@@ -19,8 +19,11 @@ as its execution substrate, which means:
 
 Three things follow from that, and they are most of the design:
 
-- **A dedicated workspace.** All runs live in a `Bermuda` workspace, one tab per
-  run. Your own session is never touched.
+- **A workspace bermuda owns.** All runs live in a `Bermuda` workspace, one tab
+  per run. It is bermuda's by having been created by bermuda, whose id is
+  recorded in `~/.bermuda/workspace.json` — not by being called Bermuda, which
+  is a name you may already have used. A space bermuda did not make is never
+  adopted, so your own session is never touched.
 - **One result channel.** Each run gets `BERMUDA_RUN_DIR` in its shell. The
   agent writes `result.json` there, and that file is the *only* authority on a
   run's outcome. Terminal output is archived as `transcript.txt` for humans and
