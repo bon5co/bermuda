@@ -322,6 +322,16 @@ func (c *Client) ReportPaneMetadata(ctx context.Context, paneID, source string, 
 	return c.run(ctx, nil, args...)
 }
 
+// BoardAgent is the label the board claims its own pane under.
+//
+// It is here rather than beside the board because being in Herdr's agent list
+// has a consequence the board does not get to opt out of: anything in that list
+// looks promptable, and the board is a TUI where a delivered message would be
+// typed in as keystrokes — where a single letter is an action, and one of them
+// runs the selected job. Mention delivery therefore has to recognise the board
+// and skip it, which means both sides need this name.
+const BoardAgent = "bermuda"
+
 // PaneAgent is a pane claimed as an agent under a label of bermuda's choosing.
 //
 // Herdr detects the agents it knows how to detect, and it also lets a source

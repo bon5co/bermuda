@@ -60,6 +60,18 @@ func (h herd) Live(ctx context.Context) ([]Agent, error) {
 			// cannot be reached however it was named.
 			continue
 		}
+		if a.Agent == herdrcli.BoardAgent {
+			// The board reports its own pane as an agent so that bermuda has a
+			// row in Herdr's sidebar. It is not something to talk to: a mention
+			// delivered here is typed into a TUI as keystrokes, where a single
+			// letter is an action and one of them runs the selected job.
+			//
+			// It would be reached by accident rather than on purpose, too. The
+			// board sits in ~/…/bermuda, and an unnamed agent answers to the
+			// basename of its directory — so `@bermuda` would find it, and
+			// `@all` would find it every time.
+			continue
+		}
 		out = append(out, Agent{
 			Target: a.PaneID,
 			Name:   a.Name,
