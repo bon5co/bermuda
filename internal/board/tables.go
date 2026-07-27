@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/bon5co/bermuda/internal/store"
 )
 
 // The two tables. Columns are declared as data so the tab rule can measure the
@@ -56,8 +58,19 @@ func (m *Model) renderJobs(start, end int) string {
 		}
 		cells := []string{star, name, j.Model,
 			strings.Join(j.Tags, ","), j.ScheduleLabel(), outcome, when}
-		if len(cols) > len(cells) {
-			cells = append(cells, m.nextFirePlain(j))
+		// Optional columns are filled by title rather than by position. There is
+		// more than one of them now, and appending blind would put NEXT's value
+		// under whichever optional column happened to come first — a table that
+		// is wrong only at certain terminal widths.
+		for _, c := range cols[len(cells):] {
+			switch c.title {
+			case "NEXT":
+				cells = append(cells, m.nextFirePlain(j))
+			case "FLOW":
+				cells = append(cells, jobFlowCell(j))
+			default:
+				cells = append(cells, "")
+			}
 		}
 
 		// Fit first, then style: escape sequences must not be measured as
@@ -140,13 +153,31 @@ func (m *Model) jobColumns() []column {
 		{title: "LAST", width: 9},
 		{title: "WHEN", width: 9},
 	}
-	// NEXT answers the question a cron expression does not, so it is the first
-	// thing extra width should buy. It only earns its place if the inspector
-	// still fits afterwards.
+	// FLOW buys the first spare column, ahead of NEXT, because it is the only
+	// one of the two that cannot be worked out from what is already on screen.
+	// SCHEDULE is right there, so NEXT refines something visible; nothing on
+	// this row says whether the job sends one prompt or drives a four-step
+	// sequence, and those behave nothing alike.
+	if m.spareAfter(cols, colFlowWidth) {
+		cols = append(cols, column{title: "FLOW", width: colFlowWidth})
+	}
+	// NEXT answers the question a cron expression does not. It only earns its
+	// place if the inspector still fits afterwards.
 	if m.spareAfter(cols, colNextWidth) {
 		cols = append(cols, column{title: "NEXT", width: colNextWidth})
 	}
 	return cols
+}
+
+// jobFlowCell names the flow a job starts, or says it sends a prompt.
+//
+// A dash rather than a blank, because a blank cell in a table reads as missing
+// data and "this one is a plain prompt" is the answer, not the absence of one.
+func jobFlowCell(j store.Job) string {
+	if !j.IsFlow() {
+		return "—"
+	}
+	return j.Flow
 }
 
 func (m *Model) runColumns() []column {

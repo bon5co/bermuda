@@ -515,6 +515,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 const (
 	colNextWidth = 14
 	colDescWidth = 30
+	// colFlowWidth fits a flow id comfortably; ids are shaped like job ids, so
+	// they are short by construction, and a long one scrolls rather than being
+	// cut — the tail of an id is what tells two of them apart.
+	colFlowWidth = 14
 )
 
 // Run starts the board TUI, restarting into a newer build if one appears.
