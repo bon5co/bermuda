@@ -1,4 +1,4 @@
-# VHS drives a real terminal and photographs it. Four stills: the three tabs
+# VHS drives a real terminal and photographs it. Five stills: the four tabs
 # somebody opening the board meets, and a flow run opened up into its steps.
 Output board.gif
 
@@ -39,5 +39,11 @@ Type "1"
 Sleep 2s
 Screenshot board-threads.png
 
+# Flows — what is callable, what each takes, and when it last ran. This is the
+# launcher: enter runs one and asks for its input first.
+Type "4"
+Sleep 2s
+Screenshot board-flows.png
+
 Type "q"
-Sleep 1s
+Sleep 2s
