@@ -105,6 +105,16 @@ func (m *Model) renderInspector(width int) string {
 	field("state", state)
 	field("schedule", j.ScheduleLabel())
 	field("next", m.nextFireLabel(j))
+	// What this job actually does when it fires, which is the difference between
+	// one prompt and a sequence somebody has to go and read. The flow id is not
+	// enough on its own: a scheduled flow is called with a fixed input, and that
+	// input is the argument nothing else on this screen reveals.
+	if j.IsFlow() {
+		field("flow", j.Flow)
+		if strings.TrimSpace(j.Input) != "" {
+			field("input", j.Input)
+		}
+	}
 	field("model", j.Model)
 	field("timeout", j.Timeout.String())
 	if len(j.Tags) > 0 {
