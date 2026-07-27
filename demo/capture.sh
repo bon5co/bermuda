@@ -13,28 +13,51 @@ rm -rf "${BERMUDA_STATE_DIR:?}" && mkdir -p "$BERMUDA_STATE_DIR"
 
 say() { printf '\n== %s\n' "$1"; }
 
+say "flows"
+FLOWS="${BERMUDA_STATE_DIR:-$HOME/.bermuda}/flows"
+mkdir -p "$FLOWS"
+
+cat > "$FLOWS/nightly-build.yml" <<'YAML'
+about: build and test on a schedule
+steps:
+  - id: build
+    run: go build ./...
+  - id: test
+    run: go test ./internal/version/ -count=1
+YAML
+
+cat > "$FLOWS/docs-sweep.yml" <<'YAML'
+about: count the docs
+steps:
+  - id: count
+    run: ls -1 /src/*.md | wc -l
+YAML
+
+cat > "$FLOWS/release-check.yml" <<'YAML'
+about: the pre-release gate
+steps:
+  - id: version
+    run: bermuda --version
+  - id: vet
+    run: go vet ./internal/store/
+YAML
+
+cat > "$FLOWS/link-audit.yml" <<'YAML'
+about: find broken links
+steps:
+  - id: broken
+    run: test -f /src/README.md && false
+YAML
+
 say "jobs"
 bermuda job add --id nightly-build --name "Nightly build" \
-    --steps - --cron '0 4 * * *' --model sonnet --tags ci,go --favorite <<'JSON'
-[{"id": "build", "run": "go build ./..."},
- {"id": "test",  "run": "go test ./internal/version/ -count=1"}]
-JSON
-
+    --flow nightly-build --cron '0 4 * * *' --model sonnet --tags ci,go --favorite
 bermuda job add --id docs-sweep --name "Docs sweep" \
-    --steps - --interval 6h --model sonnet --tags docs <<'JSON'
-[{"id": "count", "run": "ls -1 /src/*.md | wc -l"}]
-JSON
-
+    --flow docs-sweep --interval 6h --model sonnet --tags docs
 bermuda job add --id release-check --name "Release check" \
-    --steps - --cron '30 9 * * 1' --model opus --tags release <<'JSON'
-[{"id": "version", "run": "bermuda --version"},
- {"id": "vet",     "run": "go vet ./internal/store/"}]
-JSON
-
+    --flow release-check --cron '30 9 * * 1' --model opus --tags release
 bermuda job add --id link-audit --name "Link audit" \
-    --steps - --cron '0 12 * * *' --model sonnet --tags docs <<'JSON'
-[{"id": "broken", "run": "test -f /src/README.md && false"}]
-JSON
+    --flow link-audit --cron '0 12 * * *' --model sonnet --tags docs
 
 say "runs — these execute for real"
 bermuda flow run nightly-build || true

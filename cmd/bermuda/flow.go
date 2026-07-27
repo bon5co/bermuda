@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
-	"io"
 	"os"
+	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/herdrcli"
 	"github.com/bon5co/bermuda/internal/runner"
 	"github.com/bon5co/bermuda/internal/store"
@@ -23,9 +24,19 @@ import (
 
 func flowCmd(argv []string) error {
 	if len(argv) == 0 {
-		return errors.New("usage: bermuda flow <run|status|resume>")
+		return errors.New("usage: bermuda flow <new|list|show|edit|rm|run|status|resume>")
 	}
 	switch argv[0] {
+	case "new":
+		return flowNew(argv[1:])
+	case "list":
+		return flowList(argv[1:])
+	case "show", "cat":
+		return flowShow(argv[1:])
+	case "edit":
+		return flowEdit(argv[1:])
+	case "rm":
+		return flowRemove(argv[1:])
 	case "run":
 		return flowRun(argv[1:])
 	case "status":
@@ -50,10 +61,52 @@ func workflowCmd(argv []string) error {
 	return flowCmd(argv)
 }
 
+// flowRun calls a flow with an input.
+//
+// This is the whole point of a flow being its own thing: one command, called
+// the same way by a person typing it and by an agent shelling out. There is no
+// agent-only path and no human-only path, so anything an agent can start, a
+// human can start identically, and both land in the same run list.
 func flowRun(argv []string) error {
-	if len(argv) == 0 {
-		return errors.New("usage: bermuda flow run <job>")
+	fs := flag.NewFlagSet("flow run", flag.ExitOnError)
+	input := fs.String("input", "", "the x this flow is called with")
+	cwd := fs.String("cwd", "", "working directory for every step (default: here)")
+	model := fs.String("model", "", "model for agent steps that do not name one")
+	kind := fs.String("kind", "", "herdr agent kind")
+	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
+		return errors.New("usage: bermuda flow run <flow> [--input ...] [--cwd ...] [--model ...]")
 	}
+	id := argv[0]
+	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
+
+	def, err := flow.Load(flowDir(), id)
+	if err != nil {
+		return err
+	}
+	// A flow that declares an input and is called without one is refused rather
+	// than run with a blank. Every prompt saying {{input}} would otherwise get a
+	// hole where its subject should be, and an agent handed that will invent
+	// something to fill it.
+	if def.TakesInput() && strings.TrimSpace(*input) == "" {
+		return fmt.Errorf("flow %s needs an input: %s\n  bermuda flow run %s --input '...'",
+			def.ID, def.Input, def.ID)
+	}
+	if !def.TakesInput() && strings.TrimSpace(*input) != "" {
+		// Accepted, not refused — but said out loud, because a flow whose steps
+		// never mention {{input}} will silently ignore it.
+		fmt.Fprintf(os.Stderr, "bermuda: flow %s declares no input, so --input is only "+
+			"visible to run steps as $BERMUDA_INPUT\n", def.ID)
+	}
+
+	dir := *cwd
+	if strings.TrimSpace(dir) == "" {
+		if here, err := os.Getwd(); err == nil {
+			dir = here
+		}
+	}
+
 	s, err := openStore()
 	if err != nil {
 		return err
@@ -61,14 +114,13 @@ func flowRun(argv []string) error {
 	defer s.Close()
 
 	ctx := context.Background()
-	j, err := s.Job(ctx, argv[0])
-	if err != nil {
-		return err
+	j := flowJob(def, dir, *model, *kind)
+	rec := store.Run{
+		ID: newRunID(def.ID), JobID: def.ID, Trigger: "manual",
+		Outcome: "running", StartedAt: time.Now(),
+		Flow: def.ID, Input: *input,
 	}
-	if !j.IsFlow() {
-		return fmt.Errorf("job %s has no steps; run it with `bermuda job run %s`", j.ID, j.ID)
-	}
-	run, execErr := Execute(ctx, s, *j, "manual")
+	run, execErr := runFlow(ctx, s, j, rec)
 	if run != nil {
 		printRun(run)
 	}
@@ -104,17 +156,17 @@ func flowResume(argv []string) error {
 	if err != nil {
 		return err
 	}
-	j, err := s.Job(ctx, rec.JobID)
-	if err != nil {
-		// A run outlives its job, but a resume cannot: the steps to run are the
-		// job's, and guessing them from the run's directories would resume a
-		// flow nobody declared.
-		return fmt.Errorf("job %s no longer exists, so run %s cannot be resumed", rec.JobID, rec.ID)
+	if strings.TrimSpace(rec.Flow) == "" {
+		return fmt.Errorf("run %s is not a flow run; there is nothing to resume", rec.ID)
 	}
-	if !j.IsFlow() {
-		return fmt.Errorf("job %s has no steps; there is nothing to resume", j.ID)
+	// The job is optional now. A flow called directly has no job at all, and one
+	// called by a job may outlive it — but the run itself records which flow ran
+	// and what it was called with, so neither case needs the job to still exist.
+	j := store.Job{ID: rec.JobID, Flow: rec.Flow, Enabled: true, Model: store.DefaultModel}
+	if stored, err := s.Job(ctx, rec.JobID); err == nil {
+		j = *stored
 	}
-	run, execErr := runFlow(ctx, s, *j, *rec)
+	run, execErr := runFlow(ctx, s, j, *rec)
 	if run != nil {
 		printRun(run)
 	}
@@ -198,9 +250,16 @@ func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*
 	if rec.RunDir == "" {
 		rec.RunDir = runDirFor(rec.ID)
 	}
+	// Read at the moment it runs, never earlier. The file is edited by people and
+	// by agents between one run and the next, so the only definition worth acting
+	// on is the one on disk right now.
+	def, err := flow.Load(flowDir(), firstNonEmpty(rec.Flow, j.Flow))
+	if err != nil {
+		return nil, err
+	}
 	// Declare every step before any of them runs, so a flow that dies at
 	// step one still says it had four.
-	if err := s.SeedRunSteps(ctx, rec.ID, j.Steps); err != nil {
+	if err := s.SeedRunSteps(ctx, rec.ID, def.Steps); err != nil {
 		return nil, fmt.Errorf("record steps: %w", err)
 	}
 	rec.Outcome, rec.ParkReason, rec.EndedAt = "running", "", nil
@@ -216,7 +275,7 @@ func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*
 		// looking untouched until the end.
 		Report: func(sr runner.StepRun) { persistStep(ctx, s, rec.ID, sr) },
 	}
-	wr, execErr := w.Execute(ctx, j, rec.ID, rec.RunDir)
+	wr, execErr := w.Execute(ctx, j, def, rec.Input, rec.ID, rec.RunDir)
 
 	rec.Outcome, rec.ParkReason, rec.Note = string(wr.Outcome), string(wr.ParkReason), wr.Note()
 	ended := wr.EndedAt
@@ -260,32 +319,4 @@ func persistStep(ctx context.Context, s *store.Store, runID string, sr runner.St
 		// flow.
 		fmt.Fprintln(os.Stderr, "bermuda: persist step:", err)
 	}
-}
-
-// loadSteps reads a step list from a JSON file, or from stdin for "-".
-//
-// JSON rather than a config format of its own: the steps are stored as JSON,
-// and a job is declared by whatever wrote it — usually another agent, which has
-// a JSON encoder and no opinion about syntax.
-func loadSteps(path string) ([]store.Step, error) {
-	var (
-		raw []byte
-		err error
-	)
-	if path == "-" {
-		raw, err = io.ReadAll(os.Stdin)
-	} else {
-		raw, err = os.ReadFile(path)
-	}
-	if err != nil {
-		return nil, err
-	}
-	var steps []store.Step
-	if err := json.Unmarshal(raw, &steps); err != nil {
-		return nil, fmt.Errorf("read steps from %s: %w", path, err)
-	}
-	if len(steps) == 0 {
-		return nil, fmt.Errorf("read steps from %s: the list is empty", path)
-	}
-	return steps, nil
 }

@@ -85,15 +85,21 @@ Usage:
   bermuda job remove <id>             Remove a job
   bermuda job run <id>                Run a stored job now
   bermuda run list [--state parked]   List runs
-  bermuda job add --id <id> --steps <file.json>   Declare a flow
-  bermuda flow run <job>              Run a job's steps in series
+  bermuda flow new <id> [--about]     Write a flow file to edit
+  bermuda flow list                   Every flow, its steps and its input
+  bermuda flow show|edit|rm <id>      Read, open, or delete one
+  bermuda flow run <id> [--input ...] Call a flow with an x
   bermuda flow status <run>           Per-step outcome and duration
   bermuda flow resume <run>           Restart at the step that parked
 
-  A flow's steps run in order, each agent step in its own process with its
-  own result.json. A step that fails, or that ends without writing one, parks
-  the flow there and the steps after it never start. Resume picks up at that
-  step: what the completed ones wrote is still on disk and is not redone.
+  A flow is a YAML file in ~/.bermuda/flows, edited directly by whoever writes
+  it. Steps run in order, each agent step in its own process with its own
+  result.json. A step reaches the caller's input as {{input}} and the previous
+  step's published note as {{previous}} -- never the previous step's context.
+  A step that fails, or that ends without writing a result, parks the flow
+  there and the steps after it never start. Resume picks up at that step: what
+  the completed ones wrote is still on disk and is not redone.
+  A job starts a flow with --flow <id> --input '...', on a schedule.
   bermuda thread list                 Every thread, its size and last activity
   bermuda thread new <id> [--about]   Start a separate conversation
   bermuda thread rm <id> [--force]    Delete a thread and its messages

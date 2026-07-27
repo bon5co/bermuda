@@ -283,15 +283,16 @@ func TestThreadTabIsLabelled(t *testing.T) {
 func TestThreadsIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 	m := newTestModel(t)
 	tabs := m.renderTabs("")
-	iThreads, iJobs, iRuns := strings.Index(tabs, "THREADS"), strings.Index(tabs, "JOBS"), strings.Index(tabs, "RUNS")
-	if !(iThreads < iJobs && iJobs < iRuns) {
-		t.Fatalf("tabs read %q, want THREADS then JOBS then RUNS", tabs)
+	iThreads, iJobs := strings.Index(tabs, "THREADS"), strings.Index(tabs, "JOBS")
+	iRuns, iFlows := strings.Index(tabs, "RUNS"), strings.Index(tabs, "FLOWS")
+	if !(iThreads < iJobs && iJobs < iRuns && iRuns < iFlows) {
+		t.Fatalf("tabs read %q, want THREADS then JOBS then RUNS then FLOWS", tabs)
 	}
 
 	for _, c := range []struct {
 		key  string
 		want focus
-	}{{"1", focusThread}, {"2", focusJobs}, {"3", focusRuns}} {
+	}{{"1", focusThread}, {"2", focusJobs}, {"3", focusRuns}, {"4", focusFlows}} {
 		m.press(t, c.key)
 		if m.focus != c.want {
 			t.Errorf("%s opened focus %d, want %d — the keys must count the tabs left to right",
@@ -301,7 +302,7 @@ func TestThreadsIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 
 	// Tab walks the same way round, and comes back to where it started.
 	m.focus = focusThread
-	for _, want := range []focus{focusJobs, focusRuns, focusThread} {
+	for _, want := range []focus{focusJobs, focusRuns, focusFlows, focusThread} {
 		m.pressSpecial(t, tea.KeyTab)
 		if m.focus != want {
 			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)

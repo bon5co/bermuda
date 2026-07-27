@@ -185,39 +185,71 @@ The thread is the record; delivery is the courtesy on top of it.
 A sentence in a prompt is the thing that gets skipped, and skipping it produces no
 error. A flow moves the sequence out of the model's head and into the harness.
 
-Steps are JSON. Exactly one of `agent` (a prompt, its own process) or `run` (a
-shell command, no agent at all):
+A flow is a **YAML file** in `~/.bermuda/flows/`, one per flow, id = filename.
+You edit it directly — that is the intended way, not a fallback. Each step is
+exactly one of `agent` (a prompt, its own process) or `run` (a shell command, no
+agent at all):
 
-```json
-[
-  {"id": "survey", "agent": "read the repo and list what changed", "model": "sonnet"},
-  {"id": "build",  "agent": "make the change", "model": "opus", "effort": "high"},
-  {"id": "verify", "run": "go build ./... && go test ./..."},
-  {"id": "review", "agent": "review the diff", "subagent": "adversarial-review"}
-]
+```yaml
+# ~/.bermuda/flows/nightly.yml
+about: survey, change, verify, review
+input: which repo and what to change
+
+steps:
+  - id: survey
+    agent: Read {{input}} and list what changed.
+  - id: build
+    agent: "{{previous}} — make the change."
+    model: opus
+    effort: high
+  - id: verify
+    run: go build ./... && go test ./...
+  - id: review
+    agent: Review the diff.
+    subagent: adversarial-review
 ```
 
 ```bash
-bermuda job add --id nightly --steps steps.json --cwd ~/Projects/x [--cron '0 4 * * *']
-echo '[...]' | bermuda job add --id nightly --steps -      # or from stdin
-bermuda job show nightly                                   # step table
-bermuda flow run nightly
-bermuda flow status <run-id>                           # per-step outcome + duration
-bermuda flow resume <run-id>                           # restart at the step that parked
+bermuda flow new nightly --about '...'     # writes a working template to edit
+bermuda flow list                          # what is callable, and what each takes
+bermuda flow show nightly                  # the file, to read or paste back
+bermuda flow run nightly --input 'the bermuda repo, fix the arm64 build'
+bermuda flow status <run-id>               # per-step outcome + duration
+bermuda flow resume <run-id>               # restart at the step that parked
 ```
 
-- Per-step `model` / `effort` / `kind` / `subagent` default to the job's and
-  override it — a two-line mechanical edit need not burn the model a
-  judgement-heavy step needs. All four are refused on a `run` step.
+**Calling a flow is how you hand work to a harness instead of remembering it.**
+The command is identical whether a human or you types it, so use it directly:
+
+```bash
+bermuda flow run triage --input "$finding"
+```
+
+To put one on a schedule, a job names it — the job supplies the input:
+
+```bash
+bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
+```
+
+- **Two values travel down the chain and nothing else.** `{{input}}` is what the
+  caller supplied; `{{previous}}` is the note the step before published. In a
+  `run` step they are `$BERMUDA_INPUT` and `$BERMUDA_PREVIOUS`. A step never
+  inherits the previous agent's *context* — that is deliberate, so a reviewing
+  step cannot absorb the writing step's assumptions.
+- Per-step `model` / `effort` / `kind` / `subagent` default to the calling job's
+  and override it. All four are refused on a `run` step.
 - A step is complete when its `result.json` says ok. A step that fails or writes
   none **parks the flow there** and the later steps never start. Exit code 1.
-- `resume` reuses the run row and directory: completed steps are found on disk and
-  are not paid for twice.
-- Refused at `job add` time: haiku (named or inherited — the floor is sonnet),
-  duplicate ids, a step with both `agent` and `run` or neither, agent config on a
-  `run` step, and `--prompt` together with `--steps`.
-- The timeout is the job's and is applied **per step**, so an N-step flow can
-  run N times its stated deadline.
+- `resume` reuses the run row and directory: completed steps are found on disk
+  and are not paid for twice. It replays with the input the run *started* with.
+- Refused when the file is read: haiku (named or inherited — the floor is
+  sonnet), duplicate ids, a step with both `agent` and `run` or neither, agent
+  config on a `run` step, an unknown key, and `{{anything-else}}`. Calling a flow
+  that declares an input without one is refused too.
+- The timeout is the calling job's and is applied **per step**, so an N-step flow
+  can run N times its stated deadline.
+- Writing YAML by hand: a bare scalar cannot contain `": "`. Quote it —
+  `run: 'echo "done: $BERMUDA_PREVIOUS"'`.
 
 Deterministic work belongs in a `run` step, not in a prompt. Most "the agent
 forgot" incidents are a command a model was asked to remember.

@@ -61,7 +61,7 @@ func (s Step) Label() string {
 
 // IsFlow reports whether this job is a declared sequence rather than one
 // prompt.
-func (j Job) IsFlow() bool { return len(j.Steps) > 0 }
+func (j Job) IsFlow() bool { return strings.TrimSpace(j.Flow) != "" }
 
 // EffectiveModel is the model a step actually runs on: its own if it names one,
 // otherwise the job's.

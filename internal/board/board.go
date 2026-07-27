@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/herdrcli"
 	"github.com/bon5co/bermuda/internal/mention"
 	"github.com/bon5co/bermuda/internal/store"
@@ -81,6 +82,21 @@ type Model struct {
 	// picker is the open thread chooser; nil when it is closed.
 	picker *threadPicker
 
+	// flows is every flow on disk and flowErrs is the files that would not
+	// parse. Both are re-read on the tick, because a flow is a file: it is
+	// edited between one tick and the next by a person in an editor or an agent
+	// with a filesystem, and a board that read them once at open would keep
+	// offering a flow that has since been renamed.
+	flows    []flow.Flow
+	flowErrs []error
+	// lastFlow is the most recent run of each flow, by flow id. It is kept apart
+	// from `last`, which is keyed by job id: a flow called directly has no job
+	// at all, so its own history cannot be found there.
+	lastFlow map[string]store.Run
+	// flowInput is the open "what is this flow called with" box; nil when
+	// nothing is being launched.
+	flowInput *flowPrompt
+
 	cursor int
 	focus  focus
 	err    error
@@ -140,6 +156,7 @@ const (
 	focusJobs focus = iota
 	focusRuns
 	focusThread
+	focusFlows
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
@@ -149,11 +166,31 @@ const (
 // dependency so it can trigger runs without importing the command layer.
 type RunFunc func(job store.Job, trigger string) error
 
+// RunFlowFunc starts a flow with an input, the same call a human types.
+type RunFlowFunc func(flowID, input string) error
+
+// ResumeFlowFunc picks a parked flow run up at the step that stopped it.
+//
+// It takes a run rather than a flow because that is what resuming is about: the
+// steps already finished live in one run's directory, and starting the flow
+// again by name would redo the ones that already cost money.
+type ResumeFlowFunc func(runID string) error
+
 // Deps are the behaviours the board needs from the command layer.
 
 // Deps are the behaviours the board needs from the command layer.
 type Deps struct {
 	Run RunFunc
+	// RunFlow and ResumeFlow are the two things the FLOWS tab does. Without
+	// them the board could show a parked flow and never act on it, which is the
+	// state that tab exists to end.
+	RunFlow    RunFlowFunc
+	ResumeFlow ResumeFlowFunc
+	// FlowDir is where this installation keeps its flow files. It is handed in
+	// rather than worked out here: resolving the state directory a second time
+	// is how the board comes to list flows from a directory the command layer
+	// does not run them from — a flow on screen that enter cannot find.
+	FlowDir string
 	// DaemonRunning reports whether a scheduler is alive. The board shows it,
 	// because a stopped scheduler means nothing on screen will ever fire.
 	DaemonRunning func() bool
@@ -168,6 +205,7 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 	return &Model{
 		store: s, herdr: h, runJob: deps.Run, deps: deps,
 		last:     map[string]store.Run{},
+		lastFlow: map[string]store.Run{},
 		steps:    map[string][]store.RunStep{},
 		expanded: map[string]bool{},
 		watcher:  newBinaryWatcher(),
@@ -194,7 +232,12 @@ type dataMsg struct {
 	threads  []store.Thread
 	// steps is the per-step record of whichever of those runs are flows.
 	steps map[string][]store.RunStep
-	err   error
+	// flows is what is on disk, and flowErrs the files that would not parse.
+	// The bad ones travel with the good ones rather than as an error on the
+	// read: one unparseable flow must not empty the tab.
+	flows    []flow.Flow
+	flowErrs []error
+	err      error
 }
 
 type actionMsg struct {
@@ -273,8 +316,14 @@ func (m *Model) load() tea.Cmd {
 		if err != nil {
 			return dataMsg{err: err}
 		}
+		// Flows are files, so they are listed rather than queried — here, beside
+		// the store reads, because this is the goroutine that is allowed to
+		// block. A directory read on the event loop would stall every keystroke
+		// behind it.
+		flows, flowErrs := m.readFlows()
 		return dataMsg{jobs: jobs, runs: runs, steps: steps, thread: log,
-			threadID: thread, claims: claims, threads: threads}
+			threadID: thread, claims: claims, threads: threads,
+			flows: flows, flowErrs: flowErrs}
 	}
 }
 
@@ -349,15 +398,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.jobs, m.runs, m.steps = msg.jobs, msg.runs, msg.steps
+		m.flows, m.flowErrs = msg.flows, msg.flowErrs
 		// Claims and the thread list are the same whichever conversation is on
 		// screen, so they are taken from every read.
 		m.claims, m.threads = msg.claims, msg.threads
 		moved := m.fallBackFromAMissingThread()
-		m.last = map[string]store.Run{}
+		m.last, m.lastFlow = map[string]store.Run{}, map[string]store.Run{}
 		// runs arrive newest first, so the first sighting of a job wins.
 		for _, r := range msg.runs {
 			if _, seen := m.last[r.JobID]; !seen {
 				m.last[r.JobID] = r
+			}
+			// A run that names a flow is also that flow's history, and the same
+			// first-sighting rule picks its latest.
+			if r.Flow == "" {
+				continue
+			}
+			if _, seen := m.lastFlow[r.Flow]; !seen {
+				m.lastFlow[r.Flow] = r
 			}
 		}
 		m.clampCursor()
@@ -436,6 +494,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.status = msg.jobID + " finished"
 		}
 		return m, m.refreshDetail()
+
+	case flowDoneMsg:
+		delete(m.running, flowRunKey(msg.flowID))
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		// A flow that parked is not an error and does not arrive as one — the
+		// row's own STATE column is what says so, and the next tick fills it in.
+		m.status = "flow " + msg.flowID + " finished"
+		return m, nil
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)

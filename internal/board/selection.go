@@ -66,6 +66,8 @@ func (m *Model) clampCursor() {
 		n = len(m.detailRuns)
 	case m.focus == focusRuns:
 		n = len(m.visibleRuns())
+	case m.focus == focusFlows:
+		n = len(m.visibleFlows())
 	case m.focus == focusThread:
 		// The thread has no selectable rows; it is scrolled, not stepped
 		// through.
