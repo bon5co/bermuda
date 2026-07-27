@@ -159,11 +159,18 @@ func flowResume(argv []string) error {
 	if strings.TrimSpace(rec.Flow) == "" {
 		return fmt.Errorf("run %s is not a flow run; there is nothing to resume", rec.ID)
 	}
-	// The job is optional now. A flow called directly has no job at all, and one
+	// The job is optional. A flow called directly has no job at all, and one
 	// called by a job may outlive it — but the run itself records which flow ran
 	// and what it was called with, so neither case needs the job to still exist.
-	j := store.Job{ID: rec.JobID, Flow: rec.Flow, Enabled: true,
-		Model: store.DefaultModel, Kind: store.DefaultKind}
+	//
+	// Built through flowJob rather than by hand, so the defaults an unattended
+	// run needs live in exactly one place. The hand-rolled job this replaced set
+	// the model and the kind and forgot SkipPermissions, which meant a resumed
+	// flow ran its agent steps with permission prompts enabled and parked at
+	// `blocked` eight seconds in — the same failure as the one directly-called
+	// flows had, reintroduced by the sibling path written to fix it.
+	j := flowJob(flow.Flow{ID: rec.Flow}, "", "", "")
+	j.ID = rec.JobID
 	if stored, err := s.Job(ctx, rec.JobID); err == nil {
 		j = *stored
 	}

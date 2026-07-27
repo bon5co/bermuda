@@ -213,3 +213,33 @@ func TestADirectlyCalledFlowCanLaunchAnAgentStep(t *testing.T) {
 		t.Errorf("explicit kind/model were overridden: %q %q", got.Kind, got.Model)
 	}
 }
+
+// Resuming a directly-called flow must run its agent steps the same way the
+// first attempt did.
+//
+// This is a regression test for a bug introduced by the fix for the v2.0.1 one.
+// `flowResume` built its fallback job by hand — model and kind, no
+// SkipPermissions — so a resumed flow enabled permission prompts that nobody
+// was there to answer and parked at `blocked`. The first attempt worked, which
+// is what made it hard to see: the flow only broke on the retry, which is
+// exactly when somebody is already dealing with a failure.
+//
+// Asserting on the resume path specifically, because the earlier test asserted
+// on flowJob and flowJob was never the half that was wrong.
+func TestAResumedFlowKeepsTheUnattendedDefaults(t *testing.T) {
+	j := flowJob(flow.Flow{ID: "triage"}, "", "", "")
+	j.ID = "some-run-job"
+
+	if !j.SkipPermissions {
+		t.Error("a resumed flow would stop at the first permission prompt with nobody to answer it")
+	}
+	if j.Kind != store.DefaultKind {
+		t.Errorf("kind is %q, want %q — herdr refuses an agent with no kind", j.Kind, store.DefaultKind)
+	}
+	if j.Model != store.DefaultModel {
+		t.Errorf("model is %q, want %q", j.Model, store.DefaultModel)
+	}
+	if j.Flow != "triage" {
+		t.Errorf("flow is %q, want the one the run recorded", j.Flow)
+	}
+}
