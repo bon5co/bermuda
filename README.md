@@ -20,6 +20,17 @@ The plugin registration is what starts the scheduler and puts the board one
 keystroke away; without it bermuda is still a working CLI, and `bermuda board`
 opens the board wherever you run it.
 
+Registration also puts bermuda in Herdr's sidebar, in the agents list above
+Spaces. Herdr has no plugin surface for a sidebar entry, but `pane report-agent`
+takes a free-form label, so the board reports its own pane as the agent
+`bermuda`: the row is there for as long as a board is open, and clicking it goes
+to the board. Its state is the useful half — **blocked** whenever a run is
+parked, since a parked run is one waiting on a human and Herdr highlights
+blocked agents as needing attention. A startup hook opens one board unfocused in
+bermuda's own workspace (`bermuda board --pin`), so the row exists before
+anybody has asked for it, and reopening it is a click rather than a command you
+have to remember.
+
 Everything bermuda stores lives in `~/.bermuda` (override with
 `$BERMUDA_STATE_DIR`). There is no config file and no daemon to install.
 

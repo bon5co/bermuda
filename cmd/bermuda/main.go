@@ -78,6 +78,7 @@ func usage() {
 
 Usage:
   bermuda board                       Open the TUI board
+  bermuda board --pin                 Open it in bermuda's workspace, unfocused
   bermuda job list                    List jobs
   bermuda job add --id <id> --prompt <text> [--schedule <cron>]
   bermuda job remove <id>             Remove a job
