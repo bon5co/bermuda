@@ -48,7 +48,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.movePage(-1)
 		return m, nil
 	case " ", "space":
-		// Open the selected workflow run's steps in place. A run that is one
+		// Open the selected flow run's steps in place. A run that is one
 		// agent has no steps, and space does nothing.
 		return m, m.toggleSteps()
 	case "e":

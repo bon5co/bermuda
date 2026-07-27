@@ -13,7 +13,7 @@ import (
 	"github.com/bon5co/bermuda/internal/store"
 )
 
-// A workflow is a declared sequence of steps, run in series.
+// A flow is a declared sequence of steps, run in series.
 //
 // What it buys over one prompt that says "then do B, then do C" is that the
 // harness makes the call. B is launched by bermuda, not by A remembering to
@@ -22,7 +22,7 @@ import (
 // an input to whether B runs.
 //
 // The other half is what happens when a step does not finish. A step that fails
-// or that ends without writing result.json parks the workflow *at that step*:
+// or that ends without writing result.json parks the flow *at that step*:
 // the steps after it never start, so nothing downstream proceeds on a claim
 // nobody checked. Everything a completed step wrote stays on disk, which is
 // what makes resume cheap — and resume being cheap is what removes the pressure
@@ -40,14 +40,14 @@ type StepLauncher func(ctx context.Context, job Job, runID, stepDir string) (*Ru
 // whatever the command's exit status was.
 type ShellRunner func(ctx context.Context, command, cwd string, env []string) ([]byte, error)
 
-// Workflow executes a job's declared steps in order.
-type Workflow struct {
+// Flow executes a job's declared steps in order.
+type Flow struct {
 	// Launch starts an agent step. Production passes Runner.ExecuteIn.
 	Launch StepLauncher
 	// Shell runs a command step, defaulting to `sh -c`.
 	Shell ShellRunner
 	// Report is called when a step starts and again when it settles, so a
-	// caller can persist progress while the workflow is still going: a workflow
+	// caller can persist progress while the flow is still going: a flow
 	// that recorded itself only at the end would show nothing for the hour it
 	// was running. Steps skipped because an earlier attempt already completed
 	// them are deliberately not reported — the stored row already holds how
@@ -58,12 +58,12 @@ type Workflow struct {
 
 // OutcomeRunning marks a step that has started and not yet settled. Runs have
 // no such outcome because the command layer records a run as running before it
-// calls the runner at all; a step is started by the workflow itself, so the
-// workflow is the only thing that can say so.
+// calls the runner at all; a step is started by the flow itself, so the
+// flow is the only thing that can say so.
 const OutcomeRunning Outcome = "running"
 
-// ParkStepFailed is why a workflow parked: one of its steps reported failure.
-// The step keeps its own outcome — the workflow parks, the step failed.
+// ParkStepFailed is why a flow parked: one of its steps reported failure.
+// The step keeps its own outcome — the flow parks, the step failed.
 const ParkStepFailed ParkReason = "step_failed"
 
 // StepRun is one step's execution.
@@ -85,22 +85,22 @@ type StepRun struct {
 	Err       error
 }
 
-// WorkflowRun is the record of one execution of a workflow.
-type WorkflowRun struct {
+// FlowRun is the record of one execution of a flow.
+type FlowRun struct {
 	JobID   string
 	RunID   string
 	RunDir  string
 	Outcome Outcome
-	// ParkReason is why the workflow stopped, taken from the step that stopped
+	// ParkReason is why the flow stopped, taken from the step that stopped
 	// it.
 	ParkReason ParkReason
-	// StoppedAt is the id of the step the workflow parked at, empty when every
+	// StoppedAt is the id of the step the flow parked at, empty when every
 	// step finished.
 	StoppedAt string
 	// Steps is what this attempt did, which on a park is only the steps up to
 	// and including the one that stopped it.
 	Steps []StepRun
-	// Total is how many steps were declared. It is not len(Steps): a workflow
+	// Total is how many steps were declared. It is not len(Steps): a flow
 	// that parked at step two of four is 1/4, and saying 1/2 would report the
 	// two steps it managed as the whole job.
 	Total     int
@@ -110,7 +110,7 @@ type WorkflowRun struct {
 }
 
 // Done reports how many steps completed, of how many declared.
-func (w *WorkflowRun) Done() (done, total int) {
+func (w *FlowRun) Done() (done, total int) {
 	for _, s := range w.Steps {
 		if s.Outcome == OutcomeDone {
 			done++
@@ -119,8 +119,8 @@ func (w *WorkflowRun) Done() (done, total int) {
 	return done, w.Total
 }
 
-// Note is the one-line summary of a workflow run.
-func (w *WorkflowRun) Note() string {
+// Note is the one-line summary of a flow run.
+func (w *FlowRun) Note() string {
 	done, total := w.Done()
 	if w.StoppedAt == "" {
 		return fmt.Sprintf("%d/%d steps ok", done, total)
@@ -133,7 +133,7 @@ func (w *WorkflowRun) Note() string {
 }
 
 // StepDir is where one step's artifacts live: under the run, named by the step,
-// so a workflow's output is one directory tree and resume can find what an
+// so a flow's output is one directory tree and resume can find what an
 // earlier attempt left behind.
 func StepDir(runDir, stepID string) string {
 	return filepath.Join(runDir, "steps", stepID)
@@ -145,8 +145,8 @@ func StepDir(runDir, stepID string) string {
 // already holds a successful result.json is not run again. Completion therefore
 // lives on disk rather than in the database, which is what lets a resume work
 // after the process that recorded the first attempt is long gone.
-func (w *Workflow) Execute(ctx context.Context, job store.Job, runID, runDir string) (*WorkflowRun, error) {
-	wr := &WorkflowRun{JobID: job.ID, RunID: runID, RunDir: runDir,
+func (w *Flow) Execute(ctx context.Context, job store.Job, runID, runDir string) (*FlowRun, error) {
+	wr := &FlowRun{JobID: job.ID, RunID: runID, RunDir: runDir,
 		Total: len(job.Steps), StartedAt: time.Now(), Outcome: OutcomeDone}
 	defer func() {
 		if wr.EndedAt.IsZero() {
@@ -200,7 +200,7 @@ func (w *Workflow) Execute(ctx context.Context, job store.Job, runID, runDir str
 			wr.Outcome, wr.StoppedAt = OutcomeParked, step.ID
 			if sr.Outcome == OutcomeFailed {
 				// A step reporting failure is an outcome, not an error: the
-				// workflow did exactly what it was built to do. Only a harness
+				// flow did exactly what it was built to do. Only a harness
 				// problem — a launcher that could not start, a directory that
 				// could not be written — is returned as an error.
 				wr.ParkReason = ParkStepFailed
@@ -217,7 +217,7 @@ func (w *Workflow) Execute(ctx context.Context, job store.Job, runID, runDir str
 	return wr, nil
 }
 
-func (w *Workflow) report(sr StepRun) {
+func (w *Flow) report(sr StepRun) {
 	if w.Report != nil {
 		w.Report(sr)
 	}
@@ -229,7 +229,7 @@ func (w *Workflow) report(sr StepRun) {
 // Removing the old result.json is what keeps a retry honest: an agent that dies
 // without writing one would otherwise inherit the last attempt's file and be
 // classified by a result it never produced.
-func (w *Workflow) prepare(dir string) error {
+func (w *Flow) prepare(dir string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -240,7 +240,7 @@ func (w *Workflow) prepare(dir string) error {
 }
 
 // runAgentStep launches one agent and takes its verdict from result.json.
-func (w *Workflow) runAgentStep(ctx context.Context, job store.Job, step store.Step, runID string, sr *StepRun) {
+func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step, runID string, sr *StepRun) {
 	if w.Launch == nil {
 		sr.Outcome, sr.ParkReason = OutcomeParked, ParkNoResult
 		sr.Err = fmt.Errorf("step %s: no agent launcher", step.ID)
@@ -249,13 +249,13 @@ func (w *Workflow) runAgentStep(ctx context.Context, job store.Job, step store.S
 	j := StepJob(job, step)
 	// BERMUDA_STEP_DIR names the same directory as BERMUDA_RUN_DIR, which the
 	// launcher injects. Both are given because a step is a run to the agent
-	// writing result.json, and a step to the workflow reading it.
+	// writing result.json, and a step to the flow reading it.
 	j.Env = map[string]string{
 		"BERMUDA_STEP_DIR": sr.Dir,
 		"BERMUDA_STEP_ID":  step.ID,
 		"BERMUDA_RUN_ID":   runID,
 	}
-	// The step id is part of the agent's run id, so every step of a workflow is
+	// The step id is part of the agent's run id, so every step of a flow is
 	// a differently named agent. That is what makes "a different subagent is a
 	// different agent" true by construction rather than by remembering: there is
 	// no path here that hands one step's live agent to the next.
@@ -288,7 +288,7 @@ func (w *Workflow) runAgentStep(ctx context.Context, job store.Job, step store.S
 // is one predicate for both kinds: result.json says ok. Nothing has to know
 // whether the work was done by an agent or by the shell, which is what lets
 // resume skip either one.
-func (w *Workflow) runCommandStep(ctx context.Context, job store.Job, step store.Step, sr *StepRun) {
+func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Step, sr *StepRun) {
 	shell := w.Shell
 	if shell == nil {
 		shell = sh
@@ -356,5 +356,5 @@ func lastLine(out []byte) string {
 
 // stepRunID is the run id one step is launched under. It carries the step id so
 // the agent name derived from it names the step, and so two steps of the same
-// workflow can never be the same agent.
+// flow can never be the same agent.
 func stepRunID(runID, stepID string) string { return runID + "-" + stepID }

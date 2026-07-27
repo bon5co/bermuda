@@ -55,7 +55,7 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		description: fs.String("description", "", "what this job does and why"),
 		tags:        fs.String("tags", "", "comma-delimited tags, e.g. marketing,daily"),
 		prompt:      fs.String("prompt", "", "instruction for the agent"),
-		steps:       fs.String("steps", "", "JSON file of workflow steps ('-' for stdin), instead of --prompt"),
+		steps:       fs.String("steps", "", "JSON file of flow steps ('-' for stdin), instead of --prompt"),
 		cwd:         fs.String("cwd", "", "working directory (default: current dir)"),
 		kind:        fs.String("kind", "claude", "herdr agent kind"),
 
@@ -175,13 +175,13 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 		return fmt.Errorf("--catchup must be latest, all, or skip")
 	}
 
-	// A job is one prompt or a list of steps, never both: a workflow's steps
+	// A job is one prompt or a list of steps, never both: a flow's steps
 	// carry their own prompts, so a job-level one would be text nothing ever
 	// sends.
-	if j.IsWorkflow() && strings.TrimSpace(j.Prompt) != "" {
+	if j.IsFlow() && strings.TrimSpace(j.Prompt) != "" {
 		return errors.New("a job has either --prompt or --steps, not both")
 	}
-	// Checked here as well as in the store, so the workflow is refused by the
+	// Checked here as well as in the store, so the flow is refused by the
 	// command that typed it, naming the step at fault. The model is passed
 	// because a step that names none inherits the job's — including a job-level
 	// haiku, which is the one model no step may run on.
@@ -207,8 +207,8 @@ func jobAdd(argv []string) error {
 	if err := f.apply(fs, &j); err != nil {
 		return err
 	}
-	if j.Prompt == "" && !j.IsWorkflow() {
-		return errors.New("--prompt is required (or --steps for a workflow)")
+	if j.Prompt == "" && !j.IsFlow() {
+		return errors.New("--prompt is required (or --steps for a flow)")
 	}
 	if j.CWD == "" {
 		wd, err := os.Getwd()
@@ -355,7 +355,7 @@ func jobShow(argv []string) error {
 		return err
 	}
 
-	if j.IsWorkflow() {
+	if j.IsFlow() {
 		fmt.Println("\nsteps:")
 		sw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(sw, "#\tSTEP\tKIND\tMODEL\tAGENT/COMMAND")
@@ -453,7 +453,7 @@ func listJobs(ctx context.Context, s *store.Store, out io.Writer, tag string, al
 		return nil
 	}
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	// STEPS says which jobs are workflows and how long they are. A one-prompt
+	// STEPS says which jobs are flows and how long they are. A one-prompt
 	// job shows a dash rather than a blank, so an empty column reads as "one
 	// prompt" instead of as missing data.
 	fmt.Fprintln(w, "ID\tNAME\tTAGS\tSTEPS\tSCHEDULE\tENABLED\tLAST")
@@ -626,15 +626,15 @@ func jobRun(argv []string) error {
 	}
 	// A run that parked or failed is not an error — nothing went wrong with the
 	// command — but it is not success either, and a script driving `job run`
-	// has no other way to tell. `run-once` and `workflow run` have always
+	// has no other way to tell. `run-once` and `flow run` have always
 	// exited 1 here; this one exited 0 because a failed run leaves execErr nil.
 	exitUnlessDone(run)
 	return nil
 }
 
-// stepsLabel says whether a job is a workflow, and how long.
+// stepsLabel says whether a job is a flow, and how long.
 func stepsLabel(j store.Job) string {
-	if !j.IsWorkflow() {
+	if !j.IsFlow() {
 		return "-"
 	}
 	return strconv.Itoa(len(j.Steps))
@@ -656,14 +656,14 @@ func firstLine(s string) string {
 
 // Execute runs a stored job and persists the result.
 //
-// A workflow takes a different path: its steps are run in series, each in its
+// A flow takes a different path: its steps are run in series, each in its
 // own process, and the run row it produces is the sequence's, not one agent's.
 // Everything that launches a job — the daemon, the board, `job run` — arrives
-// here, so a workflow cannot be started by accident as a single empty prompt.
+// here, so a flow cannot be started by accident as a single empty prompt.
 func Execute(ctx context.Context, s *store.Store, j store.Job, trigger string) (*runner.Run, error) {
-	if j.IsWorkflow() {
+	if j.IsFlow() {
 		runID := newRunID(j.ID)
-		run, err := runWorkflow(ctx, s, j, store.Run{
+		run, err := runFlow(ctx, s, j, store.Run{
 			ID: runID, JobID: j.ID, Trigger: trigger, RunDir: runDirFor(runID),
 			Outcome: "running", StartedAt: time.Now(),
 		})

@@ -10,10 +10,10 @@ import (
 	"github.com/bon5co/bermuda/internal/store"
 )
 
-// These tests are about the promise a workflow makes over one prompt that says
+// These tests are about the promise a flow makes over one prompt that says
 // "then do B, then do C": the steps happen in the declared order, and a step
 // that cannot show it finished stops the ones after it. Every failure below is
-// a workflow quietly doing four of five steps, which is the exact failure this
+// a flow quietly doing four of five steps, which is the exact failure this
 // feature exists to remove.
 //
 // No test here may start a real agent. The launcher is faked: a test of "what
@@ -70,7 +70,7 @@ func (f *fakeAgent) started() []string {
 // ok is the result of an agent that did its work and said so.
 func ok(note string) Result { return Result{Status: "ok", Note: note} }
 
-// recorder collects the steps a workflow reported, in the order it reported
+// recorder collects the steps a flow reported, in the order it reported
 // them settling.
 type recorder struct{ settled []string }
 
@@ -80,13 +80,13 @@ func (r *recorder) report(sr StepRun) {
 	}
 }
 
-func workflowJob(t *testing.T, steps ...store.Step) store.Job {
+func flowJob(t *testing.T, steps ...store.Step) store.Job {
 	t.Helper()
 	return store.Job{ID: "wf", CWD: t.TempDir(), Kind: "claude",
 		Model: "sonnet", Steps: steps}
 }
 
-// The order is the product. A workflow that ran its steps in any other order
+// The order is the product. A flow that ran its steps in any other order
 // would be a slower version of handing one agent a list and hoping.
 func TestStepsRunInTheOrderTheyAreDeclared(t *testing.T) {
 	dir := t.TempDir()
@@ -94,16 +94,16 @@ func TestStepsRunInTheOrderTheyAreDeclared(t *testing.T) {
 		"author": ok("wrote"), "verify": ok("checked"),
 	}}
 	rec := &recorder{}
-	w := &Workflow{Launch: agent.launch, Report: rec.report}
+	w := &Flow{Launch: agent.launch, Report: rec.report}
 
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "sync", Run: "true"},
 		store.Step{ID: "author", Agent: "write the thing"},
 		store.Step{ID: "verify", Agent: "check the thing"},
 	)
 	wr, err := w.Execute(context.Background(), job, "run1", dir)
 	if err != nil {
-		t.Fatalf("workflow failed: %v", err)
+		t.Fatalf("flow failed: %v", err)
 	}
 	if wr.Outcome != OutcomeDone {
 		t.Fatalf("outcome %s (%s), want done", wr.Outcome, wr.ParkReason)
@@ -121,7 +121,7 @@ func TestStepsRunInTheOrderTheyAreDeclared(t *testing.T) {
 }
 
 // The whole point: B must not run on A's unverified claim. A failing step parks
-// the workflow where it failed, and everything after it stays unstarted.
+// the flow where it failed, and everything after it stays unstarted.
 func TestAFailingStepParksAndTheRestNeverStart(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{
@@ -129,9 +129,9 @@ func TestAFailingStepParksAndTheRestNeverStart(t *testing.T) {
 		"verify": {Status: "error", Note: "two stories are wrong"},
 		"ship":   ok("shipped"),
 	}}
-	w := &Workflow{Launch: agent.launch}
+	w := &Flow{Launch: agent.launch}
 
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"},
 		store.Step{ID: "ship", Agent: "open a PR"},
@@ -152,7 +152,7 @@ func TestAFailingStepParksAndTheRestNeverStart(t *testing.T) {
 	if _, err := os.Stat(StepDir(dir, "ship")); !os.IsNotExist(err) {
 		t.Errorf("ship has a directory, so something started it: %v", err)
 	}
-	// A workflow that parked at step two of three is 1/3: reporting 1/2 would
+	// A flow that parked at step two of three is 1/3: reporting 1/2 would
 	// present the steps it managed as the whole job.
 	if done, total := wr.Done(); done != 1 || total != 3 {
 		t.Errorf("progress %d/%d, want 1/3", done, total)
@@ -168,9 +168,9 @@ func TestAFailingStepParksAndTheRestNeverStart(t *testing.T) {
 func TestAStepThatWritesNoResultParks(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
-	w := &Workflow{Launch: agent.launch}
+	w := &Flow{Launch: agent.launch}
 
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"}, // writes nothing: the agent died
 		store.Step{ID: "ship", Agent: "ship"},
@@ -188,13 +188,13 @@ func TestAStepThatWritesNoResultParks(t *testing.T) {
 	}
 }
 
-// Resume exists so that a failed workflow does not have to redo the expensive
+// Resume exists so that a failed flow does not have to redo the expensive
 // steps. If it re-ran them, the pressure to wave a failed step through — "just
 // carry on" — would come straight back.
 func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"},
 		store.Step{ID: "ship", Agent: "ship"},
@@ -204,7 +204,7 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 		"author": ok("wrote five"),
 		"verify": {Status: "error", Note: "one is wrong"},
 	}}
-	w := &Workflow{Launch: first.launch}
+	w := &Flow{Launch: first.launch}
 	if wr, _ := w.Execute(ctx, job, "run1", dir); wr.StoppedAt != "verify" {
 		t.Fatalf("first attempt parked at %q, want verify", wr.StoppedAt)
 	}
@@ -215,7 +215,7 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 		"ship":   ok("merged"),
 	}}
 	rec := &recorder{}
-	w = &Workflow{Launch: second.launch, Report: rec.report}
+	w = &Flow{Launch: second.launch, Report: rec.report}
 	wr, err := w.Execute(ctx, job, "run1", dir)
 	if err != nil {
 		t.Fatalf("resume failed: %v", err)
@@ -251,18 +251,18 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 func TestARetriedStepDoesNotInheritTheOldVerdict(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
-	job := workflowJob(t, store.Step{ID: "verify", Agent: "review"})
+	job := flowJob(t, store.Step{ID: "verify", Agent: "review"})
 
 	first := &fakeAgent{results: map[string]Result{
 		"verify": {Status: "error", Note: "one is wrong"},
 	}}
-	if wr, _ := (&Workflow{Launch: first.launch}).Execute(ctx, job, "run1", dir); wr.ParkReason != ParkStepFailed {
+	if wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, "run1", dir); wr.ParkReason != ParkStepFailed {
 		t.Fatalf("first attempt parked for %q, want step_failed", wr.ParkReason)
 	}
 
 	// This time the agent writes nothing at all.
 	silent := &fakeAgent{results: map[string]Result{}}
-	wr, _ := (&Workflow{Launch: silent.launch}).Execute(ctx, job, "run1", dir)
+	wr, _ := (&Flow{Launch: silent.launch}).Execute(ctx, job, "run1", dir)
 	if wr.ParkReason != ParkNoResult {
 		t.Errorf("retry parked for %q, want no_result: it adopted the last attempt's file", wr.ParkReason)
 	}
@@ -272,10 +272,10 @@ func TestARetriedStepDoesNotInheritTheOldVerdict(t *testing.T) {
 // forgot" incidents are a shell command a model was asked to remember.
 func TestARunStepNeedsNoAgent(t *testing.T) {
 	dir := t.TempDir()
-	job := workflowJob(t, store.Step{ID: "sync", Run: "echo pulled main"})
+	job := flowJob(t, store.Step{ID: "sync", Run: "echo pulled main"})
 
 	// No launcher at all: if a run step reached for an agent this would park.
-	wr, err := (&Workflow{}).Execute(context.Background(), job, "run1", dir)
+	wr, err := (&Flow{}).Execute(context.Background(), job, "run1", dir)
 	if err != nil {
 		t.Fatalf("run step failed: %v", err)
 	}
@@ -293,16 +293,16 @@ func TestARunStepNeedsNoAgent(t *testing.T) {
 }
 
 // A command that exits non-zero is a failed step, and a failed step parks the
-// workflow like any other. Cheap deterministic checks are worth having only if
+// flow like any other. Cheap deterministic checks are worth having only if
 // they can stop the expensive steps behind them.
-func TestAFailingRunStepStopsTheWorkflow(t *testing.T) {
+func TestAFailingRunStepStopsTheFlow(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "sync", Run: "echo cannot pull >&2; exit 3"},
 		store.Step{ID: "author", Agent: "write"},
 	)
-	wr, _ := (&Workflow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
+	wr, _ := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
 
 	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkStepFailed {
 		t.Fatalf("outcome %s/%s, want parked/step_failed", wr.Outcome, wr.ParkReason)
@@ -323,12 +323,12 @@ func TestEachStepIsItsOwnAgentAndCarriesItsOwnConfig(t *testing.T) {
 	agent := &fakeAgent{results: map[string]Result{
 		"author": ok("wrote"), "verify": ok("checked"),
 	}}
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "author", Agent: "write", Model: "opus", Effort: "high"},
 		store.Step{ID: "verify", Agent: "review", Subagent: "cavecrew-reviewer"},
 	)
-	if wr, err := (&Workflow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir); err != nil || wr.Outcome != OutcomeDone {
-		t.Fatalf("workflow ended %v (%v)", wr.Outcome, err)
+	if wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir); err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("flow ended %v (%v)", wr.Outcome, err)
 	}
 	if len(agent.calls) != 2 {
 		t.Fatalf("started %d agents, want one per step", len(agent.calls))
@@ -357,15 +357,15 @@ func TestEachStepIsItsOwnAgentAndCarriesItsOwnConfig(t *testing.T) {
 	}
 }
 
-// A workflow validates its own steps before running any of them. A job stored
+// A flow validates its own steps before running any of them. A job stored
 // before a rule existed must not run under the old rules.
-func TestAWorkflowRefusesToStartOnInvalidSteps(t *testing.T) {
+func TestAFlowRefusesToStartOnInvalidSteps(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
-	job := workflowJob(t,
+	job := flowJob(t,
 		store.Step{ID: "author", Agent: "write", Model: "haiku"},
 	)
-	wr, err := (&Workflow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
+	wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
 	if err == nil {
 		t.Fatal("a haiku step ran; the floor is sonnet")
 	}
@@ -373,6 +373,6 @@ func TestAWorkflowRefusesToStartOnInvalidSteps(t *testing.T) {
 		t.Errorf("outcome %s, want parked", wr.Outcome)
 	}
 	if len(agent.calls) != 0 {
-		t.Errorf("an agent started for an invalid workflow: %v", agent.started())
+		t.Errorf("an agent started for an invalid flow: %v", agent.started())
 	}
 }

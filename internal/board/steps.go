@@ -9,17 +9,17 @@ import (
 	"github.com/bon5co/bermuda/internal/store"
 )
 
-// Workflow runs on the runs list.
+// Flow runs on the runs list.
 //
-// A workflow is one run made of several steps, so it stays one row: the run
-// list is a list of things that were launched, and a workflow was launched
+// A flow is one run made of several steps, so it stays one row: the run
+// list is a list of things that were launched, and a flow was launched
 // once. What the row says is where the sequence got to — `2/4 · verify` — since
 // the note of whichever agent spoke last is about one step, not about the run.
 // The steps themselves are a nested block under the row, opened with space,
 // because "which step is it stuck on and for how long" is a question asked
 // about one run at a time and not about the whole list at once.
 
-// stepProgress is a workflow run in one cell: how many steps are done, of how
+// stepProgress is a flow run in one cell: how many steps are done, of how
 // many, and which one it is on.
 func stepProgress(steps []store.RunStep) string {
 	done := 0
@@ -40,7 +40,7 @@ func stepProgress(steps []store.RunStep) string {
 	return label + " · " + current
 }
 
-// renderStepLines is the block that appears under an expanded workflow run: one
+// renderStepLines is the block that appears under an expanded flow run: one
 // line per step, saying what happened and how long it took.
 func (m *Model) renderStepLines(steps []store.RunStep) string {
 	var b strings.Builder
@@ -58,7 +58,7 @@ func (m *Model) renderStepLines(steps []store.RunStep) string {
 }
 
 // stepMark is the one glyph that says how a step went, so a reader can find the
-// step that stopped the workflow without reading the column.
+// step that stopped the flow without reading the column.
 func stepMark(outcome string) string {
 	switch outcome {
 	case store.StepDone:

@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// Validation is where a workflow's two house rules live: no step may run on
+// Validation is where a flow's two house rules live: no step may run on
 // haiku, and no two steps may share an id. Both are cheap to state and
-// expensive to discover at 04:00, which is when an unattended workflow runs.
+// expensive to discover at 04:00, which is when an unattended flow runs.
 
 func newSteps(t *testing.T) *Store {
 	t.Helper()
@@ -21,7 +21,7 @@ func newSteps(t *testing.T) *Store {
 	return s
 }
 
-// The floor is sonnet. A workflow is exactly where a cheap model quietly does
+// The floor is sonnet. A flow is exactly where a cheap model quietly does
 // four of five steps and reports success.
 func TestValidationRejectsHaikuWhereverItIsNamed(t *testing.T) {
 	cases := []struct {
@@ -101,15 +101,15 @@ func TestARunStepNeedsNothingElse(t *testing.T) {
 
 // The store is the last gate. Anything can call PutJob — the board's editor,
 // the CLI, a future importer — and none of them should be able to save a
-// workflow the runner would then refuse at 04:00.
-func TestTheStoreRefusesToSaveAnInvalidWorkflow(t *testing.T) {
+// flow the runner would then refuse at 04:00.
+func TestTheStoreRefusesToSaveAnInvalidFlow(t *testing.T) {
 	s := newSteps(t)
 	ctx := context.Background()
 	j := Job{ID: "wf", Model: "sonnet", CWD: "/tmp", Enabled: true, Steps: []Step{
 		{ID: "author", Agent: "write", Model: "haiku"},
 	}}
 	if err := s.PutJob(ctx, j); err == nil {
-		t.Fatal("a haiku workflow was stored; it would only be caught when it ran")
+		t.Fatal("a haiku flow was stored; it would only be caught when it ran")
 	}
 	if _, err := s.Job(ctx, "wf"); err == nil {
 		t.Error("the refused job was written anyway")
@@ -134,7 +134,7 @@ func TestStepsSurviveTheRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.IsWorkflow() || len(got.Steps) != 3 {
+	if !got.IsFlow() || len(got.Steps) != 3 {
 		t.Fatalf("read back %d steps, want 3", len(got.Steps))
 	}
 	for i, want := range steps {
@@ -142,8 +142,8 @@ func TestStepsSurviveTheRoundTrip(t *testing.T) {
 			t.Errorf("step %d read back as %+v, want %+v", i, got.Steps[i], want)
 		}
 	}
-	// A plain job stays plain: nothing about workflows may turn an ordinary
-	// one-prompt job into a zero-step workflow.
+	// A plain job stays plain: nothing about flows may turn an ordinary
+	// one-prompt job into a zero-step flow.
 	if err := s.PutJob(ctx, Job{ID: "plain", Prompt: "do it", Model: "sonnet",
 		CWD: "/tmp", Enabled: true}); err != nil {
 		t.Fatal(err)
@@ -152,14 +152,14 @@ func TestStepsSurviveTheRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plain.IsWorkflow() {
-		t.Errorf("a prompt-only job reads back as a workflow with %d steps", len(plain.Steps))
+	if plain.IsFlow() {
+		t.Errorf("a prompt-only job reads back as a flow with %d steps", len(plain.Steps))
 	}
 }
 
 // The rows exist from the start of the run, so the board can say "2 of 4"
 // rather than counting only the steps that got far enough to report — and a
-// workflow that died at step one still says it had four.
+// flow that died at step one still says it had four.
 func TestSeedRunStepsDeclaresEveryStepAndKeepsWhatRan(t *testing.T) {
 	s := newSteps(t)
 	ctx := context.Background()
@@ -178,7 +178,7 @@ func TestSeedRunStepsDeclaresEveryStepAndKeepsWhatRan(t *testing.T) {
 	}
 	for i, want := range []string{"sync", "author", "verify"} {
 		if got[i].StepID != want {
-			t.Errorf("row %d is %q, want %q: the order is the workflow", i, got[i].StepID, want)
+			t.Errorf("row %d is %q, want %q: the order is the flow", i, got[i].StepID, want)
 		}
 		if got[i].Outcome != StepPending {
 			t.Errorf("%s starts as %q, want pending", got[i].StepID, got[i].Outcome)
@@ -230,7 +230,7 @@ func TestRunStepsForManyRuns(t *testing.T) {
 	}
 	if _, ok := got["run3"]; ok {
 		// An ordinary run has no steps, and the absence is what tells the board
-		// it is not a workflow.
+		// it is not a flow.
 		t.Error("a run with no steps came back with an entry")
 	}
 	if _, err := s.RunStepsFor(ctx, nil); err != nil {

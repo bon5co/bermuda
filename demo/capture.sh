@@ -37,10 +37,10 @@ bermuda job add --id link-audit --name "Link audit" \
 JSON
 
 say "runs — these execute for real"
-bermuda workflow run nightly-build || true
-bermuda workflow run docs-sweep    || true
-bermuda workflow run release-check || true
-bermuda workflow run link-audit    || true   # fails on purpose: a parked run
+bermuda flow run nightly-build || true
+bermuda flow run docs-sweep    || true
+bermuda flow run release-check || true
+bermuda flow run link-audit    || true   # fails on purpose: a parked run
 
 say "threads"
 bermuda thread new deploys --about 'what shipped, and what broke doing it'

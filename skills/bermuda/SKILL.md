@@ -1,11 +1,11 @@
 ---
 name: bermuda
-description: Coordinate with other agents and run multi-step work through the bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, and workflows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, and whenever a task has a step that must not be skipped.
+description: Coordinate with other agents and run multi-step work through the bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, and flows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, and whenever a task has a step that must not be skipped.
 ---
 
 # Bermuda
 
-Agent harness on this machine: scheduled jobs, declared workflows, and a shared
+Agent harness on this machine: scheduled jobs, declared flows, and a shared
 record that outlives any one agent. Repo: https://github.com/bon5co/bermuda
 
 Check it is there before relying on it:
@@ -148,11 +148,11 @@ the message is in the thread either way
 
 The thread is the record; delivery is the courtesy on top of it.
 
-## Workflows — when a step must not be skipped
+## Flows — when a step must not be skipped
 
-**If a task has a step that must not be skipped, that step belongs in a workflow.**
+**If a task has a step that must not be skipped, that step belongs in a flow.**
 A sentence in a prompt is the thing that gets skipped, and skipping it produces no
-error. A workflow moves the sequence out of the model's head and into the harness.
+error. A flow moves the sequence out of the model's head and into the harness.
 
 Steps are JSON. Exactly one of `agent` (a prompt, its own process) or `run` (a
 shell command, no agent at all):
@@ -170,22 +170,22 @@ shell command, no agent at all):
 bermuda job add --id nightly --steps steps.json --cwd ~/Projects/x [--cron '0 4 * * *']
 echo '[...]' | bermuda job add --id nightly --steps -      # or from stdin
 bermuda job show nightly                                   # step table
-bermuda workflow run nightly
-bermuda workflow status <run-id>                           # per-step outcome + duration
-bermuda workflow resume <run-id>                           # restart at the step that parked
+bermuda flow run nightly
+bermuda flow status <run-id>                           # per-step outcome + duration
+bermuda flow resume <run-id>                           # restart at the step that parked
 ```
 
 - Per-step `model` / `effort` / `kind` / `subagent` default to the job's and
   override it — a two-line mechanical edit need not burn the model a
   judgement-heavy step needs. All four are refused on a `run` step.
 - A step is complete when its `result.json` says ok. A step that fails or writes
-  none **parks the workflow there** and the later steps never start. Exit code 1.
+  none **parks the flow there** and the later steps never start. Exit code 1.
 - `resume` reuses the run row and directory: completed steps are found on disk and
   are not paid for twice.
 - Refused at `job add` time: haiku (named or inherited — the floor is sonnet),
   duplicate ids, a step with both `agent` and `run` or neither, agent config on a
   `run` step, and `--prompt` together with `--steps`.
-- The timeout is the job's and is applied **per step**, so an N-step workflow can
+- The timeout is the job's and is applied **per step**, so an N-step flow can
   run N times its stated deadline.
 
 Deterministic work belongs in a `run` step, not in a prompt. Most "the agent
@@ -208,7 +208,7 @@ live database: copying `bermuda.db` alone gave 0 messages, copying it with
 ## Board
 
 `bermuda board`. `1`/`2`/`3` jobs/runs/threads, `j`/`k` move, `/` search, `R` run
-the selected job, `space` expand a workflow run's steps, `i` write into the
+the selected job, `space` expand a flow run's steps, `i` write into the
 thread, `<`/`>` step along the thread row, `t` thread picker, `q` quit.
 
 **You cannot draw it here.** An agent's shell has no TTY, so `bermuda board`

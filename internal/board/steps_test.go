@@ -9,14 +9,14 @@ import (
 	"github.com/bon5co/bermuda/internal/store"
 )
 
-// A workflow is one row on the runs list, because it was launched once. What
+// A flow is one row on the runs list, because it was launched once. What
 // the row has to say is where the sequence got to, and what expanding it has to
-// say is which step and for how long — the two questions asked about a workflow
+// say is which step and for how long — the two questions asked about a flow
 // that has not finished.
 
-// seedWorkflowRun adds a four-step workflow run, two steps done and the third
+// seedFlowRun adds a four-step flow run, two steps done and the third
 // running, and reloads the model through the same message the tick uses.
-func seedWorkflowRun(t *testing.T, m *Model) {
+func seedFlowRun(t *testing.T, m *Model) {
 	t.Helper()
 	ctx := context.Background()
 	started := time.Now().Add(-10 * time.Minute)
@@ -54,14 +54,14 @@ func seedWorkflowRun(t *testing.T, m *Model) {
 
 // The row says how far the sequence got, not what the last agent said: the note
 // belongs to one step, and the row is about the run.
-func TestAWorkflowRunReadsAsItsProgress(t *testing.T) {
+func TestAFlowRunReadsAsItsProgress(t *testing.T) {
 	m := newTestModel(t)
-	seedWorkflowRun(t, m)
+	seedFlowRun(t, m)
 	m.focus = focusRuns
 
 	out := m.renderRuns(0, len(m.visibleRuns()))
 	if !strings.Contains(out, "2/4 · verify") {
-		t.Errorf("the runs list does not show the workflow's progress:\n%s", out)
+		t.Errorf("the runs list does not show the flow's progress:\n%s", out)
 	}
 	if strings.Contains(out, "wrote five stories") {
 		t.Errorf("the row shows one step's note instead of the run's progress:\n%s", out)
@@ -75,13 +75,13 @@ func TestAWorkflowRunReadsAsItsProgress(t *testing.T) {
 
 // Which step, and for how long, is asked about one run at a time. The steps are
 // a block under the row rather than a column on every row.
-func TestSpaceExpandsAWorkflowRunIntoItsSteps(t *testing.T) {
+func TestSpaceExpandsAFlowRunIntoItsSteps(t *testing.T) {
 	m := newTestModel(t)
-	seedWorkflowRun(t, m)
-	m.focus, m.cursor = focusRuns, 0 // newest run first, which is the workflow
+	seedFlowRun(t, m)
+	m.focus, m.cursor = focusRuns, 0 // newest run first, which is the flow
 
 	if r, ok := m.selectedRun(); !ok || r.ID != "wf1" {
-		t.Fatalf("the cursor is on %+v, want the workflow run", r)
+		t.Fatalf("the cursor is on %+v, want the flow run", r)
 	}
 	if strings.Contains(m.renderRuns(0, len(m.visibleRuns())), "author") {
 		t.Fatal("the steps are showing before anybody asked for them")
@@ -111,7 +111,7 @@ func TestSpaceExpandsAWorkflowRunIntoItsSteps(t *testing.T) {
 // steps to open, and a key that appeared to do something would be a lie.
 func TestSpaceOnAnOrdinaryRunDoesNothing(t *testing.T) {
 	m := newTestModel(t)
-	seedWorkflowRun(t, m)
+	seedFlowRun(t, m)
 	m.focus, m.cursor = focusRuns, 1 // the seeded one-agent run
 
 	before := m.renderRuns(0, len(m.visibleRuns()))
@@ -124,7 +124,7 @@ func TestSpaceOnAnOrdinaryRunDoesNothing(t *testing.T) {
 	}
 }
 
-// The progress cell is the one thing a reader takes from a workflow row, so it
+// The progress cell is the one thing a reader takes from a flow row, so it
 // has to be right at both ends of the run.
 func TestStepProgressCountsAndNamesTheCurrentStep(t *testing.T) {
 	steps := []store.RunStep{
@@ -136,14 +136,14 @@ func TestStepProgressCountsAndNamesTheCurrentStep(t *testing.T) {
 	if got := stepProgress(steps); got != "2/4 · verify" {
 		t.Errorf("progress reads %q, want 2/4 · verify", got)
 	}
-	// A finished workflow names no step: there is nothing it is on.
+	// A finished flow names no step: there is nothing it is on.
 	for i := range steps {
 		steps[i].Outcome = store.StepDone
 	}
 	if got := stepProgress(steps); got != "4/4" {
-		t.Errorf("a finished workflow reads %q, want 4/4", got)
+		t.Errorf("a finished flow reads %q, want 4/4", got)
 	}
-	// A workflow parked at its first step still says how many there were.
+	// A flow parked at its first step still says how many there were.
 	if got := stepProgress([]store.RunStep{
 		{StepID: "sync", Outcome: store.StepFailed},
 		{StepID: "author", Outcome: store.StepPending},

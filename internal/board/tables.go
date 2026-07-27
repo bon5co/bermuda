@@ -237,7 +237,7 @@ func (m *Model) renderRuns(start, end int) string {
 		}
 		steps := m.steps[r.ID]
 		if len(steps) > 0 {
-			// A workflow row says where the sequence got to. The note belongs
+			// A flow row says where the sequence got to. The note belongs
 			// to whichever step spoke last, and the row is about the run.
 			detail = stepProgress(steps)
 		}

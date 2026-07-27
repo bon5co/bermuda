@@ -69,7 +69,7 @@ and the daemon holds the database open, so recent rows are in `bermuda.db-wal`:
 
 `demo/e2e.Dockerfile` starts from a bare Ubuntu with Go, git and herdr on it and
 nothing else, installs bermuda **from GitHub the way the README says to**, and
-then uses it: jobs, a workflow that really runs, a failing step that parks, the
+then uses it: jobs, a flow that really runs, a failing step that parks, the
 thread and its claims, the scheduler and its off switch, the board's refusal to
 draw with no terminal, and an uninstall that leaves the store behind.
 

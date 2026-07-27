@@ -205,10 +205,10 @@ func runShow(argv []string) error {
 	}
 	fmt.Fprintf(w, "prompt\t%s/prompt.md\ntranscript\t%s/transcript.txt\nresult\t%s/result.json\n",
 		r.RunDir, r.RunDir, r.RunDir)
-	// A workflow run's artifacts are one directory per step under that dir, and
+	// A flow run's artifacts are one directory per step under that dir, and
 	// its per-step record is a different command.
 	if steps, err := s.RunSteps(context.Background(), r.ID); err == nil && len(steps) > 0 {
-		fmt.Fprintf(w, "steps\t%d (bermuda workflow status %s)\n", len(steps), r.ID)
+		fmt.Fprintf(w, "steps\t%d (bermuda flow status %s)\n", len(steps), r.ID)
 	}
 	return w.Flush()
 }

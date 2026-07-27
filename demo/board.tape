@@ -1,5 +1,5 @@
 # VHS drives a real terminal and photographs it. Four stills: the three tabs
-# somebody opening the board meets, and a workflow run opened up into its steps.
+# somebody opening the board meets, and a flow run opened up into its steps.
 Output board.gif
 
 Set Shell bash
@@ -25,7 +25,7 @@ Type "3"
 Sleep 2s
 Screenshot board-runs.png
 
-# A two-step run opened up: a workflow is one row, its steps sit underneath it.
+# A two-step run opened up: a flow is one row, its steps sit underneath it.
 Type "jjj"
 Sleep 1s
 Type " "

@@ -23,7 +23,7 @@ func FromStore(j store.Job) Job {
 	}
 }
 
-// StepJob converts one workflow step into a runnable job.
+// StepJob converts one flow step into a runnable job.
 //
 // The step inherits everything the job settled — working directory, timeout,
 // permissions — and overrides only what it names. It is never persistent: each
