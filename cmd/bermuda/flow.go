@@ -162,7 +162,8 @@ func flowResume(argv []string) error {
 	// The job is optional now. A flow called directly has no job at all, and one
 	// called by a job may outlive it — but the run itself records which flow ran
 	// and what it was called with, so neither case needs the job to still exist.
-	j := store.Job{ID: rec.JobID, Flow: rec.Flow, Enabled: true, Model: store.DefaultModel}
+	j := store.Job{ID: rec.JobID, Flow: rec.Flow, Enabled: true,
+		Model: store.DefaultModel, Kind: store.DefaultKind}
 	if stored, err := s.Job(ctx, rec.JobID); err == nil {
 		j = *stored
 	}

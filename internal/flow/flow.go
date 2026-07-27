@@ -49,8 +49,30 @@ type Flow struct {
 	// type: the steps are prompts, and a sentence tells a person and an agent
 	// equally well what belongs here. An empty Input means the flow takes none.
 	Input string `yaml:"input,omitempty"`
+
+	// SkipPermissions runs this flow's agent steps with the permission bypass.
+	//
+	// It defaults to on, and that default is the whole reason flows work
+	// unattended: there is nobody sitting in a step's pane, so a permission
+	// prompt is a step that waits until its grace runs out and then parks. A
+	// flow that does something consequential can turn it off here, and any step
+	// can override either way.
+	//
+	// A pointer because unset and explicitly false are different answers, and
+	// only a pointer can tell them apart.
+	SkipPermissions *bool `yaml:"skip_permissions,omitempty"`
+
 	// Steps run in order.
 	Steps []store.Step `yaml:"steps"`
+}
+
+// BypassesPermissions reports whether this flow's agent steps run with
+// --dangerously-skip-permissions, absent a per-step override.
+func (f Flow) BypassesPermissions() bool {
+	if f.SkipPermissions == nil {
+		return true
+	}
+	return *f.SkipPermissions
 }
 
 // TakesInput reports whether the flow declares one.

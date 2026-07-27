@@ -189,3 +189,27 @@ func TestTheNewFlowTemplateParses(t *testing.T) {
 		t.Error("the template does not declare an input, so it cannot demonstrate {{input}}")
 	}
 }
+
+// A directly-called flow must be runnable with agent steps, not only `run:`
+// ones.
+//
+// This is a regression test for a bug that shipped in v2.0.0. `flowJob` left
+// Kind empty, PutJob is where every other job gets it filled in, and a flow
+// called directly never goes through PutJob — so herdr refused every agent step
+// with "unsupported interactive agent kind:". A flow made only of `run:` steps
+// worked perfectly, which is exactly why the unit tests and the end-to-end
+// suite both missed it: neither launched an agent.
+func TestADirectlyCalledFlowCanLaunchAnAgentStep(t *testing.T) {
+	j := flowJob(flow.Flow{ID: "triage", About: "triage"}, "/tmp", "", "")
+	if j.Kind != store.DefaultKind {
+		t.Errorf("kind is %q, want %q — herdr refuses an agent with no kind",
+			j.Kind, store.DefaultKind)
+	}
+	if j.Model != store.DefaultModel {
+		t.Errorf("model is %q, want %q", j.Model, store.DefaultModel)
+	}
+	// An explicit choice still wins.
+	if got := flowJob(flow.Flow{ID: "t"}, "/tmp", "opus", "codex"); got.Kind != "codex" || got.Model != "opus" {
+		t.Errorf("explicit kind/model were overridden: %q %q", got.Kind, got.Model)
+	}
+}

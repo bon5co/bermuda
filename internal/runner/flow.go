@@ -168,6 +168,18 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 		return wr, err
 	}
 
+	// Precedence for the permission bypass: the step, then the flow file, then
+	// whatever the caller's job already said. Only an explicit value in the file
+	// overrides the job — defaulting it here unconditionally would silently undo
+	// a job that deliberately asked for permission checks, which is the opposite
+	// of what a default should do.
+	//
+	// The default itself lives with the caller, because a flow with no opinion
+	// should behave like everything else that job started.
+	if def.SkipPermissions != nil {
+		job.SkipPermissions = *def.SkipPermissions
+	}
+
 	// previous is the note the last completed step published, and the only thing
 	// besides the input that travels down the chain. It is carried across reused
 	// steps too: a resume that skipped step two must still hand step two's result
