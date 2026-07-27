@@ -74,8 +74,11 @@ func TestLiveSkipsTheBoardWhateverTheSpelling(t *testing.T) {
 
 // Belt and braces on the two mentions that would have reached it.
 func TestBoardIsUnreachableByNameAndByAll(t *testing.T) {
+	// The board is given a workspace so that @all genuinely resolves against one
+	// here: an @all with no space to scope to is refused before it ever looks at
+	// the agent list, which would pass this test without testing anything.
 	list := `{"id":"1","result":{"agents":[
-		{"agent":"` + herdrcli.BoardAgent + `","pane_id":"wE:p4","cwd":"/home/x/Projects/bermuda"}
+		{"agent":"` + herdrcli.BoardAgent + `","pane_id":"wE:p4","workspace_id":"wE","cwd":"/home/x/Projects/bermuda"}
 	]}}`
 
 	live, err := FromHerdr(fakeHerdr(t, list)).Live(context.Background())
@@ -83,7 +86,7 @@ func TestBoardIsUnreachableByNameAndByAll(t *testing.T) {
 		t.Fatalf("live: %v", err)
 	}
 	for _, body := range []string{"@bermuda ping", "@all ping"} {
-		r := Resolve(body, live, Self{Target: "w9:p9"})
+		r := Resolve(Message{Body: body, Workspace: "wE"}, live, Self{Target: "w9:p9"})
 		if len(r.Delivered) != 0 {
 			t.Errorf("%q reached %d agents, want none", body, len(r.Delivered))
 		}

@@ -54,7 +54,7 @@ func TestAPostLandsEvenWhenNobodyCanBeTold(t *testing.T) {
 func TestTheReportSaysHerdrCouldNotBeAsked(t *testing.T) {
 	var out strings.Builder
 	announce(&out, deadHerd{err: errors.New("no herdr server")}, store.ThreadMessage{
-		Thread: "global", By: store.Identity{Name: "tester"}, Body: "@ada ping"})
+		Thread: "global", By: store.Identity{Name: "tester"}, Body: "@ada ping"}, "")
 	if !strings.Contains(out.String(), "the message is in the thread") {
 		t.Errorf("the report %q does not say the message was posted anyway", out.String())
 	}
@@ -66,7 +66,7 @@ func TestTheReportSaysHerdrCouldNotBeAsked(t *testing.T) {
 func TestAMessageWithNoMentionsSaysNothing(t *testing.T) {
 	var out strings.Builder
 	announce(&out, deadHerd{err: errors.New("must not be asked")}, store.ThreadMessage{
-		Thread: "global", By: store.Identity{Name: "tester"}, Body: "gog configured"})
+		Thread: "global", By: store.Identity{Name: "tester"}, Body: "gog configured"}, "")
 	if out.String() != "" {
 		t.Errorf("a message addressed to nobody printed %q", out.String())
 	}

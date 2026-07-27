@@ -153,11 +153,31 @@ func (m *Model) tellTheMentioned(msg store.ThreadMessage) string {
 	defer cancel()
 	res, err := mention.Deliver(ctx, m.herd(), mention.Message{
 		Thread: msg.Thread, Author: msg.By.String(), Body: msg.Body,
+		Workspace: m.workspaceOf(ctx, msg.Thread),
 	}, mention.Me(msg.By.Name))
 	if err != nil {
 		return "could not ask herdr who is live"
 	}
 	return mention.Status(res)
+}
+
+// workspaceOf is the space a thread belongs to, which is what bounds an `@all`
+// posted from the board. Empty for global and for any thread made by hand, and
+// `@all` in one of those reaches nobody by design.
+func (m *Model) workspaceOf(ctx context.Context, thread string) string {
+	if thread == "" || thread == store.GlobalThread {
+		return ""
+	}
+	threads, err := m.store.Threads(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, t := range threads {
+		if t.ID == thread {
+			return t.WorkspaceID
+		}
+	}
+	return ""
 }
 
 // mentionTimeout bounds the whole delivery, however many agents were named.

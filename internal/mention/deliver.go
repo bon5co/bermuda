@@ -25,6 +25,12 @@ type Agent struct {
 	Label  string
 	// Dir is the agent's working directory; its basename is the third name.
 	Dir string
+	// Workspace is the herdr workspace the agent's pane sits in, and is what
+	// makes `@all` affordable. Membership needs no registration and no prior
+	// message: herdr already knows which space every pane is in, so an agent
+	// that has never written a word is still reachable in its own space and
+	// still invisible from everybody else's.
+	Workspace string
 }
 
 // Answers reports whether this agent goes by the mentioned text.
@@ -146,6 +152,11 @@ type Message struct {
 	Thread string
 	Author string
 	Body   string
+	// Workspace is the herdr workspace this thread belongs to, and is the bound
+	// on `@all`. Empty means the thread has no space behind it — global, or one
+	// somebody made by hand — and `@all` in one of those is refused rather than
+	// widened to the machine. See allScope.
+	Workspace string
 }
 
 // Text is what the mentioned agent is shown.
@@ -173,6 +184,12 @@ type Result struct {
 	// stops `@all` from becoming a message an agent sends to itself, reads, and
 	// answers.
 	Mine []string
+	// Refused are mentions that were not resolved at all because the thread they
+	// were written in has no space to bound them. It is only ever `@all`, and it
+	// is reported rather than silently dropped: an agent that believes it has
+	// broadcast and has not is worse off than one that is told to go and say it
+	// somewhere specific.
+	Refused []string
 }
 
 // Reached reports whether anybody was actually told.
@@ -182,7 +199,35 @@ func (r Result) Reached() bool { return len(r.Delivered) > 0 }
 // the common case and deserves no output.
 func (r Result) Empty() bool {
 	return len(r.Delivered) == 0 && len(r.Failed) == 0 &&
-		len(r.Missed) == 0 && len(r.Mine) == 0
+		len(r.Missed) == 0 && len(r.Mine) == 0 && len(r.Refused) == 0
+}
+
+// allScope decides who `@all` may reach, and returns false when the answer is
+// nobody.
+//
+// `@all` used to mean every live agent on the machine. That is a broadcast into
+// the context of every agent running, most of which are working on something
+// else and none of which can act on it — paid for in tokens by all of them, on
+// every send. Bounded to a workspace it means what people assume it means: the
+// agents working on this, in this window.
+//
+// A thread with no workspace has no such bound, so `@all` in one is refused
+// outright rather than falling back to the machine. Global is the case that
+// matters: it is the default for anything that never named a thread, so a
+// fallback there would leave the old behaviour in place for exactly the agents
+// least likely to have thought about it.
+func allScope(msg Message, live []Agent) ([]Agent, bool) {
+	ws := strings.TrimSpace(msg.Workspace)
+	if ws == "" {
+		return nil, false
+	}
+	var out []Agent
+	for _, a := range live {
+		if strings.TrimSpace(a.Workspace) == ws {
+			out = append(out, a)
+		}
+	}
+	return out, true
 }
 
 // Resolve works out who a message is addressed to.
@@ -191,13 +236,25 @@ func (r Result) Empty() bool {
 // because two agents working in the same directory are both plausibly the one
 // being talked to and silently picking one of them is how a question goes to
 // the agent that was not asked.
-func Resolve(body string, live []Agent, self Self) Result {
+func Resolve(msg Message, live []Agent, self Self) Result {
 	var r Result
 	sent := map[string]bool{}
-	for _, name := range Names(body) {
+	for _, name := range Names(msg.Body) {
 		var matched, mine bool
-		candidates := live
-		if !strings.EqualFold(name, All) {
+		var candidates []Agent
+		if strings.EqualFold(name, All) {
+			scoped, ok := allScope(msg, live)
+			if !ok {
+				r.Refused = append(r.Refused, name)
+				continue
+			}
+			candidates = scoped
+		} else {
+			// A name is deliberate and singular, so it is still resolved across
+			// the machine. The cost `@all` was refused for is the breadth, not
+			// the crossing: `@dotfiles` reaches one agent whoever asks, and
+			// scoping it would only mean a question going unanswered with nothing
+			// said about why.
 			candidates = pickTargets(name, live)
 		}
 		for _, a := range candidates {
@@ -217,8 +274,8 @@ func Resolve(body string, live []Agent, self Self) Result {
 		switch {
 		case matched:
 		case mine:
-			// @all with nobody else alive lands here too, which is honest: the
-			// only agent that matched was the one that wrote the message.
+			// @all with nobody else in the space lands here too, which is honest:
+			// the only agent that matched was the one that wrote the message.
 			r.Mine = append(r.Mine, name)
 		default:
 			r.Missed = append(r.Missed, name)
@@ -240,7 +297,7 @@ func Deliver(ctx context.Context, h Herd, msg Message, self Self) (Result, error
 	if err != nil {
 		return Result{}, err
 	}
-	r := Resolve(msg.Body, live, self)
+	r := Resolve(msg, live, self)
 	text := msg.Text()
 	var delivered []Delivery
 	for _, d := range r.Delivered {
@@ -275,6 +332,11 @@ func Report(w io.Writer, r Result) {
 	for _, name := range r.Mine {
 		fmt.Fprintln(w, "bermuda: @"+name+" is you, so nothing was delivered")
 	}
+	for _, name := range r.Refused {
+		fmt.Fprintln(w, "bermuda: @"+name+" needs a workspace to mean anything, and this "+
+			"thread has none — post it in the thread for the space you mean, or name "+
+			"the agents you want; the message is in the thread either way")
+	}
 }
 
 // Status is the same outcome in one line, for a board that has one line to
@@ -296,6 +358,9 @@ func Status(r Result) string {
 	}
 	if len(r.Missed) > 0 {
 		parts = append(parts, "nobody answers to @"+strings.Join(r.Missed, ", @"))
+	}
+	if len(r.Refused) > 0 {
+		parts = append(parts, "@"+strings.Join(r.Refused, ", @")+" needs a workspace thread")
 	}
 	return strings.Join(parts, "; ")
 }

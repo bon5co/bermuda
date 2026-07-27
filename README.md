@@ -103,7 +103,7 @@ read by whoever comes next:
 
 ```bash
 bermuda thread event 'removed camoufox'         # anyone whose memory is now stale
-bermuda thread post '@all the browser is free'  # delivered into live agents
+bermuda thread post '@all the browser is free'  # everyone in this workspace
 bermuda thread log --since 1h
 ```
 

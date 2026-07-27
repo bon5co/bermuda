@@ -485,14 +485,19 @@ func (s *Store) ThreadPost(ctx context.Context, m ThreadMessage) (ThreadMessage,
 	// row lands at all.
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO thread_messages (thread, kind, agent, job_id, run_id, pid, resource, body, expires_at, created_at)
-		SELECT ?,?,?,?,?,?,?,?,NULL,? WHERE EXISTS (SELECT 1 FROM threads WHERE id = ?)`,
+		SELECT ?,?,?,?,?,?,?,?,NULL,?
+		WHERE EXISTS (SELECT 1 FROM threads WHERE id = ? AND closed_at IS NULL)`,
 		m.Thread, string(m.Kind), m.By.Name, m.By.JobID, m.By.RunID, m.By.PID, m.Resource,
 		strings.TrimSpace(m.Body), m.CreatedAt.Unix(), m.Thread)
 	if err != nil {
 		return ThreadMessage{}, err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		return ThreadMessage{}, unknownThread(m.Thread)
+		// Two different failures reach here, and telling them apart is the
+		// difference between "you typed the id wrong" and "that space is shut".
+		// Asking after the fact is safe: neither answer can become wrong in a way
+		// that would have let the write succeed.
+		return ThreadMessage{}, s.whyNotWritable(ctx, m.Thread)
 	}
 	m.Seq, _ = res.LastInsertId()
 	return m, nil

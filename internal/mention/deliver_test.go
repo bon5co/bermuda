@@ -67,21 +67,68 @@ func TestAnAgentAnswersToItsNameItsLabelAndItsDirectory(t *testing.T) {
 		{"@tiktok ping", "w1:pB"},     // the pane label
 		{"@bermuda ping", "w1:pB"},    // its directory again
 	} {
-		r := Resolve(tc.body, agents, Self{})
+		r := Resolve(Message{Body: tc.body}, agents, Self{})
 		if len(r.Delivered) != 1 || r.Delivered[0].Agent.Target != tc.want {
 			t.Errorf("%q resolved to %+v, want %s", tc.body, r.Delivered, tc.want)
 		}
 	}
 }
 
-// @all is how "camoufox is gone, stop trying to use it" reaches everyone at
-// once. It must not include the sender: an agent that is handed its own
-// broadcast reads it, treats it as a new instruction, and broadcasts again.
-func TestAllIsEverybodyExceptTheSender(t *testing.T) {
+// @all is everybody in the *space*, not everybody on the machine. It must not
+// include the sender: an agent that is handed its own broadcast reads it,
+// treats it as a new instruction, and broadcasts again.
+func TestAllIsTheWorkspaceExceptTheSender(t *testing.T) {
 	h := newFakeHerd(
-		Agent{Target: "w1:pA", Name: "ada"},
-		Agent{Target: "w1:pB", Name: "tiktok"},
-		Agent{Target: "w1:pC", Name: "scraper"},
+		Agent{Target: "w1:pA", Name: "ada", Workspace: "w1"},
+		Agent{Target: "w1:pB", Name: "tiktok", Workspace: "w1"},
+		Agent{Target: "w1:pC", Name: "scraper", Workspace: "w1"},
+	)
+	r, err := Deliver(context.Background(), h, Message{
+		Thread: "shopee", Workspace: "w1", Author: "ada", Body: "@all camoufox is gone"},
+		Self{Target: "w1:pA"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.targets(), ","); got != "w1:pB,w1:pC" {
+		t.Fatalf("delivered to %s, want everybody in the space but the sender", got)
+	}
+	if len(r.Delivered) != 2 {
+		t.Errorf("reported %d deliveries, want 2", len(r.Delivered))
+	}
+}
+
+// The reason @all is bounded at all. An agent working in another workspace
+// cannot act on "camoufox is gone" in this one, and delivering it there spends
+// that agent's context to tell it something about a project it is not on. That
+// cost is paid by every agent on the machine on every broadcast, which is what
+// made @all too expensive to use.
+func TestAllDoesNotLeaveItsWorkspace(t *testing.T) {
+	h := newFakeHerd(
+		Agent{Target: "w1:pA", Name: "ada", Workspace: "w1"},
+		Agent{Target: "w1:pB", Name: "tiktok", Workspace: "w1"},
+		Agent{Target: "w2:pA", Name: "betterlingo", Workspace: "w2"},
+		Agent{Target: "w3:pA", Name: "vault", Workspace: "w3"},
+	)
+	if _, err := Deliver(context.Background(), h, Message{
+		Thread: "shopee", Workspace: "w1", Author: "ada", Body: "@all camoufox is gone"},
+		Self{Target: "w1:pA"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.targets(), ","); got != "w1:pB" {
+		t.Fatalf("delivered to %s, want only the other agent in w1", got)
+	}
+}
+
+// A thread with no workspace has nothing to bound @all to, so it is refused
+// rather than quietly widened back to the whole machine.
+//
+// Global is the case that matters: it is where every command that never named a
+// thread writes, so a fallback here would leave the old broadcast in place for
+// exactly the agents least likely to have thought about it.
+func TestAllInGlobalReachesNobodyAndSaysSo(t *testing.T) {
+	h := newFakeHerd(
+		Agent{Target: "w1:pA", Name: "ada", Workspace: "w1"},
+		Agent{Target: "w2:pA", Name: "betterlingo", Workspace: "w2"},
 	)
 	r, err := Deliver(context.Background(), h, Message{
 		Thread: "global", Author: "ada", Body: "@all camoufox is gone"},
@@ -89,11 +136,38 @@ func TestAllIsEverybodyExceptTheSender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(h.targets(), ","); got != "w1:pB,w1:pC" {
-		t.Fatalf("delivered to %s, want everybody but the sender", got)
+	if len(h.targets()) != 0 {
+		t.Fatalf("delivered to %v from global, want nobody", h.targets())
 	}
-	if len(r.Delivered) != 2 {
-		t.Errorf("reported %d deliveries, want 2", len(r.Delivered))
+	if len(r.Refused) != 1 || r.Refused[0] != "all" {
+		t.Fatalf("refused %v, want @all reported as refused", r.Refused)
+	}
+	// Silence would be the real failure: the sender believes it broadcast.
+	var out strings.Builder
+	Report(&out, r)
+	if !strings.Contains(out.String(), "workspace") {
+		t.Errorf("report was %q, want it to say why nothing was delivered", out.String())
+	}
+	if r.Empty() {
+		t.Error("a refused @all reported as nothing to do")
+	}
+}
+
+// A named mention still crosses workspaces. The cost @all was bounded for is
+// breadth, not distance: @dotfiles reaches one agent whoever asks, and scoping
+// it would only mean a question going unanswered with nothing said about why.
+func TestANamedMentionStillCrossesWorkspaces(t *testing.T) {
+	h := newFakeHerd(
+		Agent{Target: "w1:pA", Name: "ada", Workspace: "w1"},
+		Agent{Target: "w2:pA", Name: "betterlingo", Workspace: "w2"},
+	)
+	if _, err := Deliver(context.Background(), h, Message{
+		Thread: "shopee", Workspace: "w1", Author: "ada",
+		Body: "@betterlingo the browser is free"}, Self{Target: "w1:pA"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(h.targets(), ","); got != "w2:pA" {
+		t.Fatalf("delivered to %s, want the named agent in the other space", got)
 	}
 }
 
@@ -249,7 +323,7 @@ func TestARegisteredNameBeatsAWorkingDirectory(t *testing.T) {
 	sibling := Agent{Target: "w1:pE", Dir: "/home/dev/Projects/bermuda"}
 	third := Agent{Target: "w2:pA", Dir: "/home/dev/Projects/bermuda"}
 
-	r := Resolve("@bermuda look at this", []Agent{named, sibling, third}, Self{})
+	r := Resolve(Message{Body: "@bermuda look at this"}, []Agent{named, sibling, third}, Self{})
 	if len(r.Delivered) != 1 || r.Delivered[0].Agent.Target != "w1:pF" {
 		t.Fatalf("a registered name reached %d agents (%v), want only the one that claimed it",
 			len(r.Delivered), deliveredTargets(r))
@@ -257,14 +331,14 @@ func TestARegisteredNameBeatsAWorkingDirectory(t *testing.T) {
 
 	// The directory still works when nobody has registered anything: with no
 	// names, reaching everyone in the directory beats reaching nobody.
-	r = Resolve("@bermuda look at this", []Agent{sibling, third}, Self{})
+	r = Resolve(Message{Body: "@bermuda look at this"}, []Agent{sibling, third}, Self{})
 	if len(r.Delivered) != 2 {
 		t.Errorf("an unregistered directory mention reached %d agents, want both", len(r.Delivered))
 	}
 
 	// And a directory mention still reaches a named agent sitting in it — the
 	// name is an addition, not a way to hide.
-	r = Resolve("@dotfiles look at this", []Agent{named, Agent{Target: "w9:pZ", Dir: "/home/dev/dotfiles"}}, Self{})
+	r = Resolve(Message{Body: "@dotfiles look at this"}, []Agent{named, Agent{Target: "w9:pZ", Dir: "/home/dev/dotfiles"}}, Self{})
 	if len(r.Delivered) != 2 {
 		t.Errorf("a directory mention reached %d agents, want both including the named one",
 			len(r.Delivered))
@@ -277,11 +351,11 @@ func TestARegisteredNameIsMatchedWholeAndCaseInsensitively(t *testing.T) {
 	a := Agent{Target: "p1", Name: "review"}
 	b := Agent{Target: "p2", Name: "review-bot"}
 
-	r := Resolve("@review ping", []Agent{a, b}, Self{})
+	r := Resolve(Message{Body: "@review ping"}, []Agent{a, b}, Self{})
 	if len(r.Delivered) != 1 || r.Delivered[0].Agent.Target != "p1" {
 		t.Errorf("@review reached %v, want only the agent named review", deliveredTargets(r))
 	}
-	if r = Resolve("@REVIEW ping", []Agent{a, b}, Self{}); len(r.Delivered) != 1 {
+	if r = Resolve(Message{Body: "@REVIEW ping"}, []Agent{a, b}, Self{}); len(r.Delivered) != 1 {
 		t.Errorf("@REVIEW reached %d agents, want the one named review", len(r.Delivered))
 	}
 }

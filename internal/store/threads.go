@@ -43,7 +43,23 @@ type Thread struct {
 	// as "never", not as 1970.
 	Messages int
 	LastAt   time.Time
+	// WorkspaceID is the herdr workspace this thread belongs to, empty for one
+	// somebody made by hand. It is what makes membership answerable without
+	// anyone having written anything: an agent is in this conversation because
+	// herdr says its pane is in that workspace, not because it once posted.
+	WorkspaceID string
+	// ClosedAt is when the workspace went away. Nil means open.
+	//
+	// A closed thread is not a deleted one. It leaves `thread list`, refuses new
+	// messages and reaches nobody, but `thread log --thread <id>` still reads it:
+	// what changed on this machine stays true after the window is shut, and
+	// losing a space's record of it to somebody closing a tab would be the
+	// deletion nobody notices until they go looking.
+	ClosedAt *time.Time
 }
+
+// Closed reports whether the thread has been retired.
+func (t Thread) Closed() bool { return t.ClosedAt != nil }
 
 // threadListSchema is the registry of threads and the index messages are read
 // through. Both are applied on every Open, after the thread column exists: the
@@ -116,6 +132,15 @@ func migrateThreadList(db *sql.DB) error {
 	}
 	if _, err := db.Exec(threadListSchema); err != nil {
 		return fmt.Errorf("migrate threads: %w", err)
+	}
+	// Both are additive and both default to "a thread nobody automated": an
+	// existing thread has no workspace and is open, which is exactly what every
+	// thread created by hand before this existed actually is.
+	if err := addColumn(db, "threads", "workspace_id", `TEXT NOT NULL DEFAULT ''`); err != nil {
+		return err
+	}
+	if err := addColumn(db, "threads", "closed_at", `INTEGER`); err != nil {
+		return err
 	}
 	// Created on demand, on every open, so a database that has never seen a
 	// thread command still has somewhere for the first one to land.
@@ -219,12 +244,26 @@ func connHasColumn(ctx context.Context, conn *sql.Conn, table, column string) (b
 // and its last activity, so a caller that wants another order — the board sorts
 // its row and its picker by activity — has what it needs to sort by.
 func (s *Store) Threads(ctx context.Context) ([]Thread, error) {
+	return s.threads(ctx, "t.closed_at IS NULL")
+}
+
+// ClosedThreads is the same list for conversations whose workspace has gone.
+//
+// They are kept out of Threads rather than merged into it because the list is
+// read to choose where to write, and a closed thread is not somewhere anything
+// can be written. They stay readable so the record survives the window.
+func (s *Store) ClosedThreads(ctx context.Context) ([]Thread, error) {
+	return s.threads(ctx, "t.closed_at IS NOT NULL")
+}
+
+func (s *Store) threads(ctx context.Context, where string) ([]Thread, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT t.id, t.about, t.created_at,
+		SELECT t.id, t.about, t.created_at, t.workspace_id, t.closed_at,
 		       COUNT(m.seq), COALESCE(MAX(m.created_at), 0)
 		FROM threads t
 		LEFT JOIN thread_messages m ON m.thread = t.id
-		GROUP BY t.id, t.about, t.created_at
+		WHERE `+where+`
+		GROUP BY t.id, t.about, t.created_at, t.workspace_id, t.closed_at
 		ORDER BY t.id <> ?, t.id`, GlobalThread)
 	if err != nil {
 		return nil, err
@@ -236,12 +275,18 @@ func (s *Store) Threads(ctx context.Context) ([]Thread, error) {
 	for rows.Next() {
 		var t Thread
 		var created, last int64
-		if err := rows.Scan(&t.ID, &t.About, &created, &t.Messages, &last); err != nil {
+		var closed sql.NullInt64
+		if err := rows.Scan(&t.ID, &t.About, &created, &t.WorkspaceID, &closed,
+			&t.Messages, &last); err != nil {
 			return nil, err
 		}
 		t.CreatedAt = time.Unix(created, 0)
 		if last > 0 {
 			t.LastAt = time.Unix(last, 0)
+		}
+		if closed.Valid {
+			at := time.Unix(closed.Int64, 0)
+			t.ClosedAt = &at
 		}
 		out = append(out, t)
 	}
@@ -403,4 +448,29 @@ func refuseWhileAnythingIsHeld(ctx context.Context, conn *sql.Conn, thread strin
 // have any reason to suspect one existed.
 func unknownThread(id string) error {
 	return fmt.Errorf("no thread %s: create it with `bermuda thread new %s`", id, id)
+}
+
+// whyNotWritable explains a write that landed nowhere.
+//
+// A closed thread and a thread that never existed both refuse the insert, and
+// they need different answers: one is a typo to fix, the other is a space that
+// has been shut and a suggestion to create it would be actively wrong.
+func (s *Store) whyNotWritable(ctx context.Context, id string) error {
+	var closed sql.NullInt64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT closed_at FROM threads WHERE id = ?`, id).Scan(&closed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return unknownThread(id)
+	}
+	if err != nil {
+		return err
+	}
+	if closed.Valid {
+		return fmt.Errorf("thread %s is closed: its workspace is gone, so nothing new "+
+			"can be said in it — `bermuda thread log --thread %s` still reads what was",
+			id, id)
+	}
+	// The row exists and is open, so the insert lost a race with a delete or a
+	// close between the statement and this question. Either way it is gone now.
+	return unknownThread(id)
 }
