@@ -19,6 +19,21 @@ Tag a release and the version follows automatically:
 git tag v1.2.3 && make build   # header reads: Bermuda v1.2.3 ●
 ```
 
+## Running your checkout as the plugin
+
+```bash
+make install-plugin    # build, then unlink and relink this directory
+```
+
+`herdr plugin link` registers a directory where it stands and — unlike
+`herdr plugin install` — **does not run the manifest's build commands**, so a
+linked checkout runs whatever binary is in `./bin` right now. That is why the
+make target builds first, and why a linked plugin can silently run last week's
+code after a `git pull`.
+
+The board notices anyway: it watches its own binary and re-execs when it
+changes, so a board left open picks up a rebuild without being restarted.
+
 ## Testing against a store that is not yours
 
 The state directory is the whole of bermuda's state, so point it somewhere else
