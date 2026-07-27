@@ -176,9 +176,10 @@ past the commands it documents.
 
 ## Status
 
-Early, and in daily use on the machine it was written for. `bermuda run-once`
-executes a single job through the full runner lifecycle; the scheduler daemon,
-the store and the board all build on that same runner.
+**v1.0.0**, in daily use on the machine it was written for. Every part of it —
+jobs, workflows, threads, claims, the scheduler and its off switch — is checked
+on each release by installing it from GitHub into a bare Ubuntu container and
+using it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).
 
 The contract is the CLI. Everything else lives under `internal/`, so nothing
 here is importable as a Go library — deliberately.
