@@ -495,19 +495,34 @@ func threadWhoami(argv []string) error {
 	return w.Flush()
 }
 
-// threadLog prints the thread, oldest first.
+// threadLog prints the thread, oldest first, through a bounded read window.
+//
+// The window is the point. Two hundred lines of thread is a large share of the
+// context an agent has to spend, and most of it is settled history; the default
+// is the last fifty messages of the last day, whichever bites first. Asking for
+// more is allowed up to a ceiling and clamped past it, and a read that was cut
+// short says so — see logWindowNotice for why that line is not optional.
 func threadLog(argv []string) error {
 	fs := flag.NewFlagSet("thread log", flag.ExitOnError)
-	since := fs.Duration("since", 0, "only messages newer than this, e.g. 1h")
+	since := fs.Duration("since", 0, "how far back to reach, e.g. 1h (default 24h, ceiling 7d)")
 	kinds := fs.String("kind", "", "comma-separated kinds: claim,release,event,ask,note")
-	limit := fs.Int("limit", store.ThreadDefaultLimit, "at most this many, newest kept")
+	limit := fs.Int("limit", 0, "at most this many, newest kept (default 50, ceiling 200)")
 	asJSON := fs.Bool("json", false, "emit JSON")
 	thread := threadFlag(fs)
 	all := fs.Bool("all", false, "every thread at once, rather than one conversation")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
-	f := store.ThreadFilter{Limit: *limit}
+	window := store.ThreadReadWindow(*limit, *since, time.Now())
+	if window.LimitClamped {
+		fmt.Fprintf(os.Stderr, "bermuda: --limit %d is above the ceiling; reading the last %d\n",
+			*limit, window.Limit)
+	}
+	if window.AgeClamped {
+		fmt.Fprintf(os.Stderr, "bermuda: --since %s reaches past the ceiling; reading the last %s\n",
+			ageLabel(*since), ageLabel(window.Age))
+	}
+	f := window.Apply(store.ThreadFilter{})
 	if !*all {
 		// Without --all the log is one conversation, because reading somebody
 		// else's project is the cost this feature exists to remove.
@@ -516,9 +531,6 @@ func threadLog(argv []string) error {
 			return err
 		}
 		f.Thread = into
-	}
-	if *since > 0 {
-		f.Since = time.Now().Add(-*since)
 	}
 	for _, k := range splitList(*kinds) {
 		kind, err := store.ParseThreadKind(k)
@@ -533,8 +545,12 @@ func threadLog(argv []string) error {
 		return err
 	}
 	defer s.Close()
-	msgs, err := s.ThreadLog(context.Background(), f)
+	ctx := context.Background()
+	msgs, err := s.ThreadLog(ctx, f)
 	if err != nil {
+		return err
+	}
+	if err := reportLogWindow(ctx, s, f, window, len(msgs)); err != nil {
 		return err
 	}
 	if *asJSON {
@@ -567,6 +583,72 @@ func threadLog(argv []string) error {
 			threadBody(m))
 	}
 	return w.Flush()
+}
+
+// reportLogWindow tells the reader what the window kept out.
+//
+// It counts twice: what the filter matches inside the window, and what it
+// matches with the age bound lifted. Two numbers, because the two bounds are cut
+// short in different ways and a reader deciding whether to widen needs to know
+// which one bit.
+func reportLogWindow(ctx context.Context, s *store.Store, f store.ThreadFilter, w store.ThreadWindow, shown int) error {
+	inWindow, err := s.ThreadCount(ctx, f)
+	if err != nil {
+		return err
+	}
+	unbounded := f
+	unbounded.Since = time.Time{}
+	total, err := s.ThreadCount(ctx, unbounded)
+	if err != nil {
+		return err
+	}
+	if notice := logWindowNotice(shown, inWindow, total-inWindow, w); notice != "" {
+		// stderr, so `thread log --json` still pipes into a parser unchanged.
+		fmt.Fprintln(os.Stderr, notice)
+	}
+	return nil
+}
+
+// logWindowNotice is the line a truncated log prints, and is empty when nothing
+// was left out.
+//
+// A truncated log that looks complete is the failure mode this whole window
+// risks introducing: an agent reads fifty lines, concludes it has the whole
+// picture, and acts on a thread whose load-bearing message was number
+// fifty-one. Saying so costs one line and removes the failure.
+func logWindowNotice(shown, inWindow, older int, w store.ThreadWindow) string {
+	if inWindow <= shown && older <= 0 {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString("bermuda: ")
+	if inWindow > shown {
+		fmt.Fprintf(&b, "showing the last %d of %d messages in the last %s",
+			shown, inWindow, ageLabel(w.Age))
+	} else {
+		fmt.Fprintf(&b, "showing all %d in the last %s", shown, ageLabel(w.Age))
+	}
+	if older > 0 {
+		fmt.Fprintf(&b, ", and %d older than that", older)
+	}
+	ceiling := fmt.Sprintf("%d messages / %s", store.ThreadMaxLimit, ageLabel(store.ThreadMaxAge))
+	if w.Limit >= store.ThreadMaxLimit && w.Age >= store.ThreadMaxAge {
+		// Advising --limit at the ceiling would be advice that does nothing.
+		fmt.Fprintf(&b, "; that is the ceiling (%s)", ceiling)
+	} else {
+		fmt.Fprintf(&b, "; --since/--limit to widen, ceiling is %s", ceiling)
+	}
+	return b.String()
+}
+
+// ageLabel renders a window's reach the way the flag that sets it is written, so
+// the ceiling reads as 7d rather than as 168h.
+func ageLabel(d time.Duration) string {
+	const day = 24 * time.Hour
+	if d >= 2*day && d%day == 0 {
+		return fmt.Sprintf("%dd", int(d/day))
+	}
+	return store.ShortDuration(d)
 }
 
 // threadBody renders what a message says, folding a claim's lease into its line so

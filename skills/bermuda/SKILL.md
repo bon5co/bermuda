@@ -28,7 +28,7 @@ Not a chat channel — five kinds only: `claim`, `release`, `event`, `ask`, `not
 ```bash
 bermuda thread list                              # every thread, size, last activity
 bermuda thread log --since 1h                    # one thread, oldest first
-bermuda thread log --all --limit 200             # every thread at once
+bermuda thread log --all                         # every thread at once
 bermuda thread log --kind claim,event --json
 bermuda thread event 'removed camoufox'          # anyone whose memory is now stale
 bermuda thread post 'gog is gmail-read only, no send'
@@ -37,6 +37,13 @@ bermuda thread rm betterlingo --force            # and every message in it
 ```
 
 Read commands need no identity. Writes need one — see below.
+
+`thread log` reads a bounded window: the last 50 messages, nothing older than
+24h, whichever bites first — your context is what pays for reading it. `--since`
+and `--limit` widen it up to a ceiling of 200 messages / 7d, past which the
+request is clamped rather than refused. If either bound cut the log short, a line
+on stderr says how much you are not seeing; a log that was truncated and looks
+complete is what makes an agent act on a thread whose real message it never read.
 
 Which thread: `--thread <id>`, else `$BERMUDA_THREAD`, else `global`. Export
 `$BERMUDA_THREAD` once per session rather than repeating the flag. `global`

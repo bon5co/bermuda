@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -629,6 +630,176 @@ func TestLogLimitKeepsTheNewest(t *testing.T) {
 	}
 	if len(log) != 2 || log[0].Body != "d" || log[1].Body != "e" {
 		t.Fatalf("limit returned %+v, want the last two in order", log)
+	}
+}
+
+// The read window.
+//
+// Reading the thread costs an agent context, and most of an append-only log is
+// settled history by the time anybody reads it. These tests pin the two bounds
+// that decide how much gets spent: the default a caller gets for asking for
+// nothing, and the ceiling it gets however much it asks for.
+
+// fillLog posts n notes a minute apart, the last of them at newest.
+func fillLog(t *testing.T, s *Store, n int, newest time.Time) {
+	t.Helper()
+	ctx := context.Background()
+	for i := n - 1; i >= 0; i-- {
+		if _, err := s.ThreadPost(ctx, ThreadMessage{Kind: KindNote, By: alice,
+			Body:      fmt.Sprintf("note %d", i),
+			CreatedAt: newest.Add(-time.Duration(i) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestTheDefaultWindowIsFiftyMessagesOfOneDay(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+	fillLog(t, s, 60, base)                     // the last hour
+	fillLog(t, s, 5, base.Add(-3*24*time.Hour)) // and last week's
+
+	w := ThreadReadWindow(0, 0, base)
+	if w.Limit != ThreadDefaultLimit || w.Age != ThreadDefaultAge {
+		t.Fatalf("default window is %d/%s, want %d/%s",
+			w.Limit, w.Age, ThreadDefaultLimit, ThreadDefaultAge)
+	}
+	if w.LimitClamped || w.AgeClamped {
+		t.Errorf("asking for nothing clamped something: %+v", w)
+	}
+	if !w.Since.Equal(base.Add(-ThreadDefaultAge)) {
+		t.Errorf("window reaches back to %v, want %v", w.Since, base.Add(-ThreadDefaultAge))
+	}
+
+	log, err := s.ThreadLog(ctx, w.Apply(ThreadFilter{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != ThreadDefaultLimit {
+		t.Fatalf("default read returned %d messages, want %d", len(log), ThreadDefaultLimit)
+	}
+	for _, m := range log {
+		if m.CreatedAt.Before(w.Since) {
+			t.Fatalf("message from %v is older than the window's %v", m.CreatedAt, w.Since)
+		}
+	}
+	// Newest last, so the eye finishes on the thing that just happened.
+	if log[len(log)-1].Body != "note 0" {
+		t.Errorf("log ends on %q, want the newest message", log[len(log)-1].Body)
+	}
+}
+
+// The age bound on its own: few enough messages that the limit never comes into
+// it, and the old ones still stay out.
+func TestTheAgeBoundBitesOnItsOwn(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+	fillLog(t, s, 6, base)
+	fillLog(t, s, 4, base.Add(-30*time.Hour))
+
+	f := ThreadReadWindow(0, 0, base).Apply(ThreadFilter{})
+	log, err := s.ThreadLog(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 6 {
+		t.Fatalf("the day's window returned %d messages, want the 6 inside it", len(log))
+	}
+	// What the notice is built from: everything the window kept out is still
+	// there to be counted, so a truncated log can say how much it is not showing.
+	in, err := s.ThreadCount(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := s.ThreadCount(ctx, ThreadFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 6 || all != 10 {
+		t.Fatalf("counted %d in the window of %d total, want 6 of 10", in, all)
+	}
+}
+
+// The limit on its own: everything is minutes old, so only the count bites.
+func TestTheLimitBitesOnItsOwn(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+	fillLog(t, s, 60, base)
+
+	f := ThreadReadWindow(0, 0, base).Apply(ThreadFilter{})
+	log, err := s.ThreadLog(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != ThreadDefaultLimit {
+		t.Fatalf("returned %d messages, want the newest %d", len(log), ThreadDefaultLimit)
+	}
+	in, err := s.ThreadCount(ctx, f)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in != 60 {
+		t.Fatalf("counted %d messages in the window, want all 60: the count ignores the limit", in)
+	}
+}
+
+// Asking for more than the ceiling is not an error — a script passing a generous
+// --limit is not doing anything wrong — it just cannot have it.
+func TestTheCeilingClampsRatherThanFails(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+	fillLog(t, s, 260, base)
+
+	w := ThreadReadWindow(1000, 30*24*time.Hour, base)
+	if w.Limit != ThreadMaxLimit || !w.LimitClamped {
+		t.Errorf("--limit 1000 resolved to %d (clamped=%v), want %d clamped",
+			w.Limit, w.LimitClamped, ThreadMaxLimit)
+	}
+	if w.Age != ThreadMaxAge || !w.AgeClamped {
+		t.Errorf("--since 30d resolved to %s (clamped=%v), want %s clamped",
+			w.Age, w.AgeClamped, ThreadMaxAge)
+	}
+	log, err := s.ThreadLog(ctx, w.Apply(ThreadFilter{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != ThreadMaxLimit {
+		t.Fatalf("a clamped read returned %d messages, want the ceiling %d", len(log), ThreadMaxLimit)
+	}
+	// The ceiling is the store's, not the flag parser's: going round the CLI
+	// with an enormous filter must not buy an unbounded read either.
+	direct, err := s.ThreadLog(ctx, ThreadFilter{Limit: 100000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(direct) != ThreadMaxLimit {
+		t.Fatalf("ThreadLog honoured a limit of 100000 with %d messages, want %d",
+			len(direct), ThreadMaxLimit)
+	}
+}
+
+// A caller that wants less than the default gets less. The window is a bound on
+// how much can be read, not an instruction to read that much.
+func TestANarrowerRequestIsHonoured(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+	fillLog(t, s, 60, base)
+
+	w := ThreadReadWindow(5, 0, base)
+	if w.Limit != 5 || w.LimitClamped {
+		t.Fatalf("--limit 5 resolved to %d (clamped=%v), want 5 unclamped", w.Limit, w.LimitClamped)
+	}
+	log, err := s.ThreadLog(ctx, w.Apply(ThreadFilter{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(log) != 5 || log[4].Body != "note 0" {
+		t.Fatalf("--limit 5 returned %d messages ending on %+v, want the newest 5", len(log), log)
+	}
+	if narrow := ThreadReadWindow(0, 10*time.Minute, base); narrow.Age != 10*time.Minute ||
+		narrow.AgeClamped {
+		t.Errorf("--since 10m resolved to %s (clamped=%v), want it left alone",
+			narrow.Age, narrow.AgeClamped)
 	}
 }
 
