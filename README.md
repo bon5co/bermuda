@@ -94,6 +94,41 @@ An ad-hoc run needs no job at all:
 bermuda run-once --prompt 'Summarize today.' --timeout 15m
 ```
 
+## Threads: what is currently true
+
+Agents are ephemeral; the machine they act on is not. Memory files are
+snapshots of a world other agents keep changing, and nothing marks them stale.
+A thread is the opposite — append-only, written by whoever changed the thing,
+read by whoever comes next:
+
+```bash
+bermuda thread event 'removed camoufox'         # anyone whose memory is now stale
+bermuda thread post '@all the browser is free'  # delivered into live agents
+bermuda thread log --since 1h
+```
+
+![The board's threads tab, with a claim and an @mention](assets/board-threads.png)
+
+It is deliberately not a chat channel: five message kinds, no more, because an
+agent given a conversation will fill it at real token cost for no information.
+
+The same record carries **claims**, which is how one browser stays one browser:
+
+```bash
+bermuda thread with browser --ttl 20m --why 'reddit posting' -- ./post.sh
+```
+
+`thread with` takes the lease, runs the command, and releases on every exit
+path — including a signal. An agent that asks for a resource somebody else holds
+is told who has it and when it frees, so it can decide for itself whether to
+wait:
+
+![thread status, and the refusal a second agent gets](assets/thread-claim.png)
+
+Leases expire at read time rather than by a sweeper, so a killed agent cannot
+hold the browser forever. Full detail in
+[threads, claims and mentions](docs/threads.md).
+
 ## Documentation
 
 | | |
@@ -112,13 +147,31 @@ is an [Agent Skill](https://agentskills.io): what an agent should read before it
 writes to a thread, takes a claim, or declares a workflow — including the traps,
 which is the half a command's `--help` cannot tell it.
 
-It is loaded automatically in this repo through `.claude/skills/bermuda`, a
-symlink to the same directory. To give it to an agent working somewhere else,
-copy or symlink that folder into the skills directory your agent reads:
+### Installing it
+
+Inside this repo it loads by itself, through `.claude/skills/bermuda` — a
+symlink to the same directory. Elsewhere, put it where your agent looks. A skill
+is just a folder with a `SKILL.md` in it, so copying or symlinking is the whole
+installation:
 
 ```bash
-ln -s "$PWD/skills/bermuda" ~/.claude/skills/bermuda        # Claude Code, every project
+git clone https://github.com/bon5co/bermuda
+ln -s "$PWD/bermuda/skills/bermuda" ~/.claude/skills/bermuda
 ```
+
+If you installed the plugin rather than cloning, herdr already has a copy —
+`herdr plugin list` prints the directory it keeps it in, and `skills/bermuda`
+sits inside that.
+
+| where it goes | who reads it |
+|---|---|
+| `~/.claude/skills/bermuda/` | Claude Code, in every project |
+| `<project>/.claude/skills/bermuda/` | Claude Code, that project only — commit it and your team has it too |
+| `<project>/.agents/skills/bermuda/` | the cross-tool location other agent clients read |
+
+Symlink rather than copy when you want it to follow the code: a linked skill
+picks up the next `git pull`, a copied one is a snapshot that will quietly age
+past the commands it documents.
 
 ## Status
 
