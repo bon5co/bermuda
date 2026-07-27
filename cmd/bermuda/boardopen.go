@@ -2,11 +2,13 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"time"
 
 	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/internal/runner"
 	"github.com/charmbracelet/x/term"
 )
 
@@ -57,6 +59,80 @@ func boardPaneFor(paneID, workspace string) herdrcli.PluginPane {
 	p.Placement = "tab"
 	p.Workspace = workspace
 	return p
+}
+
+// boardFlagSet is the board's flags, shared with the test that reads the
+// manifest: the hooks Herdr runs are only ever exercised on somebody else's
+// machine, so what they pass is checked against the command that parses it.
+func boardFlagSet() (*flag.FlagSet, *bool) {
+	fs := flag.NewFlagSet("board", flag.ExitOnError)
+	pin := fs.Bool("pin", false, "open the board in bermuda's workspace, unfocused, and exit")
+	return fs, pin
+}
+
+// pinBoard opens the board in bermuda's own workspace, unfocused, once.
+//
+// This is what puts bermuda in the sidebar without anybody opening anything:
+// the row above Spaces belongs to the board's pane, so no pane means no row,
+// and a harness nobody can see is a harness nobody checks. The board goes in
+// bermuda's workspace rather than wherever the session happens to start, which
+// keeps a startup hook from putting a pane in the middle of somebody's work.
+//
+// Already open is the common case — a live handoff runs the startup hooks again
+// against a session that never stopped — so an existing bermuda row is the
+// signal to do nothing rather than to open a second board.
+func pinBoard() error {
+	if !inHerdr() {
+		return fmt.Errorf("no herdr session to pin the board in")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	h := herdrcli.New()
+	agents, err := h.AgentList(ctx)
+	if err != nil {
+		return err
+	}
+	for _, a := range agents {
+		if a.Agent == boardAgentLabel {
+			return nil
+		}
+	}
+
+	ws, err := bermudaWorkspace(ctx, h)
+	if err != nil {
+		return err
+	}
+	return h.OpenPluginPane(ctx, herdrcli.PluginPane{
+		Plugin:     boardPlugin,
+		Entrypoint: boardEntrypoint,
+		Placement:  "tab",
+		Workspace:  ws,
+		Background: true,
+	})
+}
+
+// bermudaWorkspace is the id of the workspace bermuda owns, creating it if this
+// is a session where nothing has run yet.
+//
+// Runs create it on their way past, so most of the time this only looks it up.
+// Creating it here is what makes the pinned board work on a fresh machine,
+// where the alternative is a board opened into the user's workspace.
+func bermudaWorkspace(ctx context.Context, h *herdrcli.Client) (string, error) {
+	spaces, err := h.WorkspaceList(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, w := range spaces {
+		if w.Label == runner.WorkspaceLabel {
+			return w.WorkspaceID, nil
+		}
+	}
+	ws, _, err := h.WorkspaceCreate(ctx, runner.WorkspaceLabel, os.Getenv("HOME"), nil)
+	if err != nil {
+		return "", err
+	}
+	return ws.WorkspaceID, nil
 }
 
 // openBoardElsewhere draws the board in a Herdr pane on behalf of a shell that

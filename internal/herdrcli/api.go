@@ -322,6 +322,60 @@ func (c *Client) ReportPaneMetadata(ctx context.Context, paneID, source string, 
 	return c.run(ctx, nil, args...)
 }
 
+// PaneAgent is a pane claimed as an agent under a label of bermuda's choosing.
+//
+// Herdr detects the agents it knows how to detect, and it also lets a source
+// declare one: `pane report-agent` takes the label as a free-form string, so a
+// pane running something Herdr has never heard of can still be an entry in the
+// agents list. That list is the only part of the sidebar a plugin can reach,
+// which is what the board uses it for.
+//
+// Seq orders reports for the same pane. Herdr keeps the highest it has seen, so
+// a slow report cannot overwrite a newer state with a stale one.
+type PaneAgent struct {
+	Source  string
+	Agent   string
+	State   AgentStatus // idle, working, blocked, unknown
+	Message string
+	Seq     uint64
+}
+
+// ReportPaneAgent declares a pane to be an agent, and reports its state.
+//
+// Herdr accepts idle, working, blocked and unknown here — done is a state it
+// derives, not one it is told — so anything else is sent as unknown rather than
+// rejected by herdr with an error the caller cannot act on.
+func (c *Client) ReportPaneAgent(ctx context.Context, paneID string, a PaneAgent) error {
+	state := a.State
+	switch state {
+	case StatusIdle, StatusWorking, StatusBlocked:
+	default:
+		state = StatusUnknown
+	}
+	args := []string{
+		"pane", "report-agent", paneID,
+		"--source", a.Source,
+		"--agent", a.Agent,
+		"--state", string(state),
+	}
+	if a.Message != "" {
+		args = append(args, "--message", a.Message)
+	}
+	if a.Seq > 0 {
+		args = append(args, "--seq", strconv.FormatUint(a.Seq, 10))
+	}
+	return c.run(ctx, nil, args...)
+}
+
+// ReleasePaneAgent gives the pane's agent identity back to herdr.
+//
+// The report is a claim on how a pane is displayed and it outlives the process
+// that made it, so a board that exits without releasing leaves a row in the
+// sidebar pointing at a pane that is no longer a board.
+func (c *Client) ReleasePaneAgent(ctx context.Context, paneID, source, agent string) error {
+	return c.run(ctx, nil, "pane", "release-agent", paneID, "--source", source, "--agent", agent)
+}
+
 // PluginPane says where one of this plugin's panes should open.
 //
 // Placement and direction are runtime choices rather than manifest ones: the
@@ -334,6 +388,11 @@ type PluginPane struct {
 	Direction  string // right, down — split only
 	Workspace  string
 	TargetPane string // the pane a split divides
+	// Background opens the pane without focusing it. A board opened because a
+	// person asked for it should be in front of them; one opened by a startup
+	// hook is furniture, and stealing focus from whatever they were doing to
+	// announce it would be the opposite of convenient.
+	Background bool
 }
 
 // OpenPluginPane asks Herdr to open one of this plugin's panes.
@@ -356,6 +415,9 @@ func (c *Client) OpenPluginPane(ctx context.Context, p PluginPane) error {
 		args = append(args, "--target-pane", p.TargetPane)
 	case p.Workspace != "":
 		args = append(args, "--workspace", p.Workspace)
+	}
+	if p.Background {
+		args = append(args, "--no-focus")
 	}
 	return c.run(ctx, nil, args...)
 }

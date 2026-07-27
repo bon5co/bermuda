@@ -26,6 +26,14 @@ command = ["./bin/bermuda", "ensure"]
 [[startup]]
 command = ["./bin/bermuda", "daemon", "--detach", "--tick", "5s"]
 
+# The board, opened in bermuda's own workspace and left unfocused. Herdr's
+# sidebar can only be reached through its agents list, and the board's pane is
+# what bermuda reports itself as, so this is what makes bermuda a row above
+# Spaces instead of a plugin somebody has to remember a keybinding for. It is a
+# no-op when a board is already open, which is the case on every live handoff.
+[[startup]]
+command = ["./bin/bermuda", "board", "--pin"]
+
 [[panes]]
 id = "board"
 title = "Bermuda"

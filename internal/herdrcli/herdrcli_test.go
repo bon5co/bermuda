@@ -410,6 +410,88 @@ func TestArgumentAssembly(t *testing.T) {
 			},
 		},
 		{
+			// The board's row in the sidebar. Herdr takes the label as a free
+			// string, which is the only reason a thing that is not one of the
+			// agents it detects can appear in that list at all.
+			name:   "report agent claims a pane under a label",
+			stdout: `{"id":"1","result":{}}`,
+			call: func(c *Client) error {
+				return c.ReportPaneAgent(context.Background(), "p1", PaneAgent{
+					Source: "bon5co.bermuda", Agent: "bermuda",
+					State: StatusBlocked, Message: "1 parked", Seq: 7,
+				})
+			},
+			want: []string{"pane", "report-agent", "p1"},
+			checks: func(t *testing.T, args []string) {
+				if !hasFlagValue(args, "--source", "bon5co.bermuda") || !hasFlagValue(args, "--agent", "bermuda") {
+					t.Error("source or agent label missing")
+				}
+				if !hasFlagValue(args, "--state", "blocked") {
+					t.Error("state missing")
+				}
+				if !hasFlagValue(args, "--message", "1 parked") {
+					t.Error("message missing")
+				}
+				if !hasFlagValue(args, "--seq", "7") {
+					t.Error("seq missing, so a slow report could overwrite a newer state")
+				}
+			},
+		},
+		{
+			// done is a state herdr derives for itself and rejects here. Sending
+			// unknown instead keeps a caller's mistake from failing a report the
+			// board makes every five seconds.
+			name:   "report agent rewrites a state herdr will not take",
+			stdout: `{"id":"1","result":{}}`,
+			call: func(c *Client) error {
+				return c.ReportPaneAgent(context.Background(), "p1", PaneAgent{
+					Source: "bon5co.bermuda", Agent: "bermuda", State: StatusDone,
+				})
+			},
+			want: []string{"pane", "report-agent", "p1"},
+			checks: func(t *testing.T, args []string) {
+				if !hasFlagValue(args, "--state", "unknown") {
+					t.Error("done was not rewritten to unknown")
+				}
+				if hasArg(args, "--message") || hasArg(args, "--seq") {
+					t.Error("empty message or seq passed with no value")
+				}
+			},
+		},
+		{
+			// A claim outlives the process that made it, so the release is what
+			// keeps a closed board from leaving a row pointing at somebody's shell.
+			name:   "release agent names what it is giving back",
+			stdout: `{"id":"1","result":{}}`,
+			call: func(c *Client) error {
+				return c.ReleasePaneAgent(context.Background(), "p1", "bon5co.bermuda", "bermuda")
+			},
+			want: []string{"pane", "release-agent", "p1"},
+			checks: func(t *testing.T, args []string) {
+				if !hasFlagValue(args, "--source", "bon5co.bermuda") || !hasFlagValue(args, "--agent", "bermuda") {
+					t.Error("release must name the source and label it claimed under")
+				}
+			},
+		},
+		{
+			// A board opened by a startup hook is furniture: taking focus to
+			// announce it would interrupt whatever the person was doing.
+			name:   "a background plugin pane does not steal focus",
+			stdout: `{"id":"1","result":{}}`,
+			call: func(c *Client) error {
+				return c.OpenPluginPane(context.Background(), PluginPane{
+					Plugin: "bermuda", Entrypoint: "board",
+					Placement: "tab", Workspace: "w1", Background: true,
+				})
+			},
+			want: []string{"plugin", "pane", "open"},
+			checks: func(t *testing.T, args []string) {
+				if !hasArg(args, "--no-focus") {
+					t.Error("--no-focus missing")
+				}
+			},
+		},
+		{
 			name:   "plugin pane open carries placement and direction",
 			stdout: `{"id":"1","result":{}}`,
 			call: func(c *Client) error {

@@ -59,6 +59,9 @@ func flagSetFor(args []string) *flag.FlagSet {
 	case args[0] == "run" && len(args) > 1 && args[1] == "list":
 		fs, _ := runListFlagSet()
 		return fs
+	case args[0] == "board":
+		fs, _ := boardFlagSet()
+		return fs
 	}
 	return nil
 }

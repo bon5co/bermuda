@@ -26,7 +26,18 @@ func openStore() (*store.Store, error) {
 // Asked for from a shell with no terminal — an agent's, a hook's — the board
 // cannot be drawn here, but it can be drawn somewhere: it opens as a Herdr pane
 // and this process exits. "Open the board" is the instruction either way.
+//
+// `--pin` is neither: it opens the board in bermuda's own workspace, in the
+// background, and exits. It is what the startup hook runs, so that bermuda has
+// a row in the sidebar before anybody has asked for one.
 func boardCmd(argv []string) error {
+	fs, pin := boardFlagSet()
+	if err := fs.Parse(argv); err != nil {
+		return err
+	}
+	if *pin {
+		return pinBoard()
+	}
 	if !hasTTY() {
 		return openBoardElsewhere()
 	}
@@ -46,6 +57,9 @@ func boardCmd(argv []string) error {
 	h := herdrcli.New()
 	// A tab holding nothing but the board should say so.
 	nameOwnTab(h)
+	// And the sidebar should say the board is open, and what it is watching.
+	presence := startBoardPresence(s, h)
+	defer presence.Stop()
 
 	return board.Run(s, h, board.Deps{
 		Run: func(j store.Job, trigger string) error {
