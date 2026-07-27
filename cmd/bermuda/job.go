@@ -59,10 +59,10 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		flowID:      fs.String("flow", "", "id of a flow this job starts, instead of --prompt"),
 		flowInput:   fs.String("input", "", "the input passed to that flow on every fire"),
 		cwd:         fs.String("cwd", "", "working directory (default: current dir)"),
-		kind:        fs.String("kind", "claude", "herdr agent kind"),
+		kind:        fs.String("kind", store.DefaultKind, "herdr agent kind"),
 
 		model:           fs.String("model", store.DefaultModel, "agent model, e.g. sonnet or opus"),
-		permissionMode:  fs.String("permission-mode", "acceptEdits", "agent permission mode"),
+		permissionMode:  fs.String("permission-mode", defaultPermissionMode, "agent permission mode"),
 		allowedTools:    fs.String("allowed-tools", "", "allowlist passed to the agent"),
 		disallowedTools: fs.String("disallowed-tools", "", "denylist passed to the agent"),
 		addDirs:         fs.String("add-dir", "", "extra accessible dirs, comma-separated"),
@@ -197,7 +197,7 @@ func jobAdd(argv []string) error {
 
 	// Jobs run unattended, so permission prompts have nobody to answer them:
 	// a job that stops to ask is a job that parks until a human notices.
-	j := store.Job{ID: *id, Kind: "claude", Enabled: true,
+	j := store.Job{ID: *id, Kind: store.DefaultKind, Enabled: true,
 		SkipPermissions: true, Catchup: store.CatchupLatest,
 		Model: store.DefaultModel, Timeout: 15 * time.Minute}
 	if err := f.apply(fs, &j); err != nil {

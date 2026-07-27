@@ -244,6 +244,12 @@ func shellQuote(s string) string {
 // belong to whoever calls it, and baking them into the file would make a flow
 // that only works in one repository. So a direct call builds a job on the spot
 // from its flags, and a scheduled call uses the job that already exists.
+// The defaults here are the ones `job add` applies, and they have to be applied
+// here too because a directly-called flow never goes through `job add` or
+// PutJob. Two bugs came from that gap in one sitting: an empty Kind, which herdr
+// refuses outright, and permission prompts left enabled, which park every agent
+// step at `blocked` eight seconds in. A flow of `run:` steps survives both, so
+// neither showed up until a flow with an agent step was actually run.
 func flowJob(f flow.Flow, cwd, model, kind string) store.Job {
 	j := store.Job{
 		ID:      f.ID,
@@ -253,9 +259,18 @@ func flowJob(f flow.Flow, cwd, model, kind string) store.Job {
 		Model:   model,
 		Kind:    kind,
 		Enabled: true,
+		// A flow step has nobody sitting in its pane, so a permission prompt is
+		// a step that waits forever and then parks. `job add` makes the same call
+		// for the same reason: these runs are unattended by construction.
+		SkipPermissions: true,
+		PermissionMode:  defaultPermissionMode,
+		Catchup:         store.CatchupLatest,
 	}
 	if strings.TrimSpace(j.Model) == "" {
 		j.Model = store.DefaultModel
+	}
+	if strings.TrimSpace(j.Kind) == "" {
+		j.Kind = store.DefaultKind
 	}
 	return j
 }
@@ -269,3 +284,8 @@ func firstNonEmpty(vals ...string) string {
 	}
 	return ""
 }
+
+// defaultPermissionMode is what an unattended agent runs under. It matches the
+// `job add` default, so a flow called by hand behaves like the same flow called
+// by a schedule.
+const defaultPermissionMode = "acceptEdits"

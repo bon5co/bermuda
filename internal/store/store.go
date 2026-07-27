@@ -43,6 +43,17 @@ const (
 // stated one instead.
 const DefaultModel = "sonnet"
 
+// DefaultKind is the herdr agent kind a job runs as when it names none.
+//
+// It is a constant rather than a literal because the literal was written in
+// three places and the one that mattered was missing from a fourth: PutJob
+// filled it in, so every job stored through the CLI had it, and a flow called
+// directly never goes through PutJob. `flow run` therefore built a job with no
+// kind at all, and herdr refused every agent step with "unsupported interactive
+// agent kind:" — a flow of `run:` steps worked perfectly, which is why nothing
+// caught it.
+const DefaultKind = "claude"
+
 // Catchup policies for fires missed while the daemon or Herdr was down.
 const (
 	CatchupLatest = "latest" // run once for the whole missed window
@@ -386,7 +397,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	}
 	j.UpdatedAt = now
 	if j.Kind == "" {
-		j.Kind = "claude"
+		j.Kind = DefaultKind
 	}
 	if j.Catchup == "" {
 		j.Catchup = CatchupLatest
