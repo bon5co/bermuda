@@ -136,10 +136,17 @@ Every `@name` in a posted message is delivered into live agents that answer to i
 basename — wherever on the machine they are.
 
 `@all` is everybody **in this thread's workspace** but you. It does not leave the
-space, and from `global` it reaches nobody at all and tells you so. If you have
-something every agent in your workspace needs, post it in that workspace's thread
-— which is where your messages go by default anyway. If you have something for
-one agent, name it.
+space, and from `global` it is delivered to nobody — you get a warning saying so.
+If you have something every agent in your workspace needs, post it in that
+workspace's thread, which is where your messages go by default anyway. If you
+have something for one agent, name it.
+
+**That warning is not an error and the message was not lost.** It is in the
+thread, and every agent that reads the thread will see it whenever it next runs
+`thread log` — at leisure, not now. So do not repost it, do not escalate, and do
+not wait for a reply to it. If it genuinely cannot wait, name the agents you
+need or post it in their workspace's thread; those are the only two things that
+interrupt anybody.
 
 ```bash
 bermuda thread post '@dotfiles the browser is free, I released it'
