@@ -2,6 +2,25 @@
 
 A job is a schedule plus the exact agent invocation it produces.
 
+## How a run behaves
+
+A headless run is invisible until it finishes, and a run that stops to ask a
+question is a lost run. Bermuda runs each job as an interactive Herdr agent
+instead, so `herdr agent attach` drops you into one while it is happening. Three
+things follow from that, and they are most of the design:
+
+- **Park, never drop.** A timeout, a `blocked` agent, and "the agent exited
+  without writing `result.json`" all park the run for a human rather than
+  discarding it. The tab is left open, so the work is still there to look at.
+- **One result channel.** Each run gets `BERMUDA_RUN_DIR`, and the `result.json`
+  the agent writes there is the *only* authority on the outcome. Terminal output
+  is archived as `transcript.txt` for humans and is never parsed — an agent's
+  narration of its own success is the least reliable artifact in the system.
+- **A workspace Bermuda owns.** Runs live in a workspace Bermuda created,
+  identified by the id recorded in `~/.bermuda/workspace.json` — never by being
+  called Bermuda, which may be a name you already used. A space Bermuda did not
+  make is never adopted, so your own session is never touched.
+
 Every job has two identifiers. The **id** is the handle you type
 (`bermuda job run bl-board-review`) and is used for agent names and run
 directories, so it stays slug-shaped and stable. The **name** is free text for
@@ -37,7 +56,7 @@ bermuda usage [--since 24h]        # token totals per job, newest first
 Every run records what it cost. Input, output, cache-read and cache-creation
 tokens are stored separately because they are billed differently, alongside the
 model the run actually used. The numbers come from the agent's own session
-transcript, correlated by the run directory bermuda names in its prompt — never
+transcript, correlated by the run directory Bermuda names in its prompt — never
 by picking the newest session, which would mis-charge concurrent agents and
 persistent jobs. A transcript that cannot be read leaves the counts at zero: a
 run keeps its real outcome regardless, since this is bookkeeping, not the work.

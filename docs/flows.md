@@ -16,7 +16,7 @@ moment the flow is called — by a person, by another agent, or by a schedule.
 
 What that buys over one prompt saying "then do B, then do C":
 
-- **The harness makes the call.** B is launched by bermuda, not by A remembering
+- **The harness makes the call.** B is launched by Bermuda, not by A remembering
   to hand off. A cannot skip B, inline B, or decide B was already covered.
 - **B runs even if A says B's work is done.** An agent's report of its own work
   is the least reliable artifact in the system, and it is not an input to whether

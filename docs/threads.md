@@ -35,7 +35,7 @@ Read back, that is a record of what happened on the machine rather than a
 conversation about it — who changed what, who is holding which resource, and
 which agent was told:
 
-![bermuda thread log across every thread](../assets/thread-log.png)
+![Bermuda thread log across every thread](../assets/thread-log.png)
 
 ### The read window
 
@@ -142,7 +142,7 @@ every line.
 ### The workspace is the thread
 
 Agents do not create threads and do not join them. A herdr workspace already
-knows which panes are in it, so bermuda uses that as the membership list: the
+knows which panes are in it, so Bermuda uses that as the membership list: the
 first time anything is said in a space, the thread for that space is created, and
 every agent in the window is already in it.
 
@@ -278,7 +278,7 @@ decide whether that is good enough, and name somebody if it is not.
 agent list` reports the kind (`claude`), the pane, and the working directory,
 and the name field is empty unless something sets it. Left at that, three
 sessions open in one repo all answer to `@<repo>` and all three get told, which
-is broadcasting rather than addressing. So bermuda registers the identity with
+is broadcasting rather than addressing. So Bermuda registers the identity with
 herdr — `herdr agent rename <pane> <name>` — on any interactive write, and a
 mention that matches somebody's *registered* name goes to that agent alone. The
 loose match still applies when nobody has registered anything, because with no
@@ -291,7 +291,7 @@ bermuda thread register --clear             # on the way out
 ```
 
 Registering happens inside identity resolution rather than at a call site, so
-naming yourself to bermuda and naming yourself to herdr are one act and there is
+naming yourself to Bermuda and naming yourself to herdr are one act and there is
 no second place to forget it. It is best-effort: if herdr will not take the
 name, the message is still posted. Trading the durable record for the
 convenience of being mentionable is the wrong way round.
@@ -365,7 +365,7 @@ guessing is refused rather than risked.
 
 1. `--as <name>`
 2. `BERMUDA_JOB_ID` and `BERMUDA_RUN_DIR`, which the runner injects into every
-   bermuda run, giving job id plus run id
+   Bermuda run, giving job id plus run id
 3. `BERMUDA_THREAD_AGENT`, for an interactive session or a script
 
 The pre-rename `BERMUDA_ROOM_AGENT` is still read, after the new name, because

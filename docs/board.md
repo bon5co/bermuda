@@ -2,7 +2,7 @@
 
 ## In herdr's sidebar
 
-Registration also puts bermuda in Herdr's sidebar, in the agents list above
+Registration also puts Bermuda in Herdr's sidebar, in the agents list above
 Spaces. Herdr has no plugin surface for a sidebar entry, but `pane report-agent`
 takes a free-form label, so the board reports its own pane as the agent
 `Bermuda`: the row is there for as long as a board is open, and clicking it goes
@@ -16,7 +16,7 @@ The three names in that row are deliberately not the same word. The agent is
 `Bermuda`, its tab is `Bermuda TUI`, and the space is `Bermuda` — printed
 together, the name three times said nothing, so the line with room for it says
 which of the three it is. A startup hook opens one board unfocused in
-bermuda's own workspace (`bermuda board --pin`), so the row exists before
+Bermuda's own workspace (`bermuda board --pin`), so the row exists before
 anybody has asked for it, and reopening it is a click rather than a command you
 have to remember.
 
@@ -26,7 +26,7 @@ of its single-key actions runs the selected job. Nothing would have aimed at it
 deliberately — the board sits in a directory called `bermuda`, and an agent
 nobody has named answers to the basename of its directory, so `@bermuda` would
 have found it and `@all` would have found it every time. `@bermuda` reaches the
-agents working in bermuda's checkout, as it did before the row existed.
+agents working in Bermuda's checkout, as it did before the row existed.
 
 ## Keys
 
