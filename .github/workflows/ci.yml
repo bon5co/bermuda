@@ -1,0 +1,43 @@
+# What has to pass before a merge, run where nobody can forget it.
+#
+# The same three checks `make check` runs locally, plus gofmt — which is what
+# broke first: a fresh clone failed `make check` on one misaligned struct field
+# that every local build had already fixed in the author's working tree.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "not gofmt'd:"; echo "$unformatted"; exit 1
+          fi
+
+      - name: build
+        run: go build ./...
+
+      - name: vet
+        run: go vet ./...
+
+      # -race because the parts most worth trusting are the daemon/sentinel
+      # pair and the store, and both are only interesting under concurrency.
+      - name: test
+        run: go test ./... -race -count=1 -cover
