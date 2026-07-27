@@ -35,11 +35,32 @@ YAML
 
 cat > "$FLOWS/release-check.yml" <<'YAML'
 about: the pre-release gate
+input: the version being cut, e.g. v2.1.0
 steps:
   - id: version
     run: bermuda --version
   - id: vet
     run: go vet ./internal/store/
+  - id: record
+    run: 'echo "checked $BERMUDA_INPUT: $BERMUDA_PREVIOUS"'
+YAML
+
+# A flow that takes an input and is never run here, because the screenshot has
+# to show the INPUT column carrying something. Every other demo flow is
+# `run:`-only and input-less — there are no API credentials in this container,
+# so an agent step would park — and a FLOWS tab where that column is all dashes
+# hides the one thing that makes a flow callable.
+cat > "$FLOWS/triage.yml" <<'YAML'
+about: triage an incoming report, then act on it
+input: a report, a PR number, or a stack trace
+steps:
+  - id: assess
+    agent: Look at {{input}} and say in one line whether it is real.
+    model: opus
+  - id: patch
+    agent: "{{previous}} — if that says it is real, write the fix."
+  - id: verify
+    run: go test ./...
 YAML
 
 cat > "$FLOWS/link-audit.yml" <<'YAML'
@@ -62,7 +83,7 @@ bermuda job add --id link-audit --name "Link audit" \
 say "runs — these execute for real"
 bermuda flow run nightly-build || true
 bermuda flow run docs-sweep    || true
-bermuda flow run release-check || true
+bermuda flow run release-check --input v2.1.0 || true
 bermuda flow run link-audit    || true   # fails on purpose: a parked run
 
 say "threads"
