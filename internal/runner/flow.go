@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/store"
 )
 
@@ -145,28 +146,35 @@ func StepDir(runDir, stepID string) string {
 // already holds a successful result.json is not run again. Completion therefore
 // lives on disk rather than in the database, which is what lets a resume work
 // after the process that recorded the first attempt is long gone.
-func (w *Flow) Execute(ctx context.Context, job store.Job, runID, runDir string) (*FlowRun, error) {
+func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input, runID, runDir string) (*FlowRun, error) {
 	wr := &FlowRun{JobID: job.ID, RunID: runID, RunDir: runDir,
-		Total: len(job.Steps), StartedAt: time.Now(), Outcome: OutcomeDone}
+		Total: len(def.Steps), StartedAt: time.Now(), Outcome: OutcomeDone}
 	defer func() {
 		if wr.EndedAt.IsZero() {
 			wr.EndedAt = time.Now()
 		}
 	}()
 
-	// Validated again here and not only when the job was written: a job stored
-	// before a rule existed must not run under the old rules.
-	if err := store.ValidateSteps(job.Steps, job.Model); err != nil {
+	// Validated again here and not only when the file was read: a flow is a file
+	// on disk that anything can edit between the two, and running a sequence
+	// nobody checked is how a half-saved edit becomes a half-run flow.
+	if err := store.ValidateSteps(def.Steps, job.Model); err != nil {
 		wr.Outcome, wr.ParkReason, wr.Err = OutcomeParked, ParkBadResult, err
 		return wr, err
 	}
-	if len(job.Steps) == 0 {
-		err := fmt.Errorf("job %s has no steps", job.ID)
+	if len(def.Steps) == 0 {
+		err := fmt.Errorf("flow %s has no steps", def.ID)
 		wr.Outcome, wr.ParkReason, wr.Err = OutcomeParked, ParkBadResult, err
 		return wr, err
 	}
 
-	for i, step := range job.Steps {
+	// previous is the note the last completed step published, and the only thing
+	// besides the input that travels down the chain. It is carried across reused
+	// steps too: a resume that skipped step two must still hand step two's result
+	// to step three, or the resumed run is not the run that was interrupted.
+	previous := ""
+
+	for i, step := range def.Steps {
 		sr := StepRun{ID: step.ID, Index: i, Kind: step.Label(),
 			Dir: StepDir(runDir, step.ID)}
 
@@ -176,6 +184,7 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, runID, runDir string)
 			// human would otherwise be tempted to wave through.
 			sr.Outcome, sr.Reused, sr.Note = OutcomeDone, true, res.Note
 			wr.Steps = append(wr.Steps, sr)
+			previous = res.Note
 			continue
 		}
 
@@ -183,13 +192,19 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, runID, runDir string)
 		sr.Outcome = OutcomeRunning
 		w.report(sr)
 
+		vals := flow.Values{Input: input, Previous: previous}
+		// Expanded here rather than when the file was read, because {{previous}}
+		// is not knowable until the step before it has finished.
+		step = flow.Expand(step, vals)
+
 		if err := w.prepare(sr.Dir); err != nil {
 			sr.Outcome, sr.ParkReason, sr.Err = OutcomeParked, ParkNoResult, err
 		} else if step.IsAgent() {
-			w.runAgentStep(ctx, job, step, runID, &sr)
+			w.runAgentStep(ctx, job, step, vals, runID, &sr)
 		} else {
-			w.runCommandStep(ctx, job, step, &sr)
+			w.runCommandStep(ctx, job, step, vals, &sr)
 		}
+		previous = sr.Note
 		sr.EndedAt = time.Now()
 		w.report(sr)
 		wr.Steps = append(wr.Steps, sr)
@@ -240,7 +255,7 @@ func (w *Flow) prepare(dir string) error {
 }
 
 // runAgentStep launches one agent and takes its verdict from result.json.
-func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step, runID string, sr *StepRun) {
+func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step, vals flow.Values, runID string, sr *StepRun) {
 	if w.Launch == nil {
 		sr.Outcome, sr.ParkReason = OutcomeParked, ParkNoResult
 		sr.Err = fmt.Errorf("step %s: no agent launcher", step.ID)
@@ -254,6 +269,12 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 		"BERMUDA_STEP_DIR": sr.Dir,
 		"BERMUDA_STEP_ID":  step.ID,
 		"BERMUDA_RUN_ID":   runID,
+		// The prompt has already been interpolated, so these are here for a step
+		// that would rather read a long input from the environment than have it
+		// pasted into its prompt — a stack trace, a diff, anything whose bulk
+		// would drown the instruction it was meant to illustrate.
+		flow.EnvInput:    vals.Input,
+		flow.EnvPrevious: vals.Previous,
 	}
 	// The step id is part of the agent's run id, so every step of a flow is
 	// a differently named agent. That is what makes "a different subagent is a
@@ -288,16 +309,20 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 // is one predicate for both kinds: result.json says ok. Nothing has to know
 // whether the work was done by an agent or by the shell, which is what lets
 // resume skip either one.
-func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Step, sr *StepRun) {
+func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Step, vals flow.Values, sr *StepRun) {
 	shell := w.Shell
 	if shell == nil {
 		shell = sh
 	}
+	// A command has no prompt to interpolate, so the two values a flow carries
+	// reach it where a shell already looks. Rewriting the command text instead
+	// would corrupt any command that legitimately contains braces.
 	env := append(os.Environ(),
 		"BERMUDA_STEP_DIR="+sr.Dir,
 		"BERMUDA_RUN_DIR="+sr.Dir,
 		"BERMUDA_STEP_ID="+step.ID,
 		"BERMUDA_JOB_ID="+job.ID)
+	env = append(env, vals.Env()...)
 
 	out, err := shell(ctx, step.Run, job.CWD, env)
 	// Kept for a human, never parsed: the exit status is the verdict.

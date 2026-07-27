@@ -96,22 +96,61 @@ grep -q "^name: bermuda" "$SKILL" 2>/dev/null && ok "skill name matches its dire
 [ -L "$ROOT/.claude/skills/bermuda" ] && ok ".claude/skills symlink survives the clone" || bad ".claude/skills symlink missing"
 
 step "jobs and flows really run"
-bermuda job add --id greenfield --name "Greenfield" --cron '0 4 * * *' --steps - <<'JSON' >/dev/null 2>&1
-[{"id": "one", "run": "echo first"}, {"id": "two", "run": "echo second"}]
-JSON
-check "job add"                  "greenfield" bermuda job list
-check "flow run completes"   "done"       bermuda flow run greenfield
+# `flow new` has to produce something that parses. It is the first flow anybody
+# sees, and a broken template turns "write a flow" into "debug bermuda".
+bermuda flow new scratch --about 'the shipped template' >/dev/null 2>&1
+check "flow new writes a template" "scratch" bermuda flow list
+
+FLOWS="${BERMUDA_STATE_DIR:-$HOME/.bermuda}/flows"
+mkdir -p "$FLOWS"
+cat > "$FLOWS/greenfield.yml" <<'YAML'
+about: prove the chain
+input: the thing to act on
+steps:
+  - id: one
+    run: 'echo "one saw [$BERMUDA_INPUT]"'
+  - id: two
+    run: 'echo "two saw [$BERMUDA_PREVIOUS]"'
+YAML
+check "flow run completes"       "done"       bermuda flow run greenfield --input xyzzy
 check "run is recorded"          "greenfield" bermuda run list
 
-bermuda job add --id breaks --name "Breaks" --steps - <<'JSON' >/dev/null 2>&1
-[{"id": "boom", "run": "exit 3"}]
-JSON
+# The feature itself: the caller's x reaches the first step, and the first
+# step's published result reaches the second. A flow whose steps cannot see
+# each other is just two jobs.
+run_id=$(bermuda run list 2>/dev/null | awk 'NR==2{print $1}')
+out=$(bermuda flow status "$run_id" 2>&1)
+grep -q "one saw \[xyzzy\]" <<<"$out" && ok "the input reaches the first step" || bad "input did not reach step one" "$out"
+grep -q "two saw \[one saw \[xyzzy\]\]" <<<"$out" && ok "a step's result reaches the next" || bad "the chain did not carry" "$out"
+
+# A flow that declares an input must not run with a blank one: every {{input}}
+# would become a hole an agent then invents something to fill.
+out=$(bermuda flow run greenfield 2>&1); status=$?
+[ $status -ne 0 ] && ok "a flow that needs an input refuses a blank one" || bad "a flow ran with no input" "$out"
+
+cat > "$FLOWS/breaks.yml" <<'YAML'
+steps:
+  - id: boom
+    run: exit 3
+  - id: never
+    run: echo should not run
+YAML
 out=$(bermuda flow run breaks 2>&1); status=$?
 grep -q "parked" <<<"$out" && ok "a failing step parks the run" || bad "failing step did not park" "$out"
 [ $status -ne 0 ] && ok "a parked flow exits nonzero" || bad "parked flow exited 0"
+run_id=$(bermuda run list 2>/dev/null | awk 'NR==2{print $1}')
+out=$(bermuda flow status "$run_id" 2>&1)
+grep -q "never .*pending" <<<"$out" && ok "the step after a failure never starts" || bad "a step ran behind a failed one" "$out"
 
-out=$(bermuda job run breaks 2>&1); status=$?
+# A job starts a flow on a schedule; the job supplies the x.
+bermuda job add --id breaks-job --name "Breaks" --flow breaks --input none >/dev/null 2>&1
+check "a job can start a flow"   "breaks"    bermuda job list
+out=$(bermuda job run breaks-job 2>&1); status=$?
 [ $status -ne 0 ] && ok "job run exits nonzero on failure" || bad "job run exited 0 on a failed run"
+
+# Removing a flow a job depends on fails silently at 04:00 otherwise.
+out=$(bermuda flow rm breaks 2>&1); status=$?
+[ $status -ne 0 ] && ok "a flow in use cannot be removed" || bad "removed a flow a job needs" "$out"
 
 step "threads, claims and identity"
 check "thread post"              ""          bermuda thread post --as ada 'first light'

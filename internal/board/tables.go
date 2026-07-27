@@ -188,6 +188,8 @@ func (m *Model) tableWidth() int {
 	switch m.focus {
 	case focusRuns:
 		cols = m.runColumns()
+	case focusFlows:
+		cols = m.flowColumns()
 	case focusThread:
 		// The thread has no table under the tabs — it has bubbles, each as wide
 		// as its own message — so the rule runs to the width the widest of them

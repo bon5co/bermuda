@@ -56,6 +56,45 @@ func itoa(n int) string {
 	return string(digits)
 }
 
+// tabOrder is the tabs left to right as they are drawn, and tabLabels names
+// them in the same order.
+//
+// Threads first: it is the tab that is read, where the others are checked.
+// Tab walks this list and the number keys count it, rather than following the
+// order the focus constants happen to be declared in — a tab appended to that
+// enum would otherwise be reached by pressing a number pointing somewhere else,
+// and there is nothing on screen a reader could use to notice.
+var (
+	tabOrder  = []focus{focusThread, focusJobs, focusRuns, focusFlows}
+	tabLabels = []string{"THREADS", "JOBS", "RUNS", "FLOWS"}
+)
+
+// tabIndex is where the current focus sits in the drawn order.
+func (m *Model) tabIndex() int {
+	for i, f := range tabOrder {
+		if f == m.focus {
+			return i
+		}
+	}
+	return 0
+}
+
+// selectTab moves to one, dropping everything that described a position in the
+// list being left: a cursor index means nothing in a different list, and a
+// scroll offset into a conversation means less still.
+func (m *Model) selectTab(f focus) {
+	m.focus, m.cursor, m.scroll = f, 0, 0
+	// The thread is always entered at its live end, wherever it was left.
+	m.threadFollow = true
+}
+
+// stepTab walks the drawn order, wrapping at both ends so shift+tab from the
+// leftmost tab lands on the rightmost rather than doing nothing.
+func (m *Model) stepTab(delta int) {
+	n := len(tabOrder)
+	m.selectTab(tabOrder[((m.tabIndex()+delta)%n+n)%n])
+}
+
 // renderTabs draws the list selector as overlapping folder tabs.
 //
 // Adjacent folders share a single edge rather than each drawing their own, so
@@ -67,17 +106,8 @@ func itoa(n int) string {
 // the shared edges ambiguous — a ┬ or ┴ belongs to two tabs at once, so
 // whichever hue it took bled across the join and made the wrong tab look lit.
 func (m *Model) renderTabs(suffix string) string {
-	// Threads first: it is the tab that is read, where the other two are
-	// checked. The number keys follow this order rather than the enum's, so
-	// what a reader counts on screen is what they press.
-	labels := []string{"THREADS", "JOBS", "RUNS"}
-	active := 1
-	switch m.focus {
-	case focusThread:
-		active = 0
-	case focusRuns:
-		active = 2
-	}
+	labels := tabLabels
+	active := m.tabIndex()
 
 	var top, mid, bot strings.Builder
 	for i, label := range labels {

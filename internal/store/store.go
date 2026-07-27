@@ -65,10 +65,18 @@ type Job struct {
 	Prompt      string
 	CWD         string
 	Kind        string // herdr agent kind
-	// Steps is the declared sequence a flow job runs instead of Prompt.
-	// Empty for the ordinary one-prompt job, which is most of them. See
-	// steps.go.
-	Steps []Step
+	// Flow is the id of a flow this job starts instead of running Prompt.
+	//
+	// The sequence itself is not here. A flow is a YAML file that a person or an
+	// agent edits directly, and a job only names one — so the same flow can be
+	// called on a schedule, by hand, and by an agent, without three copies of it
+	// drifting apart. Empty for the ordinary one-prompt job, which is most of
+	// them.
+	Flow string
+	// Input is what this job passes the flow when the schedule fires. It is the
+	// x in A(x): a scheduled call still has to supply one, and the schedule is
+	// the only thing available to supply it.
+	Input string
 	// Tags group related jobs. Stored comma-delimited.
 	Tags []string
 
@@ -171,6 +179,14 @@ type Run struct {
 	CacheReadTokens     int64
 	CacheCreationTokens int64
 	Model               string
+
+	// Flow and Input are what this run was: which flow ran, and the x it was
+	// called with. Both are recorded on the run rather than looked up from a job,
+	// because a flow can be called with no job at all — and because resuming has
+	// to use the input the run actually started with. Taking today's input from
+	// the job would resume a parked run as a different run.
+	Flow  string
+	Input string
 }
 
 // Duration returns how long the run took, or 0 while it is still going.
@@ -250,13 +266,16 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"jobs", "favorite", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "persistent", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "updated_at", "INTEGER NOT NULL DEFAULT 0"},
-	{"jobs", "steps", "TEXT NOT NULL DEFAULT ''"},
+	{"jobs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
+	{"jobs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "trigger", "TEXT NOT NULL DEFAULT 'manual'"},
 	{"runs", "input_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"runs", "output_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"runs", "cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"runs", "cache_creation_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"runs", "model", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
 }
 
 // Open opens (and migrates) the store at dir/bermuda.db.
@@ -357,7 +376,7 @@ func (s *Store) Close() error { return s.db.Close() }
 const jobColumns = `id, name, description, tags, prompt, cwd, kind, model, permission_mode,
 	allowed_tools, disallowed_tools, add_dirs, extra_args, skip_permissions, max_budget_usd,
 	schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
-	enabled, favorite, persistent, created_at, updated_at, steps`
+	enabled, favorite, persistent, created_at, updated_at, flow_id, flow_input`
 
 // PutJob inserts or replaces a job.
 func (s *Store) PutJob(ctx context.Context, j Job) error {
@@ -385,20 +404,15 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	if j.RunAt != nil {
 		runAt = j.RunAt.Unix()
 	}
-	// A flow is checked on the way in, so an invalid one cannot be stored
-	// and then discovered at 04:00 by the scheduler. The rules are in
-	// ValidateSteps; the model is passed because a step that names none
-	// inherits the job's.
-	if err := ValidateSteps(j.Steps, j.Model); err != nil {
-		return err
-	}
-	steps, err := encodeSteps(j.Steps)
-	if err != nil {
-		return err
-	}
-	_, err = s.db.ExecContext(ctx, `
+	// The flow a job names is deliberately *not* validated here. It is a file on
+	// disk that a person or an agent edits without going near this code, so a
+	// check at write time proves nothing about what the file says at 04:00 —
+	// which is when it matters. The flow is read and validated at the moment it
+	// runs, and refusing to store a job because a flow does not exist yet would
+	// also stop anyone writing the job first and the flow second.
+	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO jobs (`+jobColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  name=excluded.name, description=excluded.description, tags=excluded.tags,
 		  prompt=excluded.prompt,
@@ -411,20 +425,20 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		  run_at=excluded.run_at, catchup=excluded.catchup, timeout_ms=excluded.timeout_ms,
 		  enabled=excluded.enabled, favorite=excluded.favorite,
 		  persistent=excluded.persistent, updated_at=excluded.updated_at,
-		  steps=excluded.steps`,
+		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
 		j.ID, j.Name, j.Description, strings.Join(j.Tags, ","),
 		j.Prompt, j.CWD, j.Kind, j.Model, j.PermissionMode,
 		j.AllowedTools, j.DisallowedTools, strings.Join(j.AddDirs, "\n"), j.ExtraArgs,
 		boolToInt(j.SkipPermissions), j.MaxBudgetUSD,
 		string(j.Schedule), j.IntervalSeconds, j.CronExpr, runAt, j.Catchup,
 		j.Timeout.Milliseconds(), boolToInt(j.Enabled), boolToInt(j.Favorite),
-		boolToInt(j.Persistent), j.CreatedAt.Unix(), j.UpdatedAt.Unix(), steps)
+		boolToInt(j.Persistent), j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
 	return err
 }
 
 func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 	var j Job
-	var addDirs, schedule, tags, steps string
+	var addDirs, schedule, tags string
 	var runAt sql.NullInt64
 	var timeoutMS, created, updated int64
 	var skip, enabled, favorite, persistent int
@@ -432,11 +446,8 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 		&j.Model, &j.PermissionMode, &j.AllowedTools, &j.DisallowedTools, &addDirs,
 		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &schedule, &j.IntervalSeconds,
 		&j.CronExpr, &runAt, &j.Catchup, &timeoutMS, &enabled, &favorite,
-		&persistent, &created, &updated, &steps)
+		&persistent, &created, &updated, &j.Flow, &j.Input)
 	if err != nil {
-		return j, err
-	}
-	if j.Steps, err = decodeSteps(steps); err != nil {
 		return j, err
 	}
 	if addDirs != "" {
@@ -552,7 +563,8 @@ func (s *Store) DeleteJob(ctx context.Context, id string) error {
 
 const runColumns = `id, job_id, trigger, outcome, park_reason, status, note,
 	run_dir, tab_id, agent_name, started_at, ended_at,
-	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model`
+	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
+	flow_id, flow_input`
 
 // PutRun inserts or updates a run.
 func (s *Store) PutRun(ctx context.Context, r Run) error {
@@ -565,7 +577,7 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO runs (`+runColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  trigger=excluded.trigger, outcome=excluded.outcome,
 		  park_reason=excluded.park_reason, status=excluded.status,
@@ -574,11 +586,12 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 		  input_tokens=excluded.input_tokens, output_tokens=excluded.output_tokens,
 		  cache_read_tokens=excluded.cache_read_tokens,
 		  cache_creation_tokens=excluded.cache_creation_tokens,
-		  model=excluded.model`,
+		  model=excluded.model,
+		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
 		r.ID, r.JobID, r.Trigger, r.Outcome, r.ParkReason, r.Status, r.Note,
 		r.RunDir, r.TabID, r.AgentName, r.StartedAt.Unix(), ended,
 		r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheCreationTokens,
-		r.Model)
+		r.Model, r.Flow, r.Input)
 	return err
 }
 
@@ -589,7 +602,7 @@ func scanRun(rows interface{ Scan(...any) error }) (Run, error) {
 	err := rows.Scan(&r.ID, &r.JobID, &r.Trigger, &r.Outcome, &r.ParkReason,
 		&r.Status, &r.Note, &r.RunDir, &r.TabID, &r.AgentName, &started, &ended,
 		&r.InputTokens, &r.OutputTokens, &r.CacheReadTokens,
-		&r.CacheCreationTokens, &r.Model)
+		&r.CacheCreationTokens, &r.Model, &r.Flow, &r.Input)
 	if err != nil {
 		return r, err
 	}

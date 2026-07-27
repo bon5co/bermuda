@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/store"
 )
 
@@ -42,12 +42,12 @@ func TestAParkedFlowResumesWithoutRedoingTheCompletedSteps(t *testing.T) {
 	gate := filepath.Join(work, "gate")
 	counter := filepath.Join(work, "counter")
 
+	writeFlow(t, "wf", "steps:\n"+
+		"  - id: sync\n    run: echo ran >> "+counter+"\n"+
+		"  - id: gate\n    run: test -f "+gate+"\n"+
+		"  - id: ship\n    run: echo shipped >> "+counter+"\n")
 	job := store.Job{ID: "wf", Name: "Flow", CWD: work, Kind: "claude",
-		Model: "sonnet", Enabled: true, Timeout: 0, Steps: []store.Step{
-			{ID: "sync", Run: "echo ran >> " + counter},
-			{ID: "gate", Run: "test -f " + gate},
-			{ID: "ship", Run: "echo shipped >> " + counter},
-		}}
+		Model: "sonnet", Enabled: true, Timeout: 0, Flow: "wf"}
 	if err := s.PutJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -118,8 +118,9 @@ func TestExecuteSendsAFlowJobDownTheFlowPath(t *testing.T) {
 	s := flowStore(t)
 	ctx := context.Background()
 	work := t.TempDir()
+	writeFlow(t, "wf", "steps:\n  - id: only\n    run: true\n")
 	job := store.Job{ID: "wf", CWD: work, Kind: "claude", Model: "sonnet",
-		Enabled: true, Steps: []store.Step{{ID: "only", Run: "true"}}}
+		Enabled: true, Flow: "wf"}
 	if err := s.PutJob(ctx, job); err != nil {
 		t.Fatal(err)
 	}
@@ -130,41 +131,6 @@ func TestExecuteSendsAFlowJobDownTheFlowPath(t *testing.T) {
 	steps, err := s.RunSteps(ctx, run.RunID)
 	if err != nil || len(steps) != 1 {
 		t.Fatalf("the run has %d step rows (%v); it was not run as a flow", len(steps), err)
-	}
-}
-
-// Steps are declared in JSON because whatever writes a flow is usually
-// another agent. A file that is not a step list must be refused where it is
-// read, not stored and discovered later.
-func TestLoadStepsReadsAListAndRejectsTheRest(t *testing.T) {
-	dir := t.TempDir()
-	good := filepath.Join(dir, "steps.json")
-	steps := []store.Step{{ID: "sync", Run: "true"}, {ID: "author", Agent: "write"}}
-	raw, _ := json.Marshal(steps)
-	if err := os.WriteFile(good, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadSteps(good)
-	if err != nil {
-		t.Fatalf("a valid step file was refused: %v", err)
-	}
-	if len(got) != 2 || got[0].ID != "sync" || got[1].Agent != "write" {
-		t.Errorf("read back %+v, want the two declared steps in order", got)
-	}
-
-	bad := filepath.Join(dir, "bad.json")
-	if err := os.WriteFile(bad, []byte(`{"id":"sync"}`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loadSteps(bad); err == nil {
-		t.Error("a single object was accepted as a step list")
-	}
-	empty := filepath.Join(dir, "empty.json")
-	if err := os.WriteFile(empty, []byte(`[]`), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loadSteps(empty); err == nil {
-		t.Error("an empty list was accepted, which would store a flow with no steps")
 	}
 }
 
@@ -180,5 +146,46 @@ func TestTheOldWorkflowSpellingStillRunsAFlow(t *testing.T) {
 	err := fn([]string{"nonsense"})
 	if err == nil || !strings.Contains(err.Error(), "flow subcommand") {
 		t.Errorf("the alias returned %v; it should reach flowCmd and be told the subcommand is unknown", err)
+	}
+}
+
+// writeFlow puts a flow file where the command layer will look for it.
+//
+// Flows are files now, so a test that wants one has to write one — and writing
+// it under BERMUDA_STATE_DIR is what keeps this out of the real ~/.bermuda/flows
+// that this machine's own agents are using.
+func writeFlow(t *testing.T, id, body string) {
+	t.Helper()
+	dir := flowDir()
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, id+".yml")
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The template `flow new` writes must itself be a valid flow.
+//
+// It is the first flow anybody sees and the thing they edit into their own, so
+// a template that does not parse turns "make a flow" into "debug bermuda". This
+// caught a real one: an unquoted `run: echo "verified: $X"` is not legal YAML,
+// because a bare scalar cannot contain ": ".
+func TestTheNewFlowTemplateParses(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BERMUDA_STATE_DIR", dir)
+	if err := flowNew([]string{"sample", "--about", "a sample"}); err != nil {
+		t.Fatal(err)
+	}
+	f, err := flow.Load(flowDir(), "sample")
+	if err != nil {
+		t.Fatalf("the template bermuda writes does not load: %v", err)
+	}
+	if len(f.Steps) == 0 {
+		t.Error("the template has no steps")
+	}
+	if !f.TakesInput() {
+		t.Error("the template does not declare an input, so it cannot demonstrate {{input}}")
 	}
 }

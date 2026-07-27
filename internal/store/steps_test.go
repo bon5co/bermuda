@@ -99,51 +99,71 @@ func TestARunStepNeedsNothingElse(t *testing.T) {
 	}
 }
 
-// The store is the last gate. Anything can call PutJob — the board's editor,
-// the CLI, a future importer — and none of them should be able to save a
-// flow the runner would then refuse at 04:00.
-func TestTheStoreRefusesToSaveAnInvalidFlow(t *testing.T) {
+// A job names a flow; it does not carry one.
+//
+// The store deliberately does not validate the flow here. It is a file that a
+// person or an agent edits without going near this code, so a check at write
+// time proves nothing about what the file says when the schedule fires — and
+// refusing to store a job whose flow does not exist yet would stop anyone
+// writing the job before the flow.
+func TestAJobRemembersWhichFlowItStartsAndWithWhat(t *testing.T) {
 	s := newSteps(t)
 	ctx := context.Background()
-	j := Job{ID: "wf", Model: "sonnet", CWD: "/tmp", Enabled: true, Steps: []Step{
-		{ID: "author", Agent: "write", Model: "haiku"},
-	}}
-	if err := s.PutJob(ctx, j); err == nil {
-		t.Fatal("a haiku flow was stored; it would only be caught when it ran")
-	}
-	if _, err := s.Job(ctx, "wf"); err == nil {
-		t.Error("the refused job was written anyway")
-	}
-}
-
-// Steps have to survive the round trip intact, in order: the order is the
-// feature.
-func TestStepsSurviveTheRoundTrip(t *testing.T) {
-	s := newSteps(t)
-	ctx := context.Background()
-	steps := []Step{
-		{ID: "sync", Run: "git pull"},
-		{ID: "author", Agent: "write five", Model: "opus", Effort: "high"},
-		{ID: "verify", Agent: "review", Subagent: "cavecrew-reviewer", Kind: "claude"},
-	}
-	if err := s.PutJob(ctx, Job{ID: "wf", Model: "sonnet", CWD: "/tmp",
-		Enabled: true, Steps: steps}); err != nil {
+	j := Job{ID: "nightly", Model: "sonnet", CWD: "/tmp", Enabled: true,
+		Flow: "triage", Input: "anything filed since yesterday"}
+	if err := s.PutJob(ctx, j); err != nil {
 		t.Fatal(err)
 	}
-	got, err := s.Job(ctx, "wf")
+	got, err := s.Job(ctx, "nightly")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !got.IsFlow() || len(got.Steps) != 3 {
-		t.Fatalf("read back %d steps, want 3", len(got.Steps))
+	if !got.IsFlow() {
+		t.Error("a job naming a flow did not read back as a flow")
 	}
-	for i, want := range steps {
-		if got.Steps[i] != want {
-			t.Errorf("step %d read back as %+v, want %+v", i, got.Steps[i], want)
-		}
+	if got.Flow != "triage" || got.Input != "anything filed since yesterday" {
+		t.Errorf("read back flow %q input %q, want triage and the input it was given",
+			got.Flow, got.Input)
 	}
-	// A plain job stays plain: nothing about flows may turn an ordinary
-	// one-prompt job into a zero-step flow.
+}
+
+// A job pointing at a flow nobody has written yet is still storable. Refusing
+// it would impose an order — flow first, job second — that nothing else does.
+func TestAJobMayNameAFlowThatDoesNotExistYet(t *testing.T) {
+	s := newSteps(t)
+	if err := s.PutJob(context.Background(), Job{ID: "early", Model: "sonnet",
+		CWD: "/tmp", Enabled: true, Flow: "not-written-yet"}); err != nil {
+		t.Fatalf("storing a job before its flow: %v", err)
+	}
+}
+
+// The run remembers which flow ran and what it was called with.
+//
+// Not looked up from the job, and the difference matters on resume: taking
+// today's input from the job would resume a parked run as a different run, and
+// a flow called directly has no job to look anything up from.
+func TestARunRemembersItsFlowAndInput(t *testing.T) {
+	s := newSteps(t)
+	ctx := context.Background()
+	if err := s.PutRun(ctx, Run{ID: "r1", JobID: "triage", Outcome: "parked",
+		StartedAt: time.Now(), Flow: "triage", Input: "PR #431"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Run(ctx, "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Flow != "triage" || got.Input != "PR #431" {
+		t.Errorf("read back flow %q input %q, want what the run was started with",
+			got.Flow, got.Input)
+	}
+}
+
+// A plain job stays plain: nothing about flows may turn an ordinary one-prompt
+// job into a flow with an empty name.
+func TestAPromptOnlyJobIsNotAFlow(t *testing.T) {
+	s := newSteps(t)
+	ctx := context.Background()
 	if err := s.PutJob(ctx, Job{ID: "plain", Prompt: "do it", Model: "sonnet",
 		CWD: "/tmp", Enabled: true}); err != nil {
 		t.Fatal(err)
@@ -153,7 +173,7 @@ func TestStepsSurviveTheRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if plain.IsFlow() {
-		t.Errorf("a prompt-only job reads back as a flow with %d steps", len(plain.Steps))
+		t.Errorf("a prompt-only job reads back as a flow named %q", plain.Flow)
 	}
 }
 

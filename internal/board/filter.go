@@ -134,6 +134,12 @@ const chromeRows = 8
 // is already paged, which is two answers to "is there more" at once.
 func (m *Model) pageRows() int {
 	rows := m.paneHeight() - chromeRows - blockRows(m.renderFooter())
+	if m.flowInput != nil {
+		// The open input box is pinned chrome too, and a page sized as though it
+		// were not would push the help line off the bottom of the pane at the
+		// moment the reader most needs to be told that esc cancels.
+		rows -= blockRows(m.renderFlowInput())
+	}
 	if rows < 3 {
 		rows = 3
 	}

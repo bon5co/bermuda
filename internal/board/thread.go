@@ -114,19 +114,19 @@ func (m *Model) handleThreadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.query, m.scroll, m.threadFollow = "", 0, true
 		}
 		return m, nil
-	case "tab", "shift+tab":
-		m.focus, m.cursor, m.scroll = focusJobs, 0, 0
+	case "tab":
+		m.stepTab(1)
+		return m, nil
+	case "shift+tab":
+		m.stepTab(-1)
 		return m, nil
 	case "1":
 		// Already here: the threads key means "jump back to live", which is what
 		// a reader who scrolled up into the history wants next.
 		m.threadFollow = true
 		return m, nil
-	case "2":
-		m.focus, m.cursor, m.scroll = focusJobs, 0, 0
-		return m, nil
-	case "3":
-		m.focus, m.cursor, m.scroll = focusRuns, 0, 0
+	case "2", "3", "4":
+		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "h", "left":
 		// Horizontal keys mean depth, and there is nothing under a message.

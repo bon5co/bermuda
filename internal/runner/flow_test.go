@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/store"
 )
 
@@ -80,10 +81,16 @@ func (r *recorder) report(sr StepRun) {
 	}
 }
 
-func flowJob(t *testing.T, steps ...store.Step) store.Job {
+// flowJob and flowDef are the two halves a flow run now needs: the job supplies
+// the configuration steps run under, and the flow supplies the steps.
+func flowJob(t *testing.T) store.Job {
 	t.Helper()
 	return store.Job{ID: "wf", CWD: t.TempDir(), Kind: "claude",
-		Model: "sonnet", Steps: steps}
+		Model: "sonnet", Flow: "wf"}
+}
+
+func flowDef(steps ...store.Step) flow.Flow {
+	return flow.Flow{ID: "wf", Steps: steps}
 }
 
 // The order is the product. A flow that ran its steps in any other order
@@ -96,12 +103,12 @@ func TestStepsRunInTheOrderTheyAreDeclared(t *testing.T) {
 	rec := &recorder{}
 	w := &Flow{Launch: agent.launch, Report: rec.report}
 
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "sync", Run: "true"},
 		store.Step{ID: "author", Agent: "write the thing"},
 		store.Step{ID: "verify", Agent: "check the thing"},
 	)
-	wr, err := w.Execute(context.Background(), job, "run1", dir)
+	wr, err := w.Execute(context.Background(), job, def, "", "run1", dir)
 	if err != nil {
 		t.Fatalf("flow failed: %v", err)
 	}
@@ -131,12 +138,12 @@ func TestAFailingStepParksAndTheRestNeverStart(t *testing.T) {
 	}}
 	w := &Flow{Launch: agent.launch}
 
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"},
 		store.Step{ID: "ship", Agent: "open a PR"},
 	)
-	wr, _ := w.Execute(context.Background(), job, "run1", dir)
+	wr, _ := w.Execute(context.Background(), job, def, "", "run1", dir)
 
 	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkStepFailed {
 		t.Fatalf("outcome %s/%s, want parked/step_failed", wr.Outcome, wr.ParkReason)
@@ -170,12 +177,12 @@ func TestAStepThatWritesNoResultParks(t *testing.T) {
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
 	w := &Flow{Launch: agent.launch}
 
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"}, // writes nothing: the agent died
 		store.Step{ID: "ship", Agent: "ship"},
 	)
-	wr, _ := w.Execute(context.Background(), job, "run1", dir)
+	wr, _ := w.Execute(context.Background(), job, def, "", "run1", dir)
 
 	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkNoResult {
 		t.Fatalf("outcome %s/%s, want parked/no_result", wr.Outcome, wr.ParkReason)
@@ -194,7 +201,7 @@ func TestAStepThatWritesNoResultParks(t *testing.T) {
 func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "author", Agent: "write"},
 		store.Step{ID: "verify", Agent: "review"},
 		store.Step{ID: "ship", Agent: "ship"},
@@ -205,7 +212,7 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 		"verify": {Status: "error", Note: "one is wrong"},
 	}}
 	w := &Flow{Launch: first.launch}
-	if wr, _ := w.Execute(ctx, job, "run1", dir); wr.StoppedAt != "verify" {
+	if wr, _ := w.Execute(ctx, job, def, "", "run1", dir); wr.StoppedAt != "verify" {
 		t.Fatalf("first attempt parked at %q, want verify", wr.StoppedAt)
 	}
 
@@ -216,7 +223,7 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 	}}
 	rec := &recorder{}
 	w = &Flow{Launch: second.launch, Report: rec.report}
-	wr, err := w.Execute(ctx, job, "run1", dir)
+	wr, err := w.Execute(ctx, job, def, "", "run1", dir)
 	if err != nil {
 		t.Fatalf("resume failed: %v", err)
 	}
@@ -251,18 +258,18 @@ func TestResumeRestartsAtTheFailedStepAndNotBefore(t *testing.T) {
 func TestARetriedStepDoesNotInheritTheOldVerdict(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
-	job := flowJob(t, store.Step{ID: "verify", Agent: "review"})
+	job, def := flowJob(t), flowDef(store.Step{ID: "verify", Agent: "review"})
 
 	first := &fakeAgent{results: map[string]Result{
 		"verify": {Status: "error", Note: "one is wrong"},
 	}}
-	if wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, "run1", dir); wr.ParkReason != ParkStepFailed {
+	if wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, def, "", "run1", dir); wr.ParkReason != ParkStepFailed {
 		t.Fatalf("first attempt parked for %q, want step_failed", wr.ParkReason)
 	}
 
 	// This time the agent writes nothing at all.
 	silent := &fakeAgent{results: map[string]Result{}}
-	wr, _ := (&Flow{Launch: silent.launch}).Execute(ctx, job, "run1", dir)
+	wr, _ := (&Flow{Launch: silent.launch}).Execute(ctx, job, def, "", "run1", dir)
 	if wr.ParkReason != ParkNoResult {
 		t.Errorf("retry parked for %q, want no_result: it adopted the last attempt's file", wr.ParkReason)
 	}
@@ -272,10 +279,10 @@ func TestARetriedStepDoesNotInheritTheOldVerdict(t *testing.T) {
 // forgot" incidents are a shell command a model was asked to remember.
 func TestARunStepNeedsNoAgent(t *testing.T) {
 	dir := t.TempDir()
-	job := flowJob(t, store.Step{ID: "sync", Run: "echo pulled main"})
+	job, def := flowJob(t), flowDef(store.Step{ID: "sync", Run: "echo pulled main"})
 
 	// No launcher at all: if a run step reached for an agent this would park.
-	wr, err := (&Flow{}).Execute(context.Background(), job, "run1", dir)
+	wr, err := (&Flow{}).Execute(context.Background(), job, def, "", "run1", dir)
 	if err != nil {
 		t.Fatalf("run step failed: %v", err)
 	}
@@ -298,11 +305,11 @@ func TestARunStepNeedsNoAgent(t *testing.T) {
 func TestAFailingRunStepStopsTheFlow(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "sync", Run: "echo cannot pull >&2; exit 3"},
 		store.Step{ID: "author", Agent: "write"},
 	)
-	wr, _ := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
+	wr, _ := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, def, "", "run1", dir)
 
 	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkStepFailed {
 		t.Fatalf("outcome %s/%s, want parked/step_failed", wr.Outcome, wr.ParkReason)
@@ -323,11 +330,11 @@ func TestEachStepIsItsOwnAgentAndCarriesItsOwnConfig(t *testing.T) {
 	agent := &fakeAgent{results: map[string]Result{
 		"author": ok("wrote"), "verify": ok("checked"),
 	}}
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "author", Agent: "write", Model: "opus", Effort: "high"},
 		store.Step{ID: "verify", Agent: "review", Subagent: "cavecrew-reviewer"},
 	)
-	if wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir); err != nil || wr.Outcome != OutcomeDone {
+	if wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, def, "", "run1", dir); err != nil || wr.Outcome != OutcomeDone {
 		t.Fatalf("flow ended %v (%v)", wr.Outcome, err)
 	}
 	if len(agent.calls) != 2 {
@@ -362,10 +369,10 @@ func TestEachStepIsItsOwnAgentAndCarriesItsOwnConfig(t *testing.T) {
 func TestAFlowRefusesToStartOnInvalidSteps(t *testing.T) {
 	dir := t.TempDir()
 	agent := &fakeAgent{results: map[string]Result{"author": ok("wrote")}}
-	job := flowJob(t,
+	job, def := flowJob(t), flowDef(
 		store.Step{ID: "author", Agent: "write", Model: "haiku"},
 	)
-	wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, "run1", dir)
+	wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, def, "", "run1", dir)
 	if err == nil {
 		t.Fatal("a haiku step ran; the floor is sonnet")
 	}

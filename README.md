@@ -1,12 +1,76 @@
 # bermuda
 
-An agent harness. Bermuda schedules work and runs each job as an **interactive
-[herdr](https://herdr.dev) agent** — not a headless `claude -p` — so every run
-can be attached, inspected, interrupted, and answered while it is happening.
+An agent harness. Bermuda runs multi-step work as a **flow** — a declared
+sequence an agent cannot skip — on **interactive [herdr](https://herdr.dev)
+agents** rather than headless `claude -p`, so every step can be attached,
+inspected, interrupted, and answered while it is happening.
 
 ![The board's jobs tab](assets/board-jobs.png)
 
-## Why
+## Flows
+
+Ask one agent to do five things and it will do four of them and report success.
+The failures are never dramatic — it pulls, edits, and ships, and quietly skips
+the verify because it was fairly sure.
+
+A flow takes the sequence out of the agent's head and puts it in the harness:
+
+```
+flow(x) = A(x) -> B(A's result) -> C(B's result)
+```
+
+Each step is its own agent process. **B is launched by bermuda, not by A
+remembering to hand off** — so A cannot skip B, inline B, or decide B was already
+covered. And if A dies, the flow parks at A: B never runs on a lie.
+
+A flow is a YAML file, because the two things that write one are a person in an
+editor and an agent with a filesystem:
+
+```yaml
+# ~/.bermuda/flows/triage.yml
+about: triage an incoming report
+input: a report, a PR number, or a stack trace
+
+steps:
+  - id: assess
+    agent: Look at {{input}} and say in one line whether it is real.
+    model: opus
+
+  - id: patch
+    agent: "{{previous}} — if that says it is real, write the fix."
+
+  - id: verify
+    run: go test ./...
+```
+
+Call it with an `x`. **The same command whoever is asking** — there is no
+agent-only path and no human-only path:
+
+```bash
+bermuda flow run triage --input 'PR #431 fails on arm64'   # you
+bermuda flow run triage --input "$finding"                 # an agent, shelling out
+bermuda job add --id nightly --flow triage \
+  --input 'anything filed since yesterday' --cron '0 4 * * *'   # a schedule
+```
+
+When a step fails, everything downstream stops and everything upstream is kept:
+
+```
+STEP  KIND  OUTCOME  REASON  DURATION  NOTE
+a     run   done             0s        A saw [PR #431]
+b     run   done             0s        B saw [A saw [PR #431]]
+gate  run   failed           0s        exit status 1
+c     run   pending
+```
+
+`bermuda flow resume <run>` picks up at `gate` and does not redo `a` and `b` —
+resume being cheap is what removes the pressure to wave a failed step through.
+
+What crosses between steps is a step's *published result*, never its context: the
+agent that reviews something must not inherit the assumptions of the agent that
+wrote it. Full detail in [flows](docs/flows.md).
+
+## Why interactive agents
 
 A headless run is invisible until it finishes, and a run that stops to ask a
 question is a lost run. Running on herdr instead means `herdr agent attach` drops
@@ -57,14 +121,9 @@ bermuda job run daily-brief    # now, without waiting for the schedule
 bermuda board                  # watch it, and everything else
 ```
 
-Anything with more than one step is a flow rather than a longer prompt, because
-the step a prompt asks an agent to remember is the step that gets skipped:
-
-```bash
-echo '[{"id":"build","run":"go build ./..."},
-       {"id":"review","agent":"review the diff","model":"opus"}]' |
-  bermuda job add --id nightly --steps - --cron '0 4 * * *'
-```
+Anything with more than one step is a [flow](#flows) rather than a longer prompt,
+because the step a prompt asks an agent to remember is the step that gets
+skipped. A job starts one with `--flow`.
 
 An ad-hoc run needs no job at all:
 
@@ -118,7 +177,7 @@ hold the browser forever. Full detail in
 | | |
 |---|---|
 | [Jobs](docs/jobs.md) | what a job is, its fields, schedules, tags, editing from the board |
-| [Flows](docs/flows.md) | declared steps, parking, resuming, per-step model and effort |
+| [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, parking and resuming |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
 | [The board](docs/board.md) | every key, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
@@ -147,7 +206,7 @@ herdr already has a copy.
 
 ## Status
 
-**v1.1.1**, in daily use on the machine it was written for. Every part of it —
+**v2.0.0**, in daily use on the machine it was written for. Every part of it —
 jobs, flows, threads, claims, the scheduler and its off switch — is checked on
 each release by installing it from GitHub into a bare Ubuntu container and using
 it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).

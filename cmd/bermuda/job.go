@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
+	"github.com/bon5co/bermuda/internal/flow"
 	"github.com/bon5co/bermuda/internal/herdrcli"
 	"github.com/bon5co/bermuda/internal/runner"
 	"github.com/bon5co/bermuda/internal/store"
@@ -24,7 +24,8 @@ type jobFlags struct {
 	description *string
 	tags        *string
 	prompt      *string
-	steps       *string
+	flowID      *string
+	flowInput   *string
 	cwd         *string
 	kind        *string
 
@@ -55,7 +56,8 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		description: fs.String("description", "", "what this job does and why"),
 		tags:        fs.String("tags", "", "comma-delimited tags, e.g. marketing,daily"),
 		prompt:      fs.String("prompt", "", "instruction for the agent"),
-		steps:       fs.String("steps", "", "JSON file of flow steps ('-' for stdin), instead of --prompt"),
+		flowID:      fs.String("flow", "", "id of a flow this job starts, instead of --prompt"),
+		flowInput:   fs.String("input", "", "the input passed to that flow on every fire"),
 		cwd:         fs.String("cwd", "", "working directory (default: current dir)"),
 		kind:        fs.String("kind", "claude", "herdr agent kind"),
 
@@ -97,13 +99,8 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	assign("tags", func() { j.Tags = store.SplitTags(*f.tags) })
 	assign("prompt", func() { j.Prompt = *f.prompt })
 	assign("cwd", func() { j.CWD = *f.cwd })
-	if set["steps"] {
-		steps, err := loadSteps(*f.steps)
-		if err != nil {
-			return err
-		}
-		j.Steps = steps
-	}
+	assign("flow", func() { j.Flow = *f.flowID })
+	assign("input", func() { j.Input = *f.flowInput })
 	assign("kind", func() { j.Kind = *f.kind })
 	assign("model", func() {
 		// An explicit empty value still resolves to the stated default rather
@@ -179,13 +176,12 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	// carry their own prompts, so a job-level one would be text nothing ever
 	// sends.
 	if j.IsFlow() && strings.TrimSpace(j.Prompt) != "" {
-		return errors.New("a job has either --prompt or --steps, not both")
+		return errors.New("a job has either --prompt or --flow, not both")
 	}
-	// Checked here as well as in the store, so the flow is refused by the
-	// command that typed it, naming the step at fault. The model is passed
-	// because a step that names none inherits the job's — including a job-level
-	// haiku, which is the one model no step may run on.
-	return store.ValidateSteps(j.Steps, j.Model)
+	// The flow itself is not validated here. It is a file that anything can edit
+	// after this job is written, so the only check that means anything happens
+	// when the flow is read to run it.
+	return nil
 }
 
 func jobAdd(argv []string) error {
@@ -208,7 +204,7 @@ func jobAdd(argv []string) error {
 		return err
 	}
 	if j.Prompt == "" && !j.IsFlow() {
-		return errors.New("--prompt is required (or --steps for a flow)")
+		return errors.New("--prompt is required (or --flow to start a flow)")
 	}
 	if j.CWD == "" {
 		wd, err := os.Getwd()
@@ -356,10 +352,23 @@ func jobShow(argv []string) error {
 	}
 
 	if j.IsFlow() {
+		// The steps are read from the flow file rather than from the job, so what
+		// is printed here is what would actually run if the job fired now. A
+		// missing or broken flow is worth saying plainly: the job looks fine and
+		// will fail at its next fire.
+		def, err := flow.Load(flowDir(), j.Flow)
+		if err != nil {
+			fmt.Printf("\nflow %s: %v\n", j.Flow, err)
+			return nil
+		}
+		fmt.Printf("\nflow %s (%s)\n", def.ID, def.Path)
+		if def.TakesInput() {
+			fmt.Printf("input\t%s\n", def.Input)
+		}
 		fmt.Println("\nsteps:")
 		sw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 		fmt.Fprintln(sw, "#\tSTEP\tKIND\tMODEL\tAGENT/COMMAND")
-		for i, st := range j.Steps {
+		for i, st := range def.Steps {
 			what := st.Run
 			if st.IsAgent() {
 				what = st.Agent
@@ -632,12 +641,16 @@ func jobRun(argv []string) error {
 	return nil
 }
 
-// stepsLabel says whether a job is a flow, and how long.
+// stepsLabel says which flow a job starts, or "-" when it is a plain prompt.
+//
+// The flow id rather than a step count: the count lives in a file this column
+// would have to open to know, and the id is the more useful answer anyway --
+// it is what `bermuda flow show <id>` takes.
 func stepsLabel(j store.Job) string {
 	if !j.IsFlow() {
 		return "-"
 	}
-	return strconv.Itoa(len(j.Steps))
+	return j.Flow
 }
 
 // firstLine is a prompt reduced to what fits in a table cell.

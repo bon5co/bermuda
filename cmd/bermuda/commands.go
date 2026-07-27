@@ -66,6 +66,12 @@ func boardCmd(argv []string) error {
 			_, err := Execute(context.Background(), s, j, trigger)
 			return err
 		},
+		RunFlow:    func(flowID, input string) error { return startFlowFromBoard(s, flowID, input) },
+		ResumeFlow: func(runID string) error { return resumeFlowRun(s, runID) },
+		// The one directory this installation keeps flows in, resolved once
+		// here: a board that worked it out for itself could end up listing a
+		// flow the command layer would not find.
+		FlowDir:       flowDir(),
 		DaemonRunning: Running,
 		EnsureDaemon:  EnsureRunning,
 	})

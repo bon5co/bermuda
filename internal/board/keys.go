@@ -19,6 +19,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.detail != nil {
 		return m.handleDetailKey(msg)
 	}
+	// The flow input box owns the keyboard while it is open: `q` is a letter in
+	// what a flow is being called with before it is a command.
+	if m.flowInput != nil {
+		return m.handleFlowInputKey(msg)
+	}
 	// While typing a search, keys belong to the query.
 	if m.searching {
 		return m.handleSearchKey(msg)
@@ -59,28 +64,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.deleteSelected()
 	// Tab cycles the lists and nothing else. Horizontal keys are reserved for
 	// depth: right descends, left ascends.
-	case "tab", "shift+tab":
-		// Tab walks the tabs left to right as they are drawn — threads, jobs,
-		// runs — not in the order the focus constants happen to be declared.
-		if m.focus == focusJobs {
-			m.focus = focusRuns
-		} else {
-			m.focus = focusThread
-		}
-		m.cursor, m.scroll, m.threadFollow = 0, 0, true
+	case "tab":
+		m.stepTab(1)
 		return m, nil
-	// 1, 2 and 3 duplicate Tab because `herdr pane send-keys tab` is not
+	case "shift+tab":
+		// Backwards, so a reader who overshoots the tab they wanted does not
+		// have to walk all the way round to come back to it.
+		m.stepTab(-1)
+		return m, nil
+	// The number keys duplicate Tab because `herdr pane send-keys tab` is not
 	// delivered as a Tab press, and the board is meant to be drivable
 	// remotely, not only by hand. They count the tabs as drawn, so 1 is the
 	// leftmost one.
-	case "1":
-		m.focus, m.cursor, m.scroll, m.threadFollow = focusThread, 0, 0, true
-		return m, nil
-	case "2":
-		m.focus, m.cursor = focusJobs, 0
-		return m, nil
-	case "3":
-		m.focus, m.cursor = focusRuns, 0
+	case "1", "2", "3", "4":
+		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "l", "right":
 		return m, m.descend()
@@ -106,7 +103,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "a":
 		return m, m.focusRun()
 	case "enter":
+		// Enter on a flow calls it. It is the one list where the selected thing
+		// is something to start rather than somewhere to go.
+		if m.focus == focusFlows {
+			return m, m.launchSelectedFlow()
+		}
 		return m, m.descend()
+	case "u":
+		// Unparking only means something to a flow: a run row has no flow
+		// identity to resume against, and a job is a schedule rather than a
+		// sequence that stopped halfway.
+		if m.focus == focusFlows {
+			return m, m.unparkSelectedFlow()
+		}
+		return m, nil
 	case "R":
 		return m, m.runSelected()
 	case "p":
@@ -129,8 +139,14 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 // descend opens whatever the cursor is sitting on: a job opens its detail, a
 // run goes to the agent that is running it.
 func (m *Model) descend() tea.Cmd {
-	if m.focus == focusJobs {
+	switch m.focus {
+	case focusJobs:
 		return m.openDetail()
+	case focusFlows:
+		// Nothing lives under a flow: it is a file, and its runs are the RUNS
+		// tab. `l` deliberately does not launch it either — a horizontal key
+		// that started agents would spend money on a mistyped navigation.
+		return nil
 	}
 	return m.openRunDetail()
 }

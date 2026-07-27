@@ -114,7 +114,7 @@ func TestLoadPopulatesJobsRunsAndLastRun(t *testing.T) {
 	}
 }
 
-func TestTabCyclesTheThreeListsAndResetsCursor(t *testing.T) {
+func TestTabCyclesEveryListAndResetsCursor(t *testing.T) {
 	m := newTestModel(t)
 	m.cursor = 2
 	m.pressSpecial(t, tea.KeyTab)
@@ -124,13 +124,19 @@ func TestTabCyclesTheThreeListsAndResetsCursor(t *testing.T) {
 	if m.cursor != 0 {
 		t.Errorf("cursor is %d after switching lists, want 0: the old index means nothing in the new list", m.cursor)
 	}
-	m.pressSpecial(t, tea.KeyTab)
-	if m.focus != focusThread {
-		t.Error("tab should move on to the thread")
+	for _, want := range []focus{focusFlows, focusThread, focusJobs} {
+		m.pressSpecial(t, tea.KeyTab)
+		if m.focus != want {
+			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)
+		}
 	}
-	m.pressSpecial(t, tea.KeyTab)
-	if m.focus != focusJobs {
-		t.Error("tab should cycle back to jobs")
+
+	// Backwards too, or a reader who overshoots has to walk all the way round.
+	for _, want := range []focus{focusThread, focusFlows, focusRuns, focusJobs} {
+		m.pressSpecial(t, tea.KeyShiftTab)
+		if m.focus != want {
+			t.Fatalf("shift+tab moved to focus %d, want %d", m.focus, want)
+		}
 	}
 }
 
@@ -342,7 +348,7 @@ func TestRenderedRowsMatchThePageBounds(t *testing.T) {
 // that are not printed, so counting runes would flag lines that fit.
 func TestNoRenderedLineExceedsThePane(t *testing.T) {
 	m := newTestModel(t)
-	for _, focus := range []focus{focusJobs, focusRuns, focusThread} {
+	for _, focus := range []focus{focusJobs, focusRuns, focusThread, focusFlows} {
 		m.focus = focus
 		for _, line := range strings.Split(m.View(), "\n") {
 			if w := lipgloss.Width(line); w > m.width {

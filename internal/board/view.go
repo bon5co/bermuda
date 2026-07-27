@@ -52,15 +52,19 @@ func (m *Model) listPane() pane {
 	// One list at a time. Showing both halved the space for each and made the
 	// jobs list — the thing this board is for — compete with history.
 	var total, shown int
-	if m.focus == focusJobs {
+	switch m.focus {
+	case focusJobs:
 		shown, total = len(m.visibleJobs()), len(m.jobs)
-	} else {
+	case focusFlows:
+		shown, total = len(m.visibleFlows()), len(m.flowRows())
+	default:
 		shown, total = len(m.visibleRuns()), len(m.runs)
 	}
 	start, end, pageNum, pages := m.page(shown)
 
 	var body strings.Builder
-	if m.focus == focusJobs {
+	switch m.focus {
+	case focusJobs:
 		table := m.renderJobs(start, end)
 		// Put the inspector in the space to the right of the table, when there
 		// is enough of it to be readable.
@@ -74,7 +78,9 @@ func (m *Model) listPane() pane {
 		} else {
 			body.WriteString(table)
 		}
-	} else {
+	case focusFlows:
+		body.WriteString(m.renderFlows(start, end))
+	default:
 		body.WriteString(m.renderRuns(start, end))
 	}
 	p.body = strings.TrimSuffix(body.String(), "\n")
@@ -87,13 +93,23 @@ func (m *Model) listPane() pane {
 	if pl := m.pageLabel(shown, total, pageNum, pages); pl != "" {
 		bottom.WriteString(dimStyle.Render("  "+pl) + "\n")
 	}
+	if m.flowInput != nil {
+		// The box sits under the table it was opened from, and pinned, because
+		// a box you are typing into that has scrolled off the pane is worse
+		// than no box.
+		bottom.WriteString(m.renderFlowInput())
+	}
 	bottom.WriteString(m.renderFooter())
-	// The runs list gets its own help line rather than a longer shared one:
-	// space is only meaningful there, and a help line that grows past the pane
-	// width wraps, which costs a row the arithmetic above did not budget for.
-	help := "tab threads/jobs/runs · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · q quit"
-	if m.focus == focusRuns {
-		help = "tab threads/jobs/runs · / search · [ ] page · j/k move · space steps · l/→ open · a attach · q quit"
+	// Each list gets its own help line rather than one long shared one: space
+	// is only meaningful on runs and enter only launches on flows, and a help
+	// line that grows past the pane width wraps, which costs a row the
+	// arithmetic above did not budget for.
+	help := "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · q quit"
+	switch m.focus {
+	case focusRuns:
+		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · space steps · l/→ open · a attach · q quit"
+	case focusFlows:
+		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · enter run · u unpark · r reload · q quit"
 	}
 	bottom.WriteString("\n" + helpStyle.Render(help))
 	p.bottom = bottom.String()
@@ -144,7 +160,7 @@ func (m *Model) threadPane(p pane) pane {
 	}
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
-		"tab threads/jobs/runs · < > thread · t pick · i say · / search · j/k scroll · 1 live · q quit"))
+		"tab threads/jobs/runs/flows · < > thread · t pick · i say · / search · j/k scroll · 1 live · q quit"))
 	p.bottom = bottom.String()
 	return p
 }
