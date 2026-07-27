@@ -73,7 +73,7 @@ The board header shows **scheduler stopped** whenever no daemon holds the lock.
 Bermuda confines itself to what it creates. It never changes Herdr's default
 behaviour, its settings, or any pane it did not open:
 
-- runs live in their own `bermuda` workspace, one tab per run
+- runs live in their own `Bermuda` workspace, one tab per run
 - run panes are labelled (`display_agent`, `title`, and tokens carrying the job
   and run ids) so a run is identifiable rather than showing as a bare `claude`
 - nothing else in Herdr is touched: no status vocabulary is redefined, no agent

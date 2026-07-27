@@ -7,9 +7,10 @@ import (
 	"github.com/bon5co/bermuda/internal/herdrcli"
 )
 
-// The state the row reports is the whole reason it is worth having: an idle
-// board and a board with a run waiting on a human look the same in the sidebar
-// unless this mapping says otherwise.
+// The row carries its counts in words and stays idle whatever they are. A
+// colour that is on permanently — which is what blocked became, with parked
+// runs from last week still parked — is not a signal, so the state is one thing
+// this mapping is not allowed to vary.
 func TestBoardAgentState(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -24,26 +25,28 @@ func TestBoardAgentState(t *testing.T) {
 			wantContained: "no runs",
 		},
 		{
-			name:          "a run in flight is working",
+			name:          "a run in flight says so, and stays idle",
 			running:       2,
-			wantState:     herdrcli.StatusWorking,
+			wantState:     herdrcli.StatusIdle,
 			wantContained: "2 running",
 		},
 		{
-			// blocked is the state herdr highlights, and a parked run is the
-			// one case where the harness cannot continue without a person.
-			name:          "a parked run asks for attention",
+			// This is the case that used to report blocked, and the reason it
+			// no longer does: parked runs accumulate and never clear
+			// themselves, so the red dot was permanent within a week.
+			name:          "a parked run is counted, not coloured",
 			parked:        1,
-			wantState:     herdrcli.StatusBlocked,
+			wantState:     herdrcli.StatusIdle,
 			wantContained: "1 parked",
 		},
 		{
-			// Parked outranks running: work still moving does not make a run
-			// that stopped for a question any less stopped.
-			name:          "parked outranks running",
+			// Parked is named first: it is the one that needs a person, and
+			// work still moving does not make a run that stopped for a question
+			// any less stopped.
+			name:          "parked is named before running",
 			parked:        1,
 			running:       3,
-			wantState:     herdrcli.StatusBlocked,
+			wantState:     herdrcli.StatusIdle,
 			wantContained: "1 parked",
 		},
 	}
@@ -82,4 +85,16 @@ func TestBoardPresenceWithoutPaneIsInert(t *testing.T) {
 	// Stop must not touch the nil client, and must not block on a loop that
 	// was never started.
 	p.Stop()
+}
+
+// Whatever the store holds, the dot is green. Stated as its own test because it
+// is a decision about what the sidebar is for — a place to look, not an alarm —
+// and a future change to the counts must not quietly reintroduce the colour.
+func TestBoardAgentStateIsNeverAnAlarm(t *testing.T) {
+	for _, c := range [][2]int{{0, 0}, {0, 5}, {9, 0}, {9, 5}} {
+		state, _ := boardAgentState(c[0], c[1])
+		if state != herdrcli.StatusIdle {
+			t.Errorf("parked=%d running=%d reported %q, want idle", c[0], c[1], state)
+		}
+	}
 }

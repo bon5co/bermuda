@@ -24,7 +24,18 @@ import (
 
 // WorkspaceLabel is the dedicated workspace bermuda owns. Runs only ever
 // create, inspect, and close tabs inside it.
-const WorkspaceLabel = "bermuda"
+//
+// Capitalised because Herdr prints it in the sidebar beside spaces people named
+// themselves, and matched with IsWorkspaceLabel rather than by equality: a
+// workspace called "bermuda" from an earlier version is the same workspace, and
+// an exact match would quietly build a second one beside it and put the runs
+// there.
+const WorkspaceLabel = "Bermuda"
+
+// IsWorkspaceLabel reports whether a workspace is the one bermuda owns.
+func IsWorkspaceLabel(label string) bool {
+	return strings.EqualFold(label, WorkspaceLabel)
+}
 
 // PluginSource identifies bermuda to Herdr for pane metadata and the agent
 // view. Herdr scopes both by source, so this must match the plugin id.
@@ -618,7 +629,7 @@ func (r *Runner) ensureWorkspace(ctx context.Context, cwd string) (*herdrcli.Wor
 		return nil, err
 	}
 	for i := range spaces {
-		if spaces[i].Label == WorkspaceLabel {
+		if IsWorkspaceLabel(spaces[i].Label) {
 			return &spaces[i], nil
 		}
 	}

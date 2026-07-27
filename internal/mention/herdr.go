@@ -60,7 +60,7 @@ func (h herd) Live(ctx context.Context) ([]Agent, error) {
 			// cannot be reached however it was named.
 			continue
 		}
-		if a.Agent == herdrcli.BoardAgent {
+		if herdrcli.IsBoardAgent(a.Agent) {
 			// The board reports its own pane as an agent so that bermuda has a
 			// row in Herdr's sidebar. It is not something to talk to: a mention
 			// delivered here is typed into a TUI as keystrokes, where a single

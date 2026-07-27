@@ -125,9 +125,14 @@ const boardAgentCount = 200
 
 // boardAgentState maps what the store holds onto what the sidebar shows.
 //
-// Parked outranks running because it is the only one of the two that needs a
-// person: runs in flight are the harness working, a parked run is the harness
-// stopped and waiting to be answered.
+// The row stays idle — a green dot — whatever the store holds, and says the
+// counts in words instead. Parked runs used to report blocked, which Herdr
+// draws in red: correct on the day a run parks and useless a week later, when
+// four parked runs nobody has got to yet leave the row permanently red and red
+// stops meaning anything. A colour that is always on is not a signal.
+//
+// The counts are still the point of the row, so they stay: parked is named
+// first because it is the one that needs a person, running after it.
 func boardAgentState(parked, running int) (herdrcli.AgentStatus, string) {
 	switch {
 	case parked > 0:
@@ -135,9 +140,9 @@ func boardAgentState(parked, running int) (herdrcli.AgentStatus, string) {
 		if running > 0 {
 			msg += fmt.Sprintf(" · %d running", running)
 		}
-		return herdrcli.StatusBlocked, msg
+		return herdrcli.StatusIdle, msg
 	case running > 0:
-		return herdrcli.StatusWorking, fmt.Sprintf("%d running", running)
+		return herdrcli.StatusIdle, fmt.Sprintf("%d running", running)
 	default:
 		return herdrcli.StatusIdle, "no runs in flight"
 	}

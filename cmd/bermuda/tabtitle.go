@@ -9,7 +9,12 @@ import (
 )
 
 // tabTitle is what a bermuda-only tab is called.
-const tabTitle = "Bermuda"
+//
+// Not simply "Bermuda": the sidebar prints the tab's name underneath the agent
+// row, which is already called Bermuda, inside a space also called Bermuda. The
+// name three times told nobody anything, so the line that has room for it says
+// which of the three it is.
+const tabTitle = "Bermuda TUI"
 
 // nameOwnTab labels the tab as Bermuda when the board has it to itself.
 //

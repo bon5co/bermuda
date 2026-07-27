@@ -19,7 +19,7 @@ as its execution substrate, which means:
 
 Three things follow from that, and they are most of the design:
 
-- **A dedicated workspace.** All runs live in a `bermuda` workspace, one tab per
+- **A dedicated workspace.** All runs live in a `Bermuda` workspace, one tab per
   run. Your own session is never touched.
 - **One result channel.** Each run gets `BERMUDA_RUN_DIR` in its shell. The
   agent writes `result.json` there, and that file is the *only* authority on a
