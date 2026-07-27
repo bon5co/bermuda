@@ -90,7 +90,7 @@ func reconcileParked(ctx context.Context, s *store.Store) (int, error) {
 
 // reconcileOneParked corrects a single parked run from what is on disk.
 //
-// A workflow run is judged by its steps, since that is where its results live:
+// A flow run is judged by its steps, since that is where its results live:
 // each step directory is re-read, any step the disk says succeeded is corrected,
 // and the run itself only becomes done when every declared step has. A run
 // parked with a step still genuinely unfinished stays parked — the steps after

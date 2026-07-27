@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-// Workflows: a job whose steps are declared rather than remembered.
+// Flows: a job whose steps are declared rather than remembered.
 //
 // A single-prompt job carries every stage of multi-step work inside one agent's
 // head — pull first, verify after, hand the output on. It usually does four of
-// the five. A workflow moves the sequence out of the prompt and into the
+// the five. A flow moves the sequence out of the prompt and into the
 // harness, which does not forget: the steps are stored here, run in series by
 // the runner, and a step that cannot show it finished stops the ones after it.
 //
@@ -22,7 +22,7 @@ import (
 // is no query that wants one step of one job — and a column keeps the job a
 // single row, so saving a job cannot half-succeed.
 
-// Step is one declared unit of a workflow.
+// Step is one declared unit of a flow.
 //
 // Exactly one of Agent and Run is set. An Agent step is a prompt and gets its
 // own process; a Run step is a shell command and has no agent at all, which is
@@ -30,7 +30,7 @@ import (
 // are a command a model was asked to remember instead of a step the harness
 // executes.
 type Step struct {
-	// ID is unique within the workflow. It names the step's directory and its
+	// ID is unique within the flow. It names the step's directory and its
 	// agent, and it is how resume and the board refer to it.
 	ID string `json:"id"`
 
@@ -59,9 +59,9 @@ func (s Step) Label() string {
 	return "run"
 }
 
-// IsWorkflow reports whether this job is a declared sequence rather than one
+// IsFlow reports whether this job is a declared sequence rather than one
 // prompt.
-func (j Job) IsWorkflow() bool { return len(j.Steps) > 0 }
+func (j Job) IsFlow() bool { return len(j.Steps) > 0 }
 
 // EffectiveModel is the model a step actually runs on: its own if it names one,
 // otherwise the job's.
@@ -75,14 +75,14 @@ func (j Job) EffectiveModel(s Step) string {
 	return DefaultModel
 }
 
-// ValidateSteps checks a workflow before anything can be written or run.
+// ValidateSteps checks a flow before anything can be written or run.
 //
 // defaultModel is the job's model, because a step that names none inherits it —
 // validating only what the step spells out would let a job-level haiku through
 // the one rule that exists to stop it.
 func ValidateSteps(steps []Step, defaultModel string) error {
 	if len(steps) == 0 {
-		return nil // not a workflow; a single-prompt job is the normal case
+		return nil // not a flow; a single-prompt job is the normal case
 	}
 	seen := map[string]bool{}
 	for i, s := range steps {
@@ -99,7 +99,7 @@ func ValidateSteps(steps []Step, defaultModel string) error {
 		// the first had already run it.
 		key := strings.ToLower(id)
 		if seen[key] {
-			return fmt.Errorf("step id %q is used twice: ids must be unique within a workflow", id)
+			return fmt.Errorf("step id %q is used twice: ids must be unique within a flow", id)
 		}
 		seen[key] = true
 
@@ -131,7 +131,7 @@ func ValidateSteps(steps []Step, defaultModel string) error {
 			model = strings.TrimSpace(defaultModel)
 		}
 		if isHaiku(model) {
-			return fmt.Errorf("step %q would run on %q: the floor is sonnet, and a workflow is exactly where a cheap model quietly does four of five steps", id, model)
+			return fmt.Errorf("step %q would run on %q: the floor is sonnet, and a flow is exactly where a cheap model quietly does four of five steps", id, model)
 		}
 	}
 	return nil
@@ -185,7 +185,7 @@ func decodeSteps(raw string) ([]Step, error) {
 	return steps, nil
 }
 
-// Step outcomes. They are the run outcomes plus "pending", because a workflow
+// Step outcomes. They are the run outcomes plus "pending", because a flow
 // declares its steps before it runs any of them: a step nobody has started yet
 // is a real state, and the board says how many there are.
 const (
@@ -196,7 +196,7 @@ const (
 	StepParked  = "parked"
 )
 
-// RunStep is one step of one workflow run: what it was, how it went, and where
+// RunStep is one step of one flow run: what it was, how it went, and where
 // its output is.
 //
 // The rows exist from the moment the run starts, all of them pending, so the
@@ -256,7 +256,7 @@ func (s *Store) PutRunStep(ctx context.Context, rs RunStep) error {
 	return err
 }
 
-// SeedRunSteps records a workflow's steps as pending, without touching any that
+// SeedRunSteps records a flow's steps as pending, without touching any that
 // are already there.
 //
 // Resume depends on the "without touching" part: the completed steps of an

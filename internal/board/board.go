@@ -55,11 +55,11 @@ type Model struct {
 	jobs []store.Job
 	runs []store.Run
 	last map[string]store.Run // job id -> most recent run
-	// steps is the per-step record of the workflow runs on screen, keyed by run
-	// id. Ordinary runs have no entry, which is what makes a run a workflow as
+	// steps is the per-step record of the flow runs on screen, keyed by run
+	// id. Ordinary runs have no entry, which is what makes a run a flow as
 	// far as this view is concerned.
 	steps map[string][]store.RunStep
-	// expanded is which workflow runs are showing their steps. Keyed by run id
+	// expanded is which flow runs are showing their steps. Keyed by run id
 	// so the block survives the three-second refresh under it.
 	expanded map[string]bool
 	// thread is the conversation being viewed, oldest first, and claims is what
@@ -192,7 +192,7 @@ type dataMsg struct {
 	threadID string
 	claims   []store.Claim
 	threads  []store.Thread
-	// steps is the per-step record of whichever of those runs are workflows.
+	// steps is the per-step record of whichever of those runs are flows.
 	steps map[string][]store.RunStep
 	err   error
 }

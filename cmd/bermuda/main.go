@@ -27,14 +27,15 @@ import (
 // commands the plugin manifest invokes actually exist. Two of them did not, and
 // nothing noticed until they failed on a user's machine.
 //
-// "room" is the pre-rename spelling of "thread", kept dispatchable and left out
-// of the usage text: see roomCmd.
+// "room" is the pre-rename spelling of "thread" and "workflow" of "flow", both
+// kept dispatchable and left out of the usage text: see roomCmd and workflowCmd.
 func commands() map[string]func([]string) error {
 	return map[string]func([]string) error{
 		"run-once":   runOnce,
 		"board":      boardCmd,
 		"job":        jobCmd,
 		"run":        runCmd,
+		"flow":       flowCmd,
 		"workflow":   workflowCmd,
 		"thread":     threadCmd,
 		"room":       roomCmd,
@@ -84,14 +85,14 @@ Usage:
   bermuda job remove <id>             Remove a job
   bermuda job run <id>                Run a stored job now
   bermuda run list [--state parked]   List runs
-  bermuda job add --id <id> --steps <file.json>   Declare a workflow
-  bermuda workflow run <job>          Run a job's steps in series
-  bermuda workflow status <run>       Per-step outcome and duration
-  bermuda workflow resume <run>       Restart at the step that parked
+  bermuda job add --id <id> --steps <file.json>   Declare a flow
+  bermuda flow run <job>              Run a job's steps in series
+  bermuda flow status <run>           Per-step outcome and duration
+  bermuda flow resume <run>           Restart at the step that parked
 
-  A workflow's steps run in order, each agent step in its own process with its
+  A flow's steps run in order, each agent step in its own process with its
   own result.json. A step that fails, or that ends without writing one, parks
-  the workflow there and the steps after it never start. Resume picks up at that
+  the flow there and the steps after it never start. Resume picks up at that
   step: what the completed ones wrote is still on disk and is not redone.
   bermuda thread list                 Every thread, its size and last activity
   bermuda thread new <id> [--about]   Start a separate conversation

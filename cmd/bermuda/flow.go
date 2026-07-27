@@ -15,31 +15,44 @@ import (
 	"github.com/bon5co/bermuda/internal/store"
 )
 
-// The workflow verbs. A workflow is a job with steps instead of a prompt, so it
+// The flow verbs. A flow is a job with steps instead of a prompt, so it
 // is run, inspected, and resumed by run id like any other run — these commands
-// exist because a parked workflow needs one thing an ordinary run does not: a
+// exist because a parked flow needs one thing an ordinary run does not: a
 // way to start again at the step that stopped it, without redoing the ones that
 // already cost money.
 
-func workflowCmd(argv []string) error {
+func flowCmd(argv []string) error {
 	if len(argv) == 0 {
-		return errors.New("usage: bermuda workflow <run|status|resume>")
+		return errors.New("usage: bermuda flow <run|status|resume>")
 	}
 	switch argv[0] {
 	case "run":
-		return workflowRun(argv[1:])
+		return flowRun(argv[1:])
 	case "status":
-		return workflowStatus(argv[1:])
+		return flowStatus(argv[1:])
 	case "resume":
-		return workflowResume(argv[1:])
+		return flowResume(argv[1:])
 	default:
-		return fmt.Errorf("unknown workflow subcommand %q", argv[0])
+		return fmt.Errorf("unknown flow subcommand %q", argv[0])
 	}
 }
 
-func workflowRun(argv []string) error {
+// workflowCmd is the old name for `bermuda flow`, kept working and kept out of
+// the usage text, the same way `room` is kept for `thread`.
+//
+// Stored jobs, cron entries and launcher scripts hold `bermuda workflow ...`,
+// and none of them get re-read when a feature is renamed. A scheduled flow that
+// stops running because its verb moved fails silently at 04:00, which is the
+// hour this feature exists for. The notice goes to stderr so `workflow status
+// --json` still pipes into a parser unchanged.
+func workflowCmd(argv []string) error {
+	fmt.Fprintln(os.Stderr, "bermuda: `workflow` was renamed to `flow`; the old name still works")
+	return flowCmd(argv)
+}
+
+func flowRun(argv []string) error {
 	if len(argv) == 0 {
-		return errors.New("usage: bermuda workflow run <job>")
+		return errors.New("usage: bermuda flow run <job>")
 	}
 	s, err := openStore()
 	if err != nil {
@@ -52,7 +65,7 @@ func workflowRun(argv []string) error {
 	if err != nil {
 		return err
 	}
-	if !j.IsWorkflow() {
+	if !j.IsFlow() {
 		return fmt.Errorf("job %s has no steps; run it with `bermuda job run %s`", j.ID, j.ID)
 	}
 	run, execErr := Execute(ctx, s, *j, "manual")
@@ -66,8 +79,8 @@ func workflowRun(argv []string) error {
 	return nil
 }
 
-// exitUnlessDone makes a workflow that did not finish visible to whatever ran
-// it. A parked workflow is not an error — it is the harness doing its job — but
+// exitUnlessDone makes a flow that did not finish visible to whatever ran
+// it. A parked flow is not an error — it is the harness doing its job — but
 // a script that treats it as success is back to proceeding on an unfinished
 // sequence.
 func exitUnlessDone(run *runner.Run) {
@@ -76,9 +89,9 @@ func exitUnlessDone(run *runner.Run) {
 	}
 }
 
-func workflowResume(argv []string) error {
+func flowResume(argv []string) error {
 	if len(argv) == 0 {
-		return errors.New("usage: bermuda workflow resume <run>")
+		return errors.New("usage: bermuda flow resume <run>")
 	}
 	s, err := openStore()
 	if err != nil {
@@ -95,13 +108,13 @@ func workflowResume(argv []string) error {
 	if err != nil {
 		// A run outlives its job, but a resume cannot: the steps to run are the
 		// job's, and guessing them from the run's directories would resume a
-		// workflow nobody declared.
+		// flow nobody declared.
 		return fmt.Errorf("job %s no longer exists, so run %s cannot be resumed", rec.JobID, rec.ID)
 	}
-	if !j.IsWorkflow() {
+	if !j.IsFlow() {
 		return fmt.Errorf("job %s has no steps; there is nothing to resume", j.ID)
 	}
-	run, execErr := runWorkflow(ctx, s, *j, *rec)
+	run, execErr := runFlow(ctx, s, *j, *rec)
 	if run != nil {
 		printRun(run)
 	}
@@ -112,11 +125,11 @@ func workflowResume(argv []string) error {
 	return nil
 }
 
-// workflowStatus prints one run step by step: what each was, how it went, and
+// flowStatus prints one run step by step: what each was, how it went, and
 // how long it took.
-func workflowStatus(argv []string) error {
+func flowStatus(argv []string) error {
 	if len(argv) == 0 {
-		return errors.New("usage: bermuda workflow status <run>")
+		return errors.New("usage: bermuda flow status <run>")
 	}
 	s, err := openStore()
 	if err != nil {
@@ -134,7 +147,7 @@ func workflowStatus(argv []string) error {
 		return err
 	}
 	if len(steps) == 0 {
-		return fmt.Errorf("run %s has no steps; it is not a workflow run", rec.ID)
+		return fmt.Errorf("run %s has no steps; it is not a flow run", rec.ID)
 	}
 
 	done := 0
@@ -171,21 +184,21 @@ func workflowStatus(argv []string) error {
 		return err
 	}
 	if rec.Outcome == "parked" || rec.Outcome == "failed" {
-		fmt.Printf("\nresume with: bermuda workflow resume %s\n", rec.ID)
+		fmt.Printf("\nresume with: bermuda flow resume %s\n", rec.ID)
 	}
 	return nil
 }
 
-// runWorkflow executes a job's steps into an existing run row.
+// runFlow executes a job's steps into an existing run row.
 //
 // The same call serves a first run and a resume: the run row and the run
 // directory are reused, so completed steps are found where the earlier attempt
 // left them and are not run again.
-func runWorkflow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*runner.Run, error) {
+func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*runner.Run, error) {
 	if rec.RunDir == "" {
 		rec.RunDir = runDirFor(rec.ID)
 	}
-	// Declare every step before any of them runs, so a workflow that dies at
+	// Declare every step before any of them runs, so a flow that dies at
 	// step one still says it had four.
 	if err := s.SeedRunSteps(ctx, rec.ID, j.Steps); err != nil {
 		return nil, fmt.Errorf("record steps: %w", err)
@@ -196,9 +209,9 @@ func runWorkflow(ctx context.Context, s *store.Store, j store.Job, rec store.Run
 	}
 
 	r := &runner.Runner{Herdr: herdrcli.New(), StateDir: stateDir()}
-	w := &runner.Workflow{
+	w := &runner.Flow{
 		Launch: r.ExecuteIn,
-		// Persisted as each step starts and settles, so a workflow that is
+		// Persisted as each step starts and settles, so a flow that is
 		// three hours into its second step says so on the board rather than
 		// looking untouched until the end.
 		Report: func(sr runner.StepRun) { persistStep(ctx, s, rec.ID, sr) },
@@ -209,10 +222,10 @@ func runWorkflow(ctx context.Context, s *store.Store, j store.Job, rec store.Run
 	ended := wr.EndedAt
 	rec.EndedAt = &ended
 	if err := s.PutRun(ctx, rec); err != nil {
-		fmt.Fprintln(os.Stderr, "bermuda: persist workflow run:", err)
+		fmt.Fprintln(os.Stderr, "bermuda: persist flow run:", err)
 	}
 
-	// A workflow is reported as a run, because that is what every caller — the
+	// A flow is reported as a run, because that is what every caller — the
 	// daemon, the board, `run list` — already knows how to read.
 	status := "ok"
 	if wr.Outcome != runner.OutcomeDone {
@@ -244,7 +257,7 @@ func persistStep(ctx context.Context, s *store.Store, runID string, sr runner.St
 	if err := s.PutRunStep(ctx, rec); err != nil {
 		// Bookkeeping: the step itself already happened, and result.json on
 		// disk is what resume reads, so a failed write here must not stop the
-		// workflow.
+		// flow.
 		fmt.Fprintln(os.Stderr, "bermuda: persist step:", err)
 	}
 }

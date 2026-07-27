@@ -95,20 +95,20 @@ head -1 "$SKILL" 2>/dev/null | grep -q -- --- && ok "skill has frontmatter" || b
 grep -q "^name: bermuda" "$SKILL" 2>/dev/null && ok "skill name matches its directory" || bad "skill name does not match"
 [ -L "$ROOT/.claude/skills/bermuda" ] && ok ".claude/skills symlink survives the clone" || bad ".claude/skills symlink missing"
 
-step "jobs and workflows really run"
+step "jobs and flows really run"
 bermuda job add --id greenfield --name "Greenfield" --cron '0 4 * * *' --steps - <<'JSON' >/dev/null 2>&1
 [{"id": "one", "run": "echo first"}, {"id": "two", "run": "echo second"}]
 JSON
 check "job add"                  "greenfield" bermuda job list
-check "workflow run completes"   "done"       bermuda workflow run greenfield
+check "flow run completes"   "done"       bermuda flow run greenfield
 check "run is recorded"          "greenfield" bermuda run list
 
 bermuda job add --id breaks --name "Breaks" --steps - <<'JSON' >/dev/null 2>&1
 [{"id": "boom", "run": "exit 3"}]
 JSON
-out=$(bermuda workflow run breaks 2>&1); status=$?
+out=$(bermuda flow run breaks 2>&1); status=$?
 grep -q "parked" <<<"$out" && ok "a failing step parks the run" || bad "failing step did not park" "$out"
-[ $status -ne 0 ] && ok "a parked workflow exits nonzero" || bad "parked workflow exited 0"
+[ $status -ne 0 ] && ok "a parked flow exits nonzero" || bad "parked flow exited 0"
 
 out=$(bermuda job run breaks 2>&1); status=$?
 [ $status -ne 0 ] && ok "job run exits nonzero on failure" || bad "job run exited 0 on a failed run"

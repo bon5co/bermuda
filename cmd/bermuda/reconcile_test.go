@@ -120,11 +120,11 @@ func TestReconcileIsIdempotent(t *testing.T) {
 	}
 }
 
-// The incident this exists for: a workflow was filed as "parked (no_result)"
+// The incident this exists for: a flow was filed as "parked (no_result)"
 // thirty seconds in, while the step it parked on went on to succeed and write
 // its result ten minutes later. The row outlived the wrong verdict; the disk
 // has the right one.
-func TestParkedWorkflowIsCorrectedByItsStepResults(t *testing.T) {
+func TestParkedFlowIsCorrectedByItsStepResults(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	dir := t.TempDir()
@@ -189,9 +189,9 @@ func TestParkedWorkflowIsCorrectedByItsStepResults(t *testing.T) {
 	}
 }
 
-// A workflow that really did stop partway stays parked. Correcting the step
+// A flow that really did stop partway stays parked. Correcting the step
 // that succeeded must not promote a run whose later steps never ran.
-func TestParkedWorkflowWithUnrunStepsStaysParked(t *testing.T) {
+func TestParkedFlowWithUnrunStepsStaysParked(t *testing.T) {
 	s := newStore(t)
 	ctx := context.Background()
 	dir := t.TempDir()

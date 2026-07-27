@@ -78,7 +78,7 @@ bermuda job run daily-brief    # now, without waiting for the schedule
 bermuda board                  # watch it, and everything else
 ```
 
-Anything with more than one step is a workflow rather than a longer prompt,
+Anything with more than one step is a flow rather than a longer prompt,
 because the step a prompt asks an agent to remember is the step that gets
 skipped:
 
@@ -134,7 +134,7 @@ hold the browser forever. Full detail in
 | | |
 |---|---|
 | [Jobs](docs/jobs.md) | what a job is, its fields, schedules, tags, editing from the board |
-| [Workflows](docs/workflows.md) | declared steps, parking, resuming, per-step model and effort |
+| [Flows](docs/flows.md) | declared steps, parking, resuming, per-step model and effort |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
 | [The board](docs/board.md) | every key, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it, what bermuda touches in herdr |
@@ -144,7 +144,7 @@ hold the browser forever. Full detail in
 
 Most of bermuda's users are not people. [`skills/bermuda/`](skills/bermuda/SKILL.md)
 is an [Agent Skill](https://agentskills.io): what an agent should read before it
-writes to a thread, takes a claim, or declares a workflow — including the traps,
+writes to a thread, takes a claim, or declares a flow — including the traps,
 which is the half a command's `--help` cannot tell it.
 
 ### Installing it
@@ -177,7 +177,7 @@ past the commands it documents.
 ## Status
 
 **v1.0.0**, in daily use on the machine it was written for. Every part of it —
-jobs, workflows, threads, claims, the scheduler and its off switch — is checked
+jobs, flows, threads, claims, the scheduler and its off switch — is checked
 on each release by installing it from GitHub into a bare Ubuntu container and
 using it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).
 

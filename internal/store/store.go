@@ -65,7 +65,7 @@ type Job struct {
 	Prompt      string
 	CWD         string
 	Kind        string // herdr agent kind
-	// Steps is the declared sequence a workflow job runs instead of Prompt.
+	// Steps is the declared sequence a flow job runs instead of Prompt.
 	// Empty for the ordinary one-prompt job, which is most of them. See
 	// steps.go.
 	Steps []Step
@@ -207,8 +207,8 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS runs_job_started ON runs(job_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_outcome ON runs(outcome);
 
--- One row per declared step of a workflow run, written pending before the
--- workflow starts so the board can say "2 of 4" rather than counting only the
+-- One row per declared step of a flow run, written pending before the
+-- flow starts so the board can say "2 of 4" rather than counting only the
 -- steps that got far enough to report.
 CREATE TABLE IF NOT EXISTS run_steps (
   run_id      TEXT NOT NULL,
@@ -385,7 +385,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	if j.RunAt != nil {
 		runAt = j.RunAt.Unix()
 	}
-	// A workflow is checked on the way in, so an invalid one cannot be stored
+	// A flow is checked on the way in, so an invalid one cannot be stored
 	// and then discovered at 04:00 by the scheduler. The rules are in
 	// ValidateSteps; the model is passed because a step that names none
 	// inherits the job's.

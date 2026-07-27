@@ -30,10 +30,10 @@ agents working in bermuda's checkout, as it did before the row existed.
 
 ## Keys
 
-A workflow run is one row until `space` opens it, and then each step is a row of
+A flow run is one row until `space` opens it, and then each step is a row of
 its own with what it did and how long it took:
 
-![A workflow run opened into its steps](../assets/board-steps.png)
+![A flow run opened into its steps](../assets/board-steps.png)
 
 | key | action |
 |-----|--------|
@@ -46,7 +46,7 @@ its own with what it did and how long it took:
 | `f` | pin / unpin a favorite (favorites sort to the top) |
 | `F` | show / hide finished one-shots (hidden by default) |
 | `a` | focus the run's agent |
-| `space` | open a workflow run's steps (runs list) |
+| `space` | open a flow run's steps (runs list) |
 | `/` | search — filters both lists as you type |
 | `esc` | clear the search, or go back a level |
 | `[` `]` | previous / next page |
