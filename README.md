@@ -68,7 +68,15 @@ resume being cheap is what removes the pressure to wave a failed step through.
 
 What crosses between steps is a step's *published result*, never its context: the
 agent that reviews something must not inherit the assumptions of the agent that
-wrote it. Full detail in [flows](docs/flows.md).
+wrote it.
+
+The board's flows tab is the launcher — what is callable, what each takes, and
+the sequence it will run. `enter` runs one and asks for its input first; `u`
+unparks a run that stopped:
+
+![The board's flows tab, with a flow's steps in the inspector](assets/board-flows.png)
+
+Full detail in [flows](docs/flows.md).
 
 ## Why interactive agents
 

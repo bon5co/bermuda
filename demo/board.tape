@@ -41,9 +41,21 @@ Screenshot board-threads.png
 
 # Flows — what is callable, what each takes, and when it last ran. This is the
 # launcher: enter runs one and asks for its input first.
+#
+# The sleep before the keystroke is not padding. Late in a tape VHS will take
+# the screenshot before the terminal has caught up with the key, and the result
+# is a still of the shell rather than the board — silently, with no error and a
+# file that still gets written.
+Sleep 1s
 Type "4"
+Sleep 1s
+# Onto the flow that actually has a sequence worth inspecting: the panel is
+# where a flow's steps live, and parking the cursor on a one-step flow shows
+# the panel without showing what it is for.
+Type "jjjj"
 Sleep 2s
 Screenshot board-flows.png
+Sleep 1s
 
 Type "q"
 Sleep 2s
