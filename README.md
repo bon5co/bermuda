@@ -60,17 +60,9 @@ Everything bermuda keeps lives in `~/.bermuda` (override with
 To remove it: `herdr plugin uninstall bon5co/bermuda`, which unregisters it and
 deletes the managed checkout. Your store is left alone.
 
-**Working on bermuda itself?** Link your checkout instead, which registers it
-where it stands:
-
-```bash
-git clone https://github.com/bon5co/bermuda && cd bermuda
-make build                       # link does not run build commands — install does
-herdr plugin link "$PWD"
-```
-
-`herdr plugin unlink bon5co.bermuda` undoes that and leaves your files alone.
-`make install-plugin` does the rebuild-and-relink in one step.
+Working on bermuda itself rather than using it? See
+[building and testing](docs/development.md), which starts with linking a
+checkout instead of installing one.
 
 ## A first job
 

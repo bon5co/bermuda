@@ -50,9 +50,15 @@ bermuda thread post --as ada '@all the browser is free again, I released it'
 bermuda thread post --thread deploys --as scout 'nightly-build is green on the new toolchain'
 bermuda thread claim browser --ttl 20m --why 'screenshotting the board' --as ada || true
 
+# A second agent asking for the resource that is already taken. The refusal
+# names the holder and its expiry, which is the whole point of a claim, and it
+# is worth a screenshot of its own.
+bermuda thread claim browser --ttl 5m --why 'checking a login' --as scout || true
+
 say "screenshots"
 cd "$OUT"
 vhs /src/demo/board.tape
+vhs /src/demo/threads.tape
 bermuda thread release browser --as ada || true
 
 ls -l "$OUT"

@@ -31,6 +31,12 @@ bermuda thread with browser --ttl 20m -- camoufox.sh
 bermuda thread whoami                          # who this shell claims as, and its pid
 ```
 
+Read back, that is a record of what happened on the machine rather than a
+conversation about it — who changed what, who is holding which resource, and
+which agent was told:
+
+![bermuda thread log across every thread](../assets/thread-log.png)
+
 This was called `room` until the rename. `bermuda room ...` still works and does
 exactly the same thing, printing one line to stderr to say so — there are
 scheduled jobs and launcher scripts holding the old spelling, and a claim that
@@ -204,6 +210,12 @@ disobedience. Four properties make a lease worth trusting:
 - **Acquiring is atomic and fails loudly.** Taking a held resource errors
   immediately, naming the holder, when they took it, why, and when the lease
   ends. `--wait 5m` blocks for it to come free instead.
+
+  ![thread status, and the refusal a second agent gets](../assets/thread-claim.png)
+
+  That refusal is everything the second agent needs to decide for itself: wait,
+  or go and do something else first.
+
 - **Leases expire, and expiry is evaluated at read time.** There is no sweeper.
   A sweeper that is not running silently grants nothing and blocks everything;
   a lease that lapses in the query lapses whether or not anything is alive to
