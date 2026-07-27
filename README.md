@@ -214,7 +214,7 @@ herdr already has a copy.
 
 ## Status
 
-**v2.0.0**, in daily use on the machine it was written for. Every part of it —
+**v2.1.0**, in daily use on the machine it was written for. Every part of it —
 jobs, flows, threads, claims, the scheduler and its off switch — is checked on
 each release by installing it from GitHub into a bare Ubuntu container and using
 it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).
