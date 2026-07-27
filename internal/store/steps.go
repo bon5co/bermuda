@@ -42,10 +42,18 @@ type Step struct {
 	// Per-step agent config. These default to the job's and override it, so a
 	// two-line mechanical edit does not have to burn the model a judgement-heavy
 	// step needs. All four are meaningless on a Run step and rejected there.
-	Model    string `json:"model,omitempty"`
-	Effort   string `json:"effort,omitempty"`
-	Kind     string `json:"kind,omitempty"`
-	Subagent string `json:"subagent,omitempty"`
+	Model    string `json:"model,omitempty" yaml:"model,omitempty"`
+	Effort   string `json:"effort,omitempty" yaml:"effort,omitempty"`
+	Kind     string `json:"kind,omitempty" yaml:"kind,omitempty"`
+	Subagent string `json:"subagent,omitempty" yaml:"subagent,omitempty"`
+
+	// SkipPermissions takes the permission bypass back for one step.
+	//
+	// A pointer because there are three answers, not two: unset means "whatever
+	// the flow said", and a plain bool could not tell that apart from an explicit
+	// false. Nil is the common case — flow steps run unattended, so the bypass is
+	// on by default and a step only names this to opt out.
+	SkipPermissions *bool `json:"skip_permissions,omitempty" yaml:"skip_permissions,omitempty"`
 }
 
 // IsAgent reports whether this step runs an agent rather than a command.
@@ -115,6 +123,11 @@ func ValidateSteps(steps []Step, defaultModel string) error {
 			// A run step has no agent, which is the point of it. Accepting
 			// agent config here would silently ignore it, and a step that looks
 			// configured but is not is worse than one that refuses.
+			if s.SkipPermissions != nil {
+				return fmt.Errorf("step %q sets skip_permissions on a run step, which has "+
+					"no agent to configure: a shell command runs with whatever permissions "+
+					"the process already has", id)
+			}
 			for _, f := range []struct{ name, value string }{
 				{"model", s.Model}, {"effort", s.Effort},
 				{"kind", s.Kind}, {"subagent", s.Subagent},

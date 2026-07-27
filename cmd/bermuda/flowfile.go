@@ -38,6 +38,11 @@ about: %s
 # The steps below reach it as {{input}}. Delete this line if the flow takes none.
 input: what this flow should be run against
 
+# Agent steps run with --dangerously-skip-permissions by default, because a
+# flow step has nobody in its pane to answer a prompt: it waits, then parks.
+# Uncomment to make this flow ask, or set skip_permissions on one step.
+# skip_permissions: false
+
 steps:
   # Each step is an agent prompt or a shell command, never both.
   # A step that cannot show it finished parks the flow and the rest never start.

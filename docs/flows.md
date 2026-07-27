@@ -141,6 +141,36 @@ An unknown key is refused rather than ignored. A typo in a hand-written file is
 the ordinary case here, and a silently dropped `agnet:` is a step that never runs
 in a flow that then reports success.
 
+### Permissions
+
+Agent steps run with `--dangerously-skip-permissions` **by default**. That is not
+a convenience: a flow step has nobody sitting in its pane, so a permission prompt
+is a step that waits out its grace and then parks. Every agent step in a flow is
+unattended by construction.
+
+A flow that does something consequential can take the bypass back, and a single
+step can override either way:
+
+```yaml
+skip_permissions: false        # this whole flow asks
+
+steps:
+  - id: survey
+    agent: read and report
+    skip_permissions: true     # ...except this one, which only reads
+  - id: apply
+    agent: make the change
+```
+
+Precedence is step, then flow, then whatever the calling job already said. Only
+an explicit value in the file overrides the job — a flow with no opinion behaves
+like anything else that job started, rather than silently undoing a job that
+deliberately asked for permission checks.
+
+With the bypass off, the job's `--permission-mode` applies instead. On a `run:`
+step the key is refused: a shell command has no agent to configure and runs with
+whatever permissions the process already has.
+
 ## Failure is the point
 
 A step that reports failure, or that ends without writing `result.json`, **parks

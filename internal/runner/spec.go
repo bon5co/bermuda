@@ -52,6 +52,13 @@ func BuildStepArgs(j store.Job, s store.Step) []string {
 	if k := strings.TrimSpace(s.Kind); k != "" {
 		cfg.Kind = k
 	}
+	// A step may take the permission bypass back. The default is on, because a
+	// flow step has nobody in its pane to answer a prompt — but a step that
+	// touches something consequential should be able to say "not me", and the
+	// only place that can be said is next to the step itself.
+	if s.SkipPermissions != nil {
+		cfg.SkipPermissions = *s.SkipPermissions
+	}
 	args := BuildAgentArgs(cfg)
 	if cfg.Kind != "" && cfg.Kind != "claude" {
 		// Only claude's flag spellings are modelled; another kind gets its

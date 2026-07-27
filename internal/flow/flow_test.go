@@ -229,3 +229,49 @@ func TestSaveWillNotClobberAnExistingFlow(t *testing.T) {
 		t.Fatal("saving over an existing flow was allowed")
 	}
 }
+
+// The bypass is on unless the file says otherwise, because a flow step has
+// nobody in its pane to answer a permission prompt — it waits out its grace and
+// parks. That default is what makes flows work unattended at all.
+func TestThePermissionBypassDefaultsOnAndTheFileCanTakeItBack(t *testing.T) {
+	on := write(t, "loud", "steps:\n  - id: one\n    agent: do it\n")
+	f, err := Load(on, "loud")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !f.BypassesPermissions() {
+		t.Error("a flow that says nothing does not bypass; every agent step would park")
+	}
+
+	off := write(t, "careful", "skip_permissions: false\nsteps:\n  - id: one\n    agent: do it\n")
+	g, err := Load(off, "careful")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.BypassesPermissions() {
+		t.Error("skip_permissions: false was ignored")
+	}
+}
+
+// A step can take it back for itself, the same way it overrides model or effort.
+func TestAStepCanOptOutOfTheBypass(t *testing.T) {
+	dir := write(t, "mixed", "steps:\n  - id: fast\n    agent: go\n  - id: careful\n    agent: think\n    skip_permissions: false\n")
+	f, err := Load(dir, "mixed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f.Steps[0].SkipPermissions != nil {
+		t.Error("a step that said nothing carries an opinion")
+	}
+	if f.Steps[1].SkipPermissions == nil || *f.Steps[1].SkipPermissions {
+		t.Error("the step's opt-out did not survive the read")
+	}
+}
+
+// It means nothing on a run step, so it is refused rather than ignored.
+func TestSkipPermissionsIsRefusedOnARunStep(t *testing.T) {
+	dir := write(t, "bad", "steps:\n  - id: one\n    run: true\n    skip_permissions: false\n")
+	if _, err := Load(dir, "bad"); err == nil {
+		t.Fatal("skip_permissions was accepted on a run step")
+	}
+}
