@@ -65,6 +65,26 @@ Copying a store means copying the **whole directory**. SQLite runs in WAL mode
 and the daemon holds the database open, so recent rows are in `bermuda.db-wal`:
 `bermuda.db` alone can restore as empty.
 
+## End to end, as a stranger
+
+`demo/e2e.Dockerfile` starts from a bare Ubuntu with Go, git and herdr on it and
+nothing else, installs bermuda **from GitHub the way the README says to**, and
+then uses it: jobs, a workflow that really runs, a failing step that parks, the
+thread and its claims, the scheduler and its off switch, the board's refusal to
+draw with no terminal, and an uninstall that leaves the store behind.
+
+```bash
+docker build -f demo/e2e.Dockerfile -t bermuda-e2e .
+docker run --rm bermuda-e2e
+```
+
+It tests what the demo container cannot: the demo builds from the working tree,
+which proves the code works and says nothing about whether anyone else can
+install it. Every check here is a promise the README or the docs make. Two of
+them were already wrong when the suite was first run — `herdr plugin list` does
+not print the plugin directory, and asking herdr what actions it registered
+needs a running server — and both were documentation bugs, not test bugs.
+
 ## The demo container
 
 `demo/` builds a clean Ubuntu with herdr, bermuda and a demo store in it, and
