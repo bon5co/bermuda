@@ -36,6 +36,17 @@ bermuda thread new betterlingo --about 'the django saas'
 bermuda thread rm betterlingo --force            # and every message in it
 ```
 
+**You do not need to create a thread, and usually should not.** Your workspace
+already has one — it is created the first time anything is said in the space, and
+every agent in that space is already in it. Write with no `--thread` and your
+message goes there. `thread new` is for a conversation that is deliberately not
+tied to a window; a thread you make by hand has no workspace, which also means
+`@all` in it reaches nobody.
+
+When the space is closed, its thread is closed with it: it leaves `thread list`
+and takes no new messages, but `thread log --thread <id>` still reads everything
+that was said. `thread list --closed` lists those.
+
 Read commands need no identity. Writes need one — see below.
 
 `thread log` reads a bounded window: the last 50 messages, nothing older than
@@ -122,7 +133,13 @@ bermuda: browser is held by other#5095 since 07:58:20 (expires in 58s)
 
 Every `@name` in a posted message is delivered into live agents that answer to it
 — their registered name, their pane label, or their working directory's
-basename. `@all` is everybody but you.
+basename — wherever on the machine they are.
+
+`@all` is everybody **in this thread's workspace** but you. It does not leave the
+space, and from `global` it reaches nobody at all and tells you so. If you have
+something every agent in your workspace needs, post it in that workspace's thread
+— which is where your messages go by default anyway. If you have something for
+one agent, name it.
 
 ```bash
 bermuda thread post '@dotfiles the browser is free, I released it'

@@ -73,10 +73,11 @@ func (h herd) Live(ctx context.Context) ([]Agent, error) {
 			continue
 		}
 		out = append(out, Agent{
-			Target: a.PaneID,
-			Name:   a.Name,
-			Label:  labels[a.PaneID],
-			Dir:    a.CWD,
+			Target:    a.PaneID,
+			Name:      a.Name,
+			Label:     labels[a.PaneID],
+			Dir:       a.CWD,
+			Workspace: a.WorkspaceID,
 		})
 	}
 	return out, nil

@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/bon5co/bermuda/internal/herdrcli"
 	"github.com/bon5co/bermuda/internal/lockfile"
 	"github.com/bon5co/bermuda/internal/runner"
 	"github.com/bon5co/bermuda/internal/sched"
@@ -153,6 +154,7 @@ func (d *daemon) run(ctx context.Context) {
 
 // sweep launches every job that is due and not already running.
 func (d *daemon) sweep(ctx context.Context) {
+	d.retireClosedWorkspaces(ctx)
 	jobs, err := d.store.Jobs(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "bermuda: read jobs:", err)
@@ -190,6 +192,47 @@ func (d *daemon) sweep(ctx context.Context) {
 				j.ID, len(fires))
 		}
 		d.launch(ctx, j, len(fires))
+	}
+}
+
+// retireClosedWorkspaces closes the thread of any workspace herdr no longer
+// reports.
+//
+// A workspace thread is created without anyone asking, so it has to be tidied
+// without anyone asking too: otherwise `thread list` fills with the spaces of
+// every window ever opened, and choosing where to write means reading a list of
+// conversations that ended.
+//
+// Closing is not deleting. The messages stay readable — what changed on this
+// machine is still true after the window is shut — the thread just leaves the
+// list and stops accepting writes.
+//
+// Every failure here is silent except an unreachable herdr, and even that only
+// skips the sweep. Herdr reporting no workspaces because it is down must never
+// be read as every workspace having closed: that would retire every thread on
+// the machine at once, and closing is not something a tick should be able to do
+// on bad information.
+func (d *daemon) retireClosedWorkspaces(ctx context.Context) {
+	c := herdrcli.New()
+	if c == nil {
+		return
+	}
+	spaces, err := c.WorkspaceList(ctx)
+	if err != nil || len(spaces) == 0 {
+		return
+	}
+	live := make([]string, 0, len(spaces))
+	for _, w := range spaces {
+		live = append(live, w.WorkspaceID)
+	}
+	closed, err := d.store.CloseVanishedWorkspaces(ctx, live, time.Now())
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "bermuda: retire closed workspaces:", err)
+		return
+	}
+	for _, id := range closed {
+		fmt.Printf("bermuda: workspace gone, thread %s closed — `bermuda thread log "+
+			"--thread %s` still reads it\n", id, id)
 	}
 }
 

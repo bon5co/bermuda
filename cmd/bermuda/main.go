@@ -106,13 +106,17 @@ Usage:
   bermuda thread with <resource> --ttl 20m -- <cmd>...
   bermuda thread whoami [--as <name>]  Who this shell claims as, and its pid
 
-  Every thread subcommand takes --thread <id>, defaulting to $BERMUDA_THREAD and
-  then to global. Claims are global whatever thread they were taken from.
+  Every thread subcommand takes --thread <id>, defaulting to $BERMUDA_THREAD,
+  then this workspace's own thread, then global. A workspace thread is created
+  the first time anything is said in that space and closed when the space goes;
+  closed threads are still readable. Claims are global whatever thread they
+  were taken from.
   An interactive identity is name + pid, so two agents both called ada are
   two holders; $BERMUDA_PID forces the pid when it resolves to the wrong thing.
   An @name in a posted message is delivered to every live agent answering to it
-  (its herdr name, its pane label, or its working directory); @all is everybody
-  but you. Reaching nobody is reported, never an error.
+  (its herdr name, its pane label, or its working directory), wherever it is.
+  @all is everybody in this thread's workspace but you, and reaches nobody from
+  global. Reaching nobody is reported, never an error.
   bermuda usage [--since 7d]          Token totals per job
   bermuda daemon [--tick 5s]          Run the scheduler loop
   bermuda daemon --detach             Start it in the background and return

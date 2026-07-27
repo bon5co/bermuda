@@ -144,6 +144,12 @@ func resolveThread(flagged string) (string, error) {
 	if id := strings.TrimSpace(os.Getenv("BERMUDA_THREAD")); id != "" {
 		return store.ParseThreadID(id)
 	}
+	// The workspace this pane is in, if herdr knows of one. An agent should not
+	// have to create a thread or remember to name it: the space it is working in
+	// is a conversation already, and everything else in that space is in it.
+	if id := workspaceThread(context.Background()); id != "" {
+		return id, nil
+	}
 	return store.GlobalThread, nil
 }
 
@@ -173,6 +179,7 @@ func claimsAreGlobal(flagged, why string) {
 func threadList(argv []string) error {
 	fs := flag.NewFlagSet("thread list", flag.ExitOnError)
 	asJSON := fs.Bool("json", false, "emit JSON")
+	closed := fs.Bool("closed", false, "list the threads of workspaces that have gone instead")
 	if err := fs.Parse(argv); err != nil {
 		return err
 	}
@@ -182,7 +189,12 @@ func threadList(argv []string) error {
 	}
 	defer s.Close()
 
-	threads, err := s.Threads(context.Background())
+	ctx := context.Background()
+	list := s.Threads
+	if *closed {
+		list = s.ClosedThreads
+	}
+	threads, err := list(ctx)
 	if err != nil {
 		return err
 	}
@@ -191,8 +203,13 @@ func threadList(argv []string) error {
 		enc.SetIndent("", "  ")
 		return enc.Encode(threads)
 	}
+	// The workspace's *current* label, not the one the thread was named after.
+	// A thread id is fixed when it is created so that scripts and cron entries
+	// keep resolving; renaming the space is therefore expected to leave the id
+	// looking stale, and this column is where that drift is supposed to show.
+	labels := workspaceLabels(ctx)
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "THREAD\tMESSAGES\tLAST\tABOUT")
+	fmt.Fprintln(w, "THREAD\tSPACE\tMESSAGES\tLAST\tABOUT")
 	for _, t := range threads {
 		// A thread nobody has written in reads as "never" rather than as a
 		// timestamp from 1970, which looks like a bug in the store.
@@ -200,9 +217,30 @@ func threadList(argv []string) error {
 		if !t.LastAt.IsZero() {
 			last = t.LastAt.Format("2006-01-02 15:04")
 		}
-		fmt.Fprintf(w, "%s\t%d\t%s\t%s\n", t.ID, t.Messages, last, t.About)
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\n",
+			t.ID, spaceColumn(t, labels), t.Messages, last, t.About)
 	}
 	return w.Flush()
+}
+
+// spaceColumn names the workspace behind a thread.
+//
+// A thread with no workspace says so with a dash rather than a blank, because a
+// blank in a table reads as missing data — and "nobody automated this one" is
+// information: it is the case where `@all` will not work.
+func spaceColumn(t store.Thread, labels map[string]string) string {
+	switch {
+	case t.WorkspaceID == "":
+		return "-"
+	case t.Closed():
+		return "(gone)"
+	case labels[t.WorkspaceID] != "":
+		return labels[t.WorkspaceID]
+	default:
+		// Herdr knows the space but nobody labelled it, or herdr is not there to
+		// ask. Either way the id is the only name it has.
+		return t.WorkspaceID
+	}
 }
 
 // threadNew creates a conversation.
@@ -300,7 +338,7 @@ func threadSay(argv []string, kind store.ThreadKind) error {
 	fmt.Printf("%s %s (%s): %s\n", m.CreatedAt.Format("15:04"), m.Kind, m.Thread, m.Body)
 	// After the post, and never before it. Delivery is the courtesy; the thread
 	// is the record.
-	announce(os.Stderr, theHerd(), m)
+	announce(os.Stderr, theHerd(), m, threadWorkspace(context.Background(), s, m.Thread))
 	return nil
 }
 
@@ -318,9 +356,9 @@ var theHerd = func() mention.Herd { return mention.FromHerdr(herdrcli.New()) }
 // the time this runs, and an agent that has exited since somebody last wrote
 // its name is the ordinary case rather than an error — the log is full of names
 // of agents that finished hours ago.
-func announce(w io.Writer, h mention.Herd, m store.ThreadMessage) {
+func announce(w io.Writer, h mention.Herd, m store.ThreadMessage, workspace string) {
 	res, err := mention.Deliver(context.Background(), h, mention.Message{
-		Thread: m.Thread, Author: m.By.String(), Body: m.Body,
+		Thread: m.Thread, Author: m.By.String(), Body: m.Body, Workspace: workspace,
 	}, mention.Me(m.By.Name))
 	if err != nil {
 		// Only herdr being unreachable lands here — no herdr server, or a

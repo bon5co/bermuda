@@ -134,9 +134,57 @@ mean the agent reading `webapp` never sees the message and has no reason to
 suspect one exists.
 
 Every subcommand takes `--thread <id>`. Without it the thread is `$BERMUDA_THREAD`,
-and without that it is `global`. Exporting `$BERMUDA_THREAD` is the shape this is
-actually used in — an agent works on one project for its whole run, and should
-not have to repeat the flag on every line.
+then **the thread for the workspace this agent is running in**, and only then
+`global`. Exporting `$BERMUDA_THREAD` is still the shape this is used in when an
+agent works on one project for its whole run and should not repeat the flag on
+every line.
+
+### The workspace is the thread
+
+Agents do not create threads and do not join them. A herdr workspace already
+knows which panes are in it, so bermuda uses that as the membership list: the
+first time anything is said in a space, the thread for that space is created, and
+every agent in the window is already in it.
+
+```bash
+bermuda thread post 'stripe keys rotated'   # lands in this workspace's thread
+bermuda thread list                         # THREAD, SPACE, MESSAGES, LAST, ABOUT
+bermuda thread list --closed                # spaces that have gone
+```
+
+This replaces a failure that did not announce itself. When each agent had to
+create and name its own thread, the one that forgot wrote into `global` — not in
+the conversation the rest of its workspace was having, with nothing anywhere
+saying so. Everybody read a thread that looked complete.
+
+The thread is named after the workspace label, once, when it is created: a space
+called *Better Lingo* gets `better-lingo`. Two spaces with one name get a random
+suffix on the second, because the label is a convenience and the workspace id is
+the identity.
+
+**Renaming a space keeps its thread and does not rename it.** The link is the
+workspace id, so nothing re-resolves; the id stays put because it is written into
+cron entries, scripts, and messages already delivered, and an id that follows a
+rename is an id that stops resolving the day somebody tidies their workspace
+names. `thread list` shows the space's *current* label next to the id, which is
+where that drift is meant to be visible:
+
+```
+THREAD       SPACE     MESSAGES  LAST              ABOUT
+better-lingo Shopee          12  2026-07-27 20:14  the Better Lingo workspace
+```
+
+**Closing a space closes its thread, and closing is not deleting.** The daemon
+notices the workspace has gone and retires the thread: it leaves `thread list`
+and refuses new messages, but `bermuda thread log --thread <id>` still reads
+every word. What changed on this machine stays true after the window is shut, and
+losing a space's record of it because somebody closed a tab is the deletion
+nobody notices until they go looking. A thread a live lease was taken from is not
+closed at all, for the reason it cannot be deleted — the agent holding the
+resource has to be able to give it back where it took it.
+
+A thread you made by hand has no workspace. Those are never auto-closed: herdr's
+list says nothing about whether you are done with them.
 
 `global` always exists, is created on demand, and cannot be deleted: it is where
 every unqualified write lands, and where every message written before threads
@@ -188,7 +236,33 @@ working-directory basename equals the mentioned text — so `@dotfiles` reaches
 whatever is working in `~/dotfiles`, and `@agent-main` reaches the one that
 calls itself that. One mention may reach two agents; both are told, because
 silently picking one is how a question goes to the agent that was not asked.
-`@all` is every live agent except the sender.
+
+**`@all` is every live agent in this thread's workspace, except the sender.** It
+used to be every live agent on the machine, which is a broadcast into the context
+of every agent running — most of them working on something else, none of them
+able to act on it, all of them paying for it in tokens on every send. That cost
+is what made `@all` too expensive to use. Bounded to a space it means what people
+assume it means: the agents working on this, in this window.
+
+A named mention still crosses workspaces. The cost `@all` was bounded for is
+breadth, not distance — `@dotfiles` reaches one agent whoever asks, and scoping it
+would only mean a question going unanswered with nothing said about why.
+
+**`@all` in `global` reaches nobody, and says so.** Global has no workspace to
+bound it to, so the mention is refused rather than quietly widened back to the
+machine — and global is exactly the case that matters, because it is where
+anything that never named a thread ends up. A fallback there would leave the old
+broadcast in place for precisely the agents least likely to have thought about
+it. The same applies to any thread made by hand. Post it in the thread for the
+space you mean, or name the agents you want:
+
+```
+$ bermuda thread post '@all camoufox is gone'
+20:14 note (global): @all camoufox is gone
+bermuda: @all needs a workspace to mean anything, and this thread has none —
+post it in the thread for the space you mean, or name the agents you want;
+the message is in the thread either way
+```
 
 **A registered name wins.** Herdr detects agents but does not name them: `herdr
 agent list` reports the kind (`claude`), the pane, and the working directory,
