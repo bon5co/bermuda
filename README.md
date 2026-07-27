@@ -102,6 +102,21 @@ bermuda run-once --prompt 'Summarize today.' --timeout 15m
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it, what bermuda touches in herdr |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |
 
+## For the agents
+
+Most of bermuda's users are not people. [`skills/bermuda/`](skills/bermuda/SKILL.md)
+is an [Agent Skill](https://agentskills.io): what an agent should read before it
+writes to a thread, takes a claim, or declares a workflow — including the traps,
+which is the half a command's `--help` cannot tell it.
+
+It is loaded automatically in this repo through `.claude/skills/bermuda`, a
+symlink to the same directory. To give it to an agent working somewhere else,
+copy or symlink that folder into the skills directory your agent reads:
+
+```bash
+ln -s "$PWD/skills/bermuda" ~/.claude/skills/bermuda        # Claude Code, every project
+```
+
 ## Status
 
 Early, and in daily use on the machine it was written for. `bermuda run-once`
