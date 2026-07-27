@@ -1,6 +1,6 @@
 id = "bon5co.bermuda"
 name = "Bermuda"
-version = "2.0.0"
+version = "2.1.0"
 min_herdr_version = "0.7.0"
 description = "Agent harness: schedules work and runs each job as an interactive Herdr agent"
 platforms = ["linux", "macos"]
