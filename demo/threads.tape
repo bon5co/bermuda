@@ -35,3 +35,9 @@ Sleep 1500ms
 Type "bermuda thread claim browser --ttl 5m --why 'checking a login' --as scout" Enter
 Sleep 2s
 Screenshot thread-claim.png
+
+# VHS exits as soon as the tape ends, and a screenshot taken on the last line
+# does not survive that. thread-claim.png was missing from every run for exactly
+# this reason, and nothing said so — VHS logs "Screenshot thread-claim.png"
+# either way, so the only symptom was a file that quietly never appeared.
+Sleep 2s
