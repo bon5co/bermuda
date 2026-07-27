@@ -102,6 +102,13 @@ your `$PATH`, talking to the same store:
 go install github.com/bon5co/bermuda/cmd/bermuda@latest
 ```
 
+And the skill, so your agents know how to drive it — see
+[for the agents](#for-the-agents):
+
+```bash
+npx skills add bon5co/bermuda
+```
+
 Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
 file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
 and leaves your store alone.
@@ -126,10 +133,10 @@ to a thread, takes a claim, or calls a flow — including the traps, which is th
 half a command's `--help` cannot tell it.
 
 ```bash
-ln -s "$PWD/bermuda/skills/bermuda" ~/.claude/skills/bermuda
+npx skills add bon5co/bermuda
 ```
 
-→ [where to put it, and why to symlink rather than copy](docs/development.md#the-skill)
+→ [other places to put it, and when to symlink instead](docs/development.md#the-skill)
 
 ## Status
 
@@ -140,6 +147,12 @@ it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-st
 
 The contract is the CLI. Everything else lives under `internal/`, so nothing here
 is importable as a Go library — deliberately.
+
+**The supported harness is [Claude Code](https://claude.com/claude-code).** Herdr
+runs other agent kinds and Bermuda will launch them, but only Claude Code's flag
+spellings are modelled — `--model`, `--effort`, `--agent`, the permission flags.
+Another kind gets its passthrough args and none of that, rather than flags
+invented on its behalf.
 
 ## License
 
