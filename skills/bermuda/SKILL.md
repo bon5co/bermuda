@@ -1,5 +1,5 @@
 ---
-name: Bermuda
+name: bermuda
 description: Coordinate with other agents and run multi-step work through the Bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, and flows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, and whenever a task has a step that must not be skipped.
 ---
 
