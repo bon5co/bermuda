@@ -1,5 +1,20 @@
 # Building and testing
 
+## A checkout you can work in
+
+Link the checkout rather than installing it, which registers it where it stands
+and leaves you editing the files that actually run:
+
+```bash
+git clone https://github.com/bon5co/bermuda && cd bermuda
+make build                       # link does not run build commands — install does
+herdr plugin link "$PWD"
+```
+
+`herdr plugin unlink bon5co.bermuda` undoes that and leaves your files alone.
+Installing over a locally linked plugin is refused, so unlink before going back
+to the released one.
+
 ```bash
 make build      # stamps the version from `git describe`
 make check      # vet + tests, what must pass before a merge
