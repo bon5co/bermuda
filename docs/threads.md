@@ -26,7 +26,7 @@ bermuda thread event 'removed camoufox'        # anyone whose memory is now stal
 bermuda thread claim browser --ttl 20m --why 'tiktok signup'
 bermuda thread release browser
 bermuda thread status                          # who holds what, since when, until when
-bermuda thread log [--since 1h] [--kind claim,event] [--limit 200]
+bermuda thread log [--since 1h] [--kind claim,event] [--limit 50]
 bermuda thread with browser --ttl 20m -- camoufox.sh
 bermuda thread whoami                          # who this shell claims as, and its pid
 ```
@@ -36,6 +36,33 @@ conversation about it — who changed what, who is holding which resource, and
 which agent was told:
 
 ![bermuda thread log across every thread](../assets/thread-log.png)
+
+### The read window
+
+`thread log` reads through a bounded window: **the last 50 messages, and nothing
+older than 24 hours**, whichever bites first. Reading the thread is paid for out
+of the agent's context, and most of an append-only log is settled history by the
+time anyone reads it — a note from last week is usually stale, and the locking
+story is folded separately by `thread status`, so the log does not have to carry
+it.
+
+`--since` and `--limit` widen the window up to a ceiling of **200 messages and
+7 days**. Asking for more is not an error: the request is clamped to the ceiling
+and one line on stderr says so, because a script passing a generous `--limit`
+today is not doing anything wrong, it just cannot have more.
+
+When either bound cut the log short, one line on stderr names what was left out:
+
+```
+bermuda: showing the last 50 of 312 messages in the last 24h, and 1204 older
+than that; --since/--limit to widen, ceiling is 200 messages / 7d
+```
+
+That line is the point of the whole feature. A truncated log that looks complete
+is the failure mode: an agent reads fifty lines, concludes it has the whole
+picture, and acts on a thread whose load-bearing message was number fifty-one.
+The notice goes to stderr, so `thread log --json` still pipes into a parser
+unchanged.
 
 This was called `room` until the rename. `bermuda room ...` still works and does
 exactly the same thing, printing one line to stderr to say so — there are

@@ -865,27 +865,90 @@ type ThreadFilter struct {
 	// Kinds keeps only these kinds. Empty means all of them.
 	Kinds []ThreadKind
 	// Limit caps how many messages come back. It selects the newest N, which
-	// are then returned oldest-first.
+	// are then returned oldest-first. Zero, or anything above ThreadMaxLimit,
+	// reads as the ceiling: there is no way to ask this for the whole table.
 	Limit int
 }
 
-// ThreadDefaultLimit bounds an unfiltered read of the log.
-const ThreadDefaultLimit = 200
-
-// ThreadLog returns messages oldest-first, limited to the most recent Limit.
+// How far back a read of the log is allowed to reach.
 //
-// The two halves of that sentence are both deliberate. A log reads downwards, so
-// the newest line belongs at the bottom where the eye finishes; but "the last
-// two hundred" is what anyone actually wants of an append-only table that grows
-// forever, and taking the first two hundred would pin every reader to the day
-// the thread was created.
-func (s *Store) ThreadLog(ctx context.Context, f ThreadFilter) ([]ThreadMessage, error) {
-	limit := f.Limit
-	if limit <= 0 {
-		limit = ThreadDefaultLimit
+// The thread is a record of what is *currently* true, and an agent's context is
+// the scarce thing being spent on it. Two hundred messages of mostly-settled
+// history is a large fraction of that budget for a record whose interesting part
+// is nearly always the last hour: claims are folded separately by thread status,
+// so the log does not have to carry the locking story to be useful.
+//
+// So there are two pairs. The default is what a caller gets for asking for
+// nothing, and it is deliberately small. The ceiling is what a caller gets no
+// matter what it asks for, and exists because "give me everything" is a request
+// the reader cannot afford to have granted.
+const (
+	// ThreadDefaultLimit is how many messages an unqualified read returns.
+	ThreadDefaultLimit = 50
+	// ThreadDefaultAge is how far back an unqualified read reaches. A note from
+	// last week is usually stale; whichever of the two bounds bites first wins.
+	ThreadDefaultAge = 24 * time.Hour
+	// ThreadMaxLimit is the most any read can return, however large a --limit it
+	// asks for. This was the old default, which is the honest place for it: it
+	// was always the number past which nobody could usefully read.
+	ThreadMaxLimit = 200
+	// ThreadMaxAge is the furthest back any read can reach.
+	ThreadMaxAge = 7 * 24 * time.Hour
+)
+
+// ThreadWindow is a resolved read window: the bounds a log read will actually
+// be given, and whether the caller asked for more than it can have.
+//
+// Asking for more is not an error and must not be one. A script that passes a
+// generous --limit today is not doing anything wrong, and failing it would break
+// it for no gain — it simply cannot have more than the ceiling, and is told so.
+type ThreadWindow struct {
+	// Limit is how many messages the read may return.
+	Limit int
+	// Age is how far back it may reach.
+	Age time.Duration
+	// Since is Age applied to the instant the window was resolved.
+	Since time.Time
+	// LimitClamped is set when the caller asked for more than ThreadMaxLimit.
+	LimitClamped bool
+	// AgeClamped is set when the caller asked to reach past ThreadMaxAge.
+	AgeClamped bool
+}
+
+// ThreadReadWindow resolves what a read of the log is allowed to see.
+//
+// A limit or age of zero or less means "unspecified", and gets the default.
+// Anything past the ceiling is brought back to it rather than refused.
+func ThreadReadWindow(limit int, age time.Duration, now time.Time) ThreadWindow {
+	w := ThreadWindow{Limit: limit, Age: age}
+	if w.Limit <= 0 {
+		w.Limit = ThreadDefaultLimit
 	}
-	q := `SELECT seq, thread, kind, agent, job_id, run_id, pid, resource, body, expires_at, created_at
-	      FROM thread_messages`
+	if w.Age <= 0 {
+		w.Age = ThreadDefaultAge
+	}
+	if w.Limit > ThreadMaxLimit {
+		w.Limit, w.LimitClamped = ThreadMaxLimit, true
+	}
+	if w.Age > ThreadMaxAge {
+		w.Age, w.AgeClamped = ThreadMaxAge, true
+	}
+	w.Since = resolveNow(now).Add(-w.Age)
+	return w
+}
+
+// Apply narrows a filter to the window.
+func (w ThreadWindow) Apply(f ThreadFilter) ThreadFilter {
+	f.Limit = w.Limit
+	f.Since = w.Since
+	return f
+}
+
+// where builds the shared predicate, so that counting what a filter matches and
+// reading it cannot drift apart. A count that disagreed with the log it
+// describes would be worse than no count at all: it is printed precisely to tell
+// a reader how much it is not seeing.
+func (f ThreadFilter) where() (string, []any) {
 	var where []string
 	var args []any
 	if thread := strings.TrimSpace(f.Thread); thread != "" {
@@ -904,9 +967,46 @@ func (s *Store) ThreadLog(ctx context.Context, f ThreadFilter) ([]ThreadMessage,
 		}
 		where = append(where, "kind IN ("+strings.Join(marks, ",")+")")
 	}
-	if len(where) > 0 {
-		q += " WHERE " + strings.Join(where, " AND ")
+	if len(where) == 0 {
+		return "", nil
 	}
+	return " WHERE " + strings.Join(where, " AND "), args
+}
+
+// ThreadCount is how many messages a filter matches, ignoring its Limit.
+//
+// It is what makes a truncated log say so. A log that was cut at fifty and looks
+// complete is this feature's failure mode: an agent reads it, concludes it has
+// the whole picture, and acts on a thread whose load-bearing message was number
+// fifty-one.
+func (s *Store) ThreadCount(ctx context.Context, f ThreadFilter) (int, error) {
+	clause, args := f.where()
+	var n int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM thread_messages`+clause, args...).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// ThreadLog returns messages oldest-first, limited to the most recent Limit.
+//
+// The two halves of that sentence are both deliberate. A log reads downwards, so
+// the newest line belongs at the bottom where the eye finishes; but "the last N"
+// is what anyone actually wants of an append-only table that grows forever, and
+// taking the first N would pin every reader to the day the thread was created.
+//
+// The ceiling is enforced here rather than only at the flag, so no caller can
+// ask the store for an unbounded read by going round the CLI.
+func (s *Store) ThreadLog(ctx context.Context, f ThreadFilter) ([]ThreadMessage, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > ThreadMaxLimit {
+		limit = ThreadMaxLimit
+	}
+	q := `SELECT seq, thread, kind, agent, job_id, run_id, pid, resource, body, expires_at, created_at
+	      FROM thread_messages`
+	clause, args := f.where()
+	q += clause
 	q += " ORDER BY seq DESC LIMIT ?"
 	args = append(args, limit)
 
