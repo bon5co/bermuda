@@ -43,6 +43,32 @@ func (m *Model) inspectorWidth() int {
 	return spare
 }
 
+// inspector renders a tab's panel at the width there is room for, or nothing at
+// all when there is not. Which panel is the tab's business; whether there is
+// space for one is this package's, decided in one place so a tab added later
+// cannot invent a second answer.
+func (m *Model) inspector(render func(int) string) string {
+	w := m.inspectorWidth()
+	if w <= 0 {
+		return ""
+	}
+	return render(w)
+}
+
+// beside puts a panel in the space to the right of a table.
+//
+// JoinHorizontal does not end with a newline, and a panel is usually taller
+// than the table it sits beside, so without one the next line is appended to the
+// panel's last row of padding — which pushed the page counter past the right
+// edge of the pane.
+func beside(table, panel string) string {
+	if panel == "" {
+		return table
+	}
+	return lipgloss.JoinHorizontal(lipgloss.Top,
+		table, strings.Repeat(" ", inspectorGap), panel) + "\n"
+}
+
 // renderInspector summarises the selected job.
 func (m *Model) renderInspector(width int) string {
 	j, ok := m.selectedJob()
