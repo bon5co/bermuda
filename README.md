@@ -159,9 +159,10 @@ git clone https://github.com/bon5co/bermuda
 ln -s "$PWD/bermuda/skills/bermuda" ~/.claude/skills/bermuda
 ```
 
-If you installed the plugin rather than cloning, herdr already has a copy —
-`herdr plugin list` prints the directory it keeps it in, and `skills/bermuda`
-sits inside that.
+If you installed the plugin rather than cloning, herdr already has a copy, under
+`~/.config/herdr/plugins/github/bon5co.bermuda-<hash>/skills/bermuda`. (`herdr
+plugin list` names the source, `github:bon5co/bermuda@<commit>`, rather than that
+path.)
 
 | where it goes | who reads it |
 |---|---|
