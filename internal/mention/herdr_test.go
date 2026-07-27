@@ -54,6 +54,24 @@ func TestLiveSkipsTheBoardsOwnRow(t *testing.T) {
 	}
 }
 
+// A board still running a previous build holds its pane under whatever the
+// label was spelled then. The skip has to survive the upgrade, because a board
+// on screen is exactly the board a mention would be typed into.
+func TestLiveSkipsTheBoardWhateverTheSpelling(t *testing.T) {
+	list := `{"id":"1","result":{"agents":[
+		{"agent":"bermuda","pane_id":"wE:p4","cwd":"/home/x/Projects/bermuda"},
+		{"agent":"Bermuda","pane_id":"wE:p9","cwd":"/home/x/Projects/bermuda"}
+	]}}`
+
+	live, err := FromHerdr(fakeHerdr(t, list)).Live(context.Background())
+	if err != nil {
+		t.Fatalf("live: %v", err)
+	}
+	if len(live) != 0 {
+		t.Errorf("live = %+v, want no board reachable under either spelling", live)
+	}
+}
+
 // Belt and braces on the two mentions that would have reached it.
 func TestBoardIsUnreachableByNameAndByAll(t *testing.T) {
 	list := `{"id":"1","result":{"agents":[

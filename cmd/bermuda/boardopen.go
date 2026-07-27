@@ -124,7 +124,7 @@ func bermudaWorkspace(ctx context.Context, h *herdrcli.Client) (string, error) {
 		return "", err
 	}
 	for _, w := range spaces {
-		if w.Label == runner.WorkspaceLabel {
+		if runner.IsWorkspaceLabel(w.Label) {
 			return w.WorkspaceID, nil
 		}
 	}

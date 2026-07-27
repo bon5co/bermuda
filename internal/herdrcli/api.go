@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -330,7 +331,21 @@ func (c *Client) ReportPaneMetadata(ctx context.Context, paneID, source string, 
 // typed in as keystrokes — where a single letter is an action, and one of them
 // runs the selected job. Mention delivery therefore has to recognise the board
 // and skip it, which means both sides need this name.
-const BoardAgent = "bermuda"
+//
+// Capitalised because Herdr prints it verbatim, next to agents called Claude
+// and Codex. It is a proper noun in that column, not a command being typed.
+const BoardAgent = "Bermuda"
+
+// IsBoardAgent reports whether a herdr agent label is the board's.
+//
+// Case-insensitive, and that is the point rather than tidiness: the label is
+// baked into a binary, so during an upgrade a board still running the old one
+// holds the pane under the old spelling. Matching loosely means the skip that
+// keeps mentions out of a TUI cannot be defeated by which build happens to be
+// on screen.
+func IsBoardAgent(label string) bool {
+	return strings.EqualFold(label, BoardAgent)
+}
 
 // PaneAgent is a pane claimed as an agent under a label of bermuda's choosing.
 //
