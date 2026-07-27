@@ -30,21 +30,47 @@ Three things follow from that, and they are most of the design:
 
 ## Install
 
-Bermuda needs [herdr](https://herdr.dev) — it is where the runs live — and a Go
-toolchain to build with. Nothing else.
+Bermuda is a [herdr](https://herdr.dev) plugin — herdr is where the runs live —
+so it installs the way every herdr plugin does:
 
 ```bash
-go install github.com/bon5co/bermuda/cmd/bermuda@latest   # or: git clone && make build
-herdr plugin link /path/to/bermuda                        # registers the board, hooks and actions
+herdr plugin install bon5co/bermuda
 ```
 
-The plugin registration is what starts the scheduler, puts bermuda in Herdr's
-sidebar, and puts the board one keystroke away. Without it bermuda is still a
-working CLI, and `bermuda board` opens the board wherever you run it. See
-[the board](docs/board.md#in-herdrs-sidebar).
+That clones the repo, runs the one build command in `herdr-plugin.toml` (a plain
+`go build`, so a **Go toolchain is the only prerequisite**), and registers the
+plugin. Herdr shows you the source and every command it will run before it does
+any of it; add `--yes` to skip the prompt, or `--ref` to pin a revision.
 
-Everything bermuda stores lives in `~/.bermuda` (override with
+Registration is what starts the scheduler, puts bermuda in herdr's sidebar, and
+puts the board one keystroke away — see [the board](docs/board.md#in-herdrs-sidebar).
+
+To reach `bermuda` as a command anywhere, install the CLI too. The plugin runs
+from its own managed checkout, so this is a separate copy on your `$PATH`:
+
+```bash
+go install github.com/bon5co/bermuda/cmd/bermuda@latest
+```
+
+Both talk to the same store, so it does not matter which one you type at.
+
+Everything bermuda keeps lives in `~/.bermuda` (override with
 `$BERMUDA_STATE_DIR`). There is no config file and no daemon to install.
+
+To remove it: `herdr plugin uninstall bon5co/bermuda`, which unregisters it and
+deletes the managed checkout. Your store is left alone.
+
+**Working on bermuda itself?** Link your checkout instead, which registers it
+where it stands:
+
+```bash
+git clone https://github.com/bon5co/bermuda && cd bermuda
+make build                       # link does not run build commands — install does
+herdr plugin link "$PWD"
+```
+
+`herdr plugin unlink bon5co.bermuda` undoes that and leaves your files alone.
+`make install-plugin` does the rebuild-and-relink in one step.
 
 ## A first job
 
