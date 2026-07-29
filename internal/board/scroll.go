@@ -13,7 +13,11 @@ const defaultHeight = 24
 // chrome and a scrolling body and call windowBody through renderPane instead,
 // because their tab bar has to survive being scrolled past.
 func (m *Model) window(content string) string {
-	return m.windowBody(content, m.paneHeight())
+	out := m.windowBody(content, m.paneHeight())
+	// A whole-view render has no chrome above it, so its first line is the top
+	// of the pane. See mouse.go.
+	m.recordWindow(0, m.scroll)
+	return out
 }
 
 // windowBody trims content to avail rows, scrolling to keep the selected row
@@ -36,6 +40,7 @@ func (m *Model) windowBody(content string, avail int) string {
 		m.scroll = 0
 		// Everything fits, so the newest message is already on screen.
 		m.threadFollow = true
+		m.hitRows = len(lines)
 		return content
 	}
 
@@ -84,6 +89,10 @@ func (m *Model) windowBody(content string, avail int) string {
 	if end > len(lines) {
 		end = len(lines)
 	}
+	// How many of the rows on screen are content. The scroll hint below them is
+	// not a row of anything, and a click on it must not reach the line it is
+	// counting — the first one that did not fit. See mouse.go.
+	m.hitRows = end - m.scroll
 	out := strings.Join(lines[m.scroll:end], "\n")
 
 	above, below := m.scroll, len(lines)-end

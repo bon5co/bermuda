@@ -158,8 +158,11 @@ func (m *Model) renderFlows(start, end int) string {
 		tableW += w
 	}
 
+	line := 1
 	for i := start; i < end; i++ {
 		fr := rows[i]
+		m.mark(line, hitFlow, i)
+		line++
 		cursor := "  "
 		selected := m.focus == focusFlows && i == m.cursor
 		if selected {

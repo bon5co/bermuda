@@ -45,7 +45,13 @@ func (m *Model) renderPane(p pane) string {
 		avail = 1
 	}
 	out := append([]string{}, top...)
-	out = append(out, blockLines(m.windowBody(p.body, avail))...)
+	body := m.windowBody(p.body, avail)
+	// Where the body ended up, for the mouse: the chrome above it is the offset,
+	// and the scroll the window just settled on is what the first visible line
+	// is. Recorded after the window has run, because that is when the second of
+	// those is known.
+	m.recordWindow(len(top), m.scroll)
+	out = append(out, blockLines(body)...)
 	out = append(out, bottom...)
 
 	// The last defence, for the pane too short to hold even the chrome. What is

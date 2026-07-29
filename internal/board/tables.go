@@ -26,8 +26,13 @@ func (m *Model) renderJobs(start, end int) string {
 	widths := layout(cols, m.tableWidth())
 
 	b.WriteString("  " + dimStyle.Render(row(titles(cols), widths)) + "\n")
+	// line is where in this block the next row lands, counted from the header
+	// it starts under, so a click can be turned back into a row. See mouse.go.
+	line := 1
 	for i := start; i < end; i++ {
 		j := jobs[i]
+		m.mark(line, hitJob, i)
+		line++
 		cursor := "  "
 		if m.focus == focusJobs && i == m.cursor {
 			cursor = selectedStyle.Render(cursorMark + " ")
@@ -258,8 +263,11 @@ func (m *Model) renderRuns(start, end int) string {
 
 	// Only the current page is rendered, and the page indicator says how many
 	// there are, so nothing is hidden without a sign.
+	line := 1
 	for i := start; i < end; i++ {
 		r := runs[i]
+		m.mark(line, hitRun, i)
+		line++
 		cursor := "  "
 		if m.focus == focusRuns && i == m.cursor {
 			cursor = selectedStyle.Render(cursorMark + " ")
@@ -290,7 +298,13 @@ func (m *Model) renderRuns(start, end int) string {
 		}
 		b.WriteString(cursor + strings.Join(sized, " ") + "\n")
 		if m.expanded[r.ID] && len(steps) > 0 {
-			b.WriteString(m.renderStepLines(steps))
+			// The step lines belong to the row above them and are not rows
+			// themselves, so they are counted but not claimed: a click on one
+			// selects nothing rather than selecting whatever row happens to sit
+			// that many lines further down.
+			stepLines := m.renderStepLines(steps)
+			line += blockRows(stepLines)
+			b.WriteString(stepLines)
 		}
 	}
 	return b.String()

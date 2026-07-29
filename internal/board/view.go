@@ -16,6 +16,11 @@ import (
 
 // View renders the board, windowed to the pane height.
 func (m *Model) View() string {
+	// The previous frame's clickable rows go with the previous frame. Every
+	// view that has any records its own below; one that records none is a view
+	// where a click does nothing, which is the correct answer for the editor
+	// and the conversation.
+	m.resetHits()
 	if m.editor != nil {
 		return m.window(m.renderEditor())
 	}
@@ -42,7 +47,13 @@ func (m *Model) listPane() pane {
 	// The brand line and the tabs are pinned in every list view: the first says
 	// whether the scheduler is alive, the second says which list this is, and a
 	// reader who has scrolled into history needs both more than usual.
-	p := pane{top: m.renderBrand() + "\n" + m.renderTabs("")}
+	brand := m.renderBrand()
+	// Where the tab labels land: under the brand line, and under the tabs' own
+	// top border. The brand is measured rather than counted as one row, so a
+	// line added above the tabs later moves the click target with it instead of
+	// leaving clicks landing a row off.
+	m.tabRow = blockRows(brand) + 1
+	p := pane{top: brand + "\n" + m.renderTabs("")}
 	if m.focus == focusThread {
 		return m.threadPane(p)
 	}
@@ -90,12 +101,12 @@ func (m *Model) listPane() pane {
 	// is only meaningful on runs and enter only launches on flows, and a help
 	// line that grows past the pane width wraps, which costs a row the
 	// arithmetic above did not budget for.
-	help := "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · q quit"
+	help := "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · M mouse · q quit"
 	switch m.focus {
 	case focusRuns:
-		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · space steps · l/→ open · a attach · q quit"
+		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · space steps · l/→ open · a attach · M mouse · q quit"
 	case focusFlows:
-		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · enter run · u unpark · r reload · q quit"
+		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · enter run · u unpark · r reload · M mouse · q quit"
 	}
 	bottom.WriteString("\n" + helpStyle.Render(help))
 	p.bottom = bottom.String()
@@ -146,7 +157,7 @@ func (m *Model) threadPane(p pane) pane {
 	}
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
-		"tab threads/jobs/runs/flows · < > thread · t pick · i say · / search · j/k scroll · 1 live · q quit"))
+		"tab threads/jobs/runs/flows · < > thread · t pick · i say · / search · j/k scroll · 1 live · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
 }

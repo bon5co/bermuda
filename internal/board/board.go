@@ -143,6 +143,24 @@ type Model struct {
 	runDetail *store.Run
 	// compose is the open thread input box; nil when not writing.
 	compose *composer
+	// hits maps a body line to the row it draws, and hitTop and hitScroll say
+	// where that body landed on screen. Together they turn a click coordinate
+	// back into a row; they are written by the render pass and read by the next
+	// mouse event. See mouse.go.
+	hits      map[int]hit
+	hitTop    int
+	hitScroll int
+	// hitRows is how many rows of the body are on screen, which is not always
+	// how many the pane gave it: a windowed body spends its last row on the
+	// scroll hint.
+	hitRows int
+	// tabRow is the screen row the folder tabs' labels are on, and tabHits their
+	// spans across it. tabRow is -1 when the frame has no tabs.
+	tabRow  int
+	tabHits []tabHit
+	// mouseOff is set while the mouse has been handed back to the terminal, so
+	// text can be selected with it.
+	mouseOff bool
 	// mentions is who a posted @name can reach. It is nil in normal use and
 	// built from the herdr client on demand; tests set it to a fake, because a
 	// test that used the real one would type into whichever agents happen to be
@@ -211,6 +229,9 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 		watcher:  newBinaryWatcher(),
 		running:  map[string]bool{},
 		threadID: openingThread(),
+		hits:     map[int]hit{},
+		// No frame has been drawn yet, so there is no tab row to click.
+		tabRow: -1,
 		// The thread opens on its newest message: one that opened at the
 		// oldest line would show a board full of history that is over.
 		threadFollow: true,
@@ -508,6 +529,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
 	}
 	return m, nil
 }
@@ -524,7 +548,10 @@ const (
 // Run starts the board TUI, restarting into a newer build if one appears.
 func Run(s *store.Store, h *herdrcli.Client, deps Deps) error {
 	m := New(s, h, deps)
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	// Cell motion rather than all motion: the board has nothing that responds to
+	// the pointer merely passing over it, and reporting every idle movement
+	// wakes the event loop for frames that would render identically.
+	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	if _, err := p.Run(); err != nil {
 		return err
 	}
