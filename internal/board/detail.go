@@ -73,7 +73,13 @@ func (m *Model) renderDetail() string {
 	if len(m.detailRuns) == 0 {
 		b.WriteString(dimStyle.Render("  none") + "\n")
 	}
+	// Where the run rows start. This view is a page of prose above a list, and
+	// the prose is a different length for every job, so the offset is counted
+	// off the block already written rather than known in advance.
+	line := strings.Count(b.String(), "\n")
 	for i, r := range m.detailRuns {
+		m.mark(line, hitDetailRun, i)
+		line++
 		cursor := "  "
 		if i == m.cursor {
 			cursor = selectedStyle.Render(cursorMark + " ")

@@ -110,6 +110,12 @@ func (m *Model) renderTabs(suffix string) string {
 	active := m.tabIndex()
 
 	var top, mid, bot strings.Builder
+	// x tracks how far across the row the next folder starts, so a click can be
+	// resolved to the label under it. It is counted as the row is built rather
+	// than measured afterwards: the finished row is full of escape sequences,
+	// and a column is not a byte.
+	x := 1 // the leading frame edge
+	m.tabHits = nil
 	for i, label := range labels {
 		body := strings.Repeat("─", len(label)+2)
 
@@ -129,6 +135,10 @@ func (m *Model) renderTabs(suffix string) string {
 			text = selectedStyle
 		}
 		mid.WriteString(text.Render(" " + label + " "))
+		// The whole folder is the target, padding included: a reader aiming at a
+		// tab aims at the tab, not at its letters.
+		m.tabHits = append(m.tabHits, tabHit{x0: x, x1: x + len(label) + 2, focus: tabOrder[i]})
+		x += len(label) + 3 // the folder, plus the edge that follows it
 		if i == active {
 			bot.WriteString(strings.Repeat(" ", len(label)+2))
 		} else {

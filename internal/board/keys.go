@@ -9,6 +9,14 @@ import (
 // then the list. Horizontal keys mean depth and Tab means lists.
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Releasing the mouse works in every view, since the thing it is wanted for
+	// — selecting a run id, or the argv line — is on the pages the list keys do
+	// not reach. It is checked ahead of everything except the boxes that are
+	// being typed into, where `M` is a letter.
+	if msg.String() == "M" && m.editor == nil && m.flowInput == nil &&
+		m.compose == nil && !m.searching {
+		return m, m.toggleMouse()
+	}
 	// Deepest view first: the editor owns the keyboard while it is open.
 	if m.editor != nil {
 		return m.handleEditorKey(msg)

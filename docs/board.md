@@ -53,7 +53,31 @@ its own with what it did and how long it took:
 | `i` | write a message into the thread (threads tab) |
 | `<` `>` | previous / next thread along the row (threads tab) |
 | `t` | switch thread — a picker of every conversation (threads tab) |
+| `M` | release the mouse to the terminal, and take it back |
 | `q` | quit |
+
+## Mouse
+
+The board takes the mouse, so the wheel and the pointer work the way they do in
+anything else on screen:
+
+- **Click a row** to select it. Click the row that is already selected to open
+  it, which is what `l` does — and only what `l` does. `enter` on a flow
+  launches it, and a slipped double click that started an agent would spend
+  money there is no undo for.
+- **Click a tab** to switch lists.
+- **The wheel** moves the selection in a list, since a list is paged from its
+  cursor rather than scrolled, and moves the window itself in the thread and on
+  the detail pages, which have no selection. Scrolling up in the thread stops it
+  following its newest message, exactly as `k` does.
+- **The inspector is not clickable.** It describes the selected row, so clicking
+  it selects nothing rather than something else.
+
+`M` hands the mouse back. A program that asks for mouse reporting takes the
+terminal's own drag-select with it, and the board is a thing left open in a
+split all day — the run id, or the argv line on a job's detail page, is there to
+be copied. Shift-drag overrides the grab in most terminals; `M` is for the ones
+where it does not, and takes the mouse back when pressed again.
 
 Search matches on id, name, description, tags, and schedule for jobs; on job,
 outcome, park reason, note, and trigger for runs; and on kind, author, resource,

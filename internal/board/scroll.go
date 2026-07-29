@@ -13,7 +13,11 @@ const defaultHeight = 24
 // chrome and a scrolling body and call windowBody through renderPane instead,
 // because their tab bar has to survive being scrolled past.
 func (m *Model) window(content string) string {
-	return m.windowBody(content, m.paneHeight())
+	out := m.windowBody(content, m.paneHeight())
+	// A whole-view render has no chrome above it, so its first line is the top
+	// of the pane. See mouse.go.
+	m.recordWindow(0, m.scroll)
+	return out
 }
 
 // windowBody trims content to avail rows, scrolling to keep the selected row
