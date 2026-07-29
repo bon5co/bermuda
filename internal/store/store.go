@@ -654,7 +654,9 @@ func (s *Store) query(ctx context.Context, outcome, jobID string, limit int) ([]
 	if len(where) > 0 {
 		q += " WHERE " + strings.Join(where, " AND ")
 	}
-	q += ` ORDER BY started_at DESC LIMIT ?`
+	// The id breaks a tie on the second, so "the most recent run" is one
+	// definite row and LastRun and LastRuns cannot disagree about which.
+	q += ` ORDER BY started_at DESC, id DESC LIMIT ?`
 	args = append(args, limit)
 
 	rows, err := s.db.QueryContext(ctx, q, args...)
@@ -684,6 +686,37 @@ func (s *Store) Run(ctx context.Context, id string) (*Run, error) {
 		return nil, err
 	}
 	return &r, nil
+}
+
+// LastRuns returns every job's most recent run, keyed by job id, in one query.
+//
+// This is not the same answer as taking the newest N runs and keeping the first
+// sighting of each job. A job that has not run since a busier one filled the
+// window falls out of that answer entirely and reads as "never run" — which is
+// exactly wrong for the jobs the finished rule is meant to find, since a
+// one-shot's last run is by definition the oldest news on the board.
+//
+// Runs not attached to a job (a flow called directly) have no job to key on and
+// are left out.
+func (s *Store) LastRuns(ctx context.Context) (map[string]Run, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT `+runColumns+` FROM runs r
+		WHERE r.job_id <> '' AND r.id = (
+		  SELECT r2.id FROM runs r2 WHERE r2.job_id = r.job_id
+		  ORDER BY r2.started_at DESC, r2.id DESC LIMIT 1)`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]Run{}
+	for rows.Next() {
+		r, err := scanRun(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[r.JobID] = r
+	}
+	return out, rows.Err()
 }
 
 // LastRun returns the most recent run for a job, or ErrNotFound.

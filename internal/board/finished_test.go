@@ -1,10 +1,13 @@
 package board
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/bon5co/bermuda/internal/herdrcli"
 	"github.com/bon5co/bermuda/internal/store"
 )
 
@@ -87,6 +90,66 @@ func TestToggleShowsTheFinishedOnesAndMarksThem(t *testing.T) {
 	table := m.renderJobs(0, len(m.jobs))
 	if !strings.Contains(table, "(finished)") {
 		t.Error("a shown finished job is not marked (finished)")
+	}
+}
+
+// The tests above hand the model a last-run map, which is the one thing the
+// board does not do for itself. This one loads it from a real store, with the
+// finished one-shot's run buried under a busier job's history — which is what
+// the board sees on a machine that has been running jobs for a week.
+//
+// The board used to build that map from the newest hundred runs, so a one-shot
+// that ran days ago fell out of the window, read as "never run", and was never
+// hidden. Every board test passed throughout, because none of them ever asked
+// the store.
+func TestTheFinishedRuleSeesARunOlderThanTheRunsWindow(t *testing.T) {
+	s, err := store.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	ctx := context.Background()
+	at := time.Now().Add(-72 * time.Hour)
+	jobs := []store.Job{
+		{ID: "old-once", Name: "Old one-shot", Prompt: "p", CWD: "/tmp",
+			Schedule: store.ScheduleOnce, RunAt: &at},
+		{ID: "busy", Name: "Busy job", Prompt: "p", CWD: "/tmp", Enabled: true,
+			Schedule: store.ScheduleCron, CronExpr: "* * * * *"},
+	}
+	for _, j := range jobs {
+		if err := s.PutJob(ctx, j); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The one-shot's only run is the oldest row in the table.
+	if err := s.PutRun(ctx, store.Run{ID: "old-run", JobID: "old-once",
+		Outcome: store.OutcomeDone, Trigger: "scheduled", StartedAt: at}); err != nil {
+		t.Fatal(err)
+	}
+	// Then more recent runs than the board's window holds.
+	for i := 0; i < 150; i++ {
+		r := store.Run{ID: fmt.Sprintf("busy-%03d", i), JobID: "busy",
+			Outcome: store.OutcomeDone, Trigger: "scheduled",
+			StartedAt: time.Now().Add(-time.Duration(i) * time.Minute)}
+		if err := s.PutRun(ctx, r); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m := New(s, herdrcli.New(), Deps{DaemonRunning: func() bool { return true }})
+	m.width, m.height = 160, 40
+	m.apply(t, m.load()())
+
+	if r, ok := m.last["old-once"]; !ok || r.Outcome != store.OutcomeDone {
+		t.Fatalf("the board's last run for old-once is %+v (present=%v), want a done run",
+			r, ok)
+	}
+	if got := strings.Join(visibleIDs(m), ","); got != "busy" {
+		t.Errorf("visible jobs are %q, want %q", got, "busy")
+	}
+	if n := m.hiddenFinished(); n != 1 {
+		t.Errorf("reported %d hidden, want 1", n)
 	}
 }
 

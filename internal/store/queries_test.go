@@ -577,6 +577,40 @@ func TestLastRun(t *testing.T) {
 	}
 }
 
+// LastRuns answers the same question as LastRun for every job at once, and it
+// has to keep answering it for a job whose last run is buried under a busier
+// one — that is the whole reason it exists rather than the board taking the
+// newest N runs and keeping the first sighting of each job.
+func TestLastRuns(t *testing.T) {
+	s, ctx := openStore(t)
+	base := time.Unix(1_700_000_000, 0)
+	putRun(t, s, ctx, Run{ID: "quiet", JobID: "quiet", Outcome: OutcomeDone, StartedAt: base})
+	for i := 0; i < 20; i++ {
+		putRun(t, s, ctx, Run{ID: "busy-" + string(rune('a'+i)), JobID: "busy",
+			Outcome: "failed", StartedAt: base.Add(time.Duration(i+1) * time.Hour)})
+	}
+	// A flow called directly has no job, so there is nothing to key it under.
+	putRun(t, s, ctx, Run{ID: "loose", Outcome: OutcomeDone, Flow: "adhoc",
+		StartedAt: base.Add(100 * time.Hour)})
+
+	last, err := s.LastRuns(ctx)
+	if err != nil {
+		t.Fatalf("last runs: %v", err)
+	}
+	if len(last) != 2 {
+		t.Fatalf("LastRuns returned %d jobs, want 2: %v", len(last), last)
+	}
+	if got := last["quiet"].ID; got != "quiet" {
+		t.Errorf("quiet job's last run is %q, want quiet", got)
+	}
+	if got := last["busy"].ID; got != "busy-t" {
+		t.Errorf("busy job's last run is %q, want busy-t", got)
+	}
+	if _, ok := last[""]; ok {
+		t.Error("a run with no job was keyed under the empty job id")
+	}
+}
+
 // Runs carry the token counts the usage report bills from, and scanRun reads
 // four same-typed counters in a row: swapped, every run still scans and the
 // cheap column is billed as the expensive one.

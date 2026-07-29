@@ -243,6 +243,11 @@ type tickMsg time.Time
 type dataMsg struct {
 	jobs []store.Job
 	runs []store.Run
+	// lastRuns is every job's most recent run, asked of the store directly.
+	// runs above is a window on the newest runs of all jobs together, so a job
+	// that has not run lately is simply not in it — which is every job the
+	// finished rule exists to hide.
+	lastRuns map[string]store.Run
 	// thread is one conversation's messages and threadID says which. The name
 	// is carried because the read happens off the event loop: by the time it
 	// lands the reader may have switched, and a result that cannot say what it
@@ -309,6 +314,13 @@ func (m *Model) load() tea.Cmd {
 		if err != nil {
 			return dataMsg{err: err}
 		}
+		// The RUNS tab wants the newest hundred; the JOBS tab wants each job's
+		// own latest, however long ago that was. They are two different
+		// questions and deriving the second from the first answers it wrong.
+		lastRuns, err := m.store.LastRuns(ctx)
+		if err != nil {
+			return dataMsg{err: err}
+		}
 		// The steps of every run on screen in one query rather than one query
 		// per row: this runs every three seconds for as long as the board is
 		// open.
@@ -342,8 +354,8 @@ func (m *Model) load() tea.Cmd {
 		// block. A directory read on the event loop would stall every keystroke
 		// behind it.
 		flows, flowErrs := m.readFlows()
-		return dataMsg{jobs: jobs, runs: runs, steps: steps, thread: log,
-			threadID: thread, claims: claims, threads: threads,
+		return dataMsg{jobs: jobs, runs: runs, lastRuns: lastRuns, steps: steps,
+			thread: log, threadID: thread, claims: claims, threads: threads,
 			flows: flows, flowErrs: flowErrs}
 	}
 }
@@ -424,14 +436,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// screen, so they are taken from every read.
 		m.claims, m.threads = msg.claims, msg.threads
 		moved := m.fallBackFromAMissingThread()
-		m.last, m.lastFlow = map[string]store.Run{}, map[string]store.Run{}
-		// runs arrive newest first, so the first sighting of a job wins.
+		// Each job's latest run comes from the store, not from the window above:
+		// the LAST column and the finished rule both read this, and both are
+		// about jobs whose news is old.
+		m.last = msg.lastRuns
+		if m.last == nil {
+			m.last = map[string]store.Run{}
+		}
+		m.lastFlow = map[string]store.Run{}
+		// runs arrive newest first, so the first sighting of a flow wins.
 		for _, r := range msg.runs {
-			if _, seen := m.last[r.JobID]; !seen {
-				m.last[r.JobID] = r
-			}
-			// A run that names a flow is also that flow's history, and the same
-			// first-sighting rule picks its latest.
+			// A run that names a flow is that flow's history.
 			if r.Flow == "" {
 				continue
 			}
