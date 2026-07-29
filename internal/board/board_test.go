@@ -344,6 +344,27 @@ func TestRenderedRowsMatchThePageBounds(t *testing.T) {
 	}
 }
 
+// The help line is the line that grows, and the demo terminal is where a line
+// that grew too long is seen: `demo/board.tape` shoots the documentation at
+// about 134 columns, and a help line past that is published with its last key
+// cut off.
+func TestHelpFitsTheDemoTerminal(t *testing.T) {
+	m := newTestModel(t)
+	m.width, m.height = demoColumns, 40
+	for _, focus := range []focus{focusJobs, focusRuns, focusThread, focusFlows} {
+		m.focus = focus
+		for _, line := range strings.Split(m.View(), "\n") {
+			if w := lipgloss.Width(line); w > m.width {
+				t.Errorf("a line is %d columns wide, past the %d-column demo terminal: %q",
+					w, m.width, line)
+			}
+		}
+	}
+}
+
+// demoColumns is how wide the terminal in demo/board.tape is.
+const demoColumns = 134
+
 // Width is measured in display columns: a styled line carries escape sequences
 // that are not printed, so counting runes would flag lines that fit.
 func TestNoRenderedLineExceedsThePane(t *testing.T) {
