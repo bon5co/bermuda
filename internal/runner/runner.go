@@ -14,8 +14,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -102,7 +104,23 @@ type Job struct {
 // persistentAgentName is the stable agent name for a persistent job. It does
 // not vary per run, which is what makes the agent findable next time.
 func persistentAgentName(jobID string) string {
-	return sanitizeAgentName("bmp-" + jobID)
+	name := sanitizeAgentName("bmp-" + jobID)
+	if len(name) > 32 {
+		// herdr refuses a name longer than 32 characters outright
+		// (invalid_agent_name), so an unbounded name means every run of a
+		// persistent job fails to start — nothing about the job says why.
+		//
+		// The head is kept rather than the tail, because a persistent name has
+		// no run id to make its tail distinctive and the readable part of a job
+		// id is at the front. A digest of the whole id is appended so two long
+		// ids sharing a prefix are not handed the same agent, which would let
+		// one job inherit another's conversation.
+		sum := fnv.New32a()
+		_, _ = sum.Write([]byte(jobID))
+		head := strings.TrimRight(name[:23], "-_")
+		name = head + "-" + strconv.FormatUint(uint64(sum.Sum32()), 36)
+	}
+	return name
 }
 
 // Result is what a job writes to result.json.
