@@ -40,6 +40,7 @@ func (m *Model) windowBody(content string, avail int) string {
 		m.scroll = 0
 		// Everything fits, so the newest message is already on screen.
 		m.threadFollow = true
+		m.hitRows = len(lines)
 		return content
 	}
 
@@ -88,6 +89,10 @@ func (m *Model) windowBody(content string, avail int) string {
 	if end > len(lines) {
 		end = len(lines)
 	}
+	// How many of the rows on screen are content. The scroll hint below them is
+	// not a row of anything, and a click on it must not reach the line it is
+	// counting — the first one that did not fit. See mouse.go.
+	m.hitRows = end - m.scroll
 	out := strings.Join(lines[m.scroll:end], "\n")
 
 	above, below := m.scroll, len(lines)-end

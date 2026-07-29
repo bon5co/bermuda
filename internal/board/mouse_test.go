@@ -1,10 +1,14 @@
 package board
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/bon5co/bermuda/internal/store"
 )
 
 // Mouse tests, driven against the rendered frame rather than against the hit
@@ -28,6 +32,21 @@ func (m *Model) wheelBy(t *testing.T, down bool) {
 		button = tea.MouseButtonWheelDown
 	}
 	m.apply(t, tea.MouseMsg{Action: tea.MouseActionPress, Button: button})
+}
+
+// seedManyRuns gives a job more history than a short pane can show.
+func seedManyRuns(t *testing.T, m *Model, jobID string, n int) {
+	t.Helper()
+	ctx := context.Background()
+	for i := 0; i < n; i++ {
+		if err := m.store.PutRun(ctx, store.Run{
+			ID: jobID + "-" + itoa(i), JobID: jobID, Outcome: "done",
+			Trigger: "manual", Note: "run " + itoa(i),
+			StartedAt: time.Now().Add(-time.Duration(i) * time.Minute)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	m.apply(t, m.load()())
 }
 
 // frameRow renders the board and reports which screen row shows want.
@@ -267,6 +286,28 @@ func TestWheelScrollsTheThreadAndStopsItFollowing(t *testing.T) {
 	m.wheelBy(t, false)
 	if m.threadFollow {
 		t.Error("scrolling up left the thread following its newest message")
+	}
+}
+
+// The scroll hint counts the rows that did not fit. It is not one of them, and
+// clicking it must not reach the first row below the fold.
+func TestClickOnTheScrollHintSelectsNothing(t *testing.T) {
+	m := newTestModel(t)
+	seedManyRuns(t, m, "alpha", 30)
+	m.press(t, "l") // the job detail, which is windowed rather than paged
+	if m.detail == nil {
+		t.Fatal("l did not open the job detail")
+	}
+	m.height = 16
+
+	frame, y := frameRow(t, m, "more")
+	if !strings.Contains(stripStyle(strings.Split(frame, "\n")[y]), "↓") {
+		t.Fatalf("no scroll hint on the detail page:\n%s", stripStyle(frame))
+	}
+	before := m.cursor
+	m.clickCell(t, 4, y)
+	if m.cursor != before {
+		t.Errorf("clicking the scroll hint moved the cursor from %d to %d", before, m.cursor)
 	}
 }
 

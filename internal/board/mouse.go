@@ -79,7 +79,8 @@ func (m *Model) resetHits() {
 // recordWindow stores where the body ended up on screen: how many rows of
 // chrome sit above it, and how far it is scrolled. Both are known only after
 // the window has run, which is why this is called from there rather than
-// computed in the handler.
+// computed in the handler. How many rows of it are on screen is recorded by the
+// window itself, since only it knows whether it spent one of them on a hint.
 func (m *Model) recordWindow(top, scroll int) {
 	m.hitTop, m.hitScroll = top, scroll
 }
@@ -177,7 +178,14 @@ func (m *Model) click(x, y int) (tea.Model, tea.Cmd) {
 	if cmd, ok := m.clickTab(x, y); ok {
 		return m, cmd
 	}
-	h, ok := m.hits[y-m.hitTop+m.hitScroll]
+	row := y - m.hitTop
+	if row < 0 || row >= m.hitRows {
+		// Above the body, or below the last row of it. The row under the last
+		// one is usually the scroll hint, which counts the lines that did not
+		// fit — clicking it must not reach the first of them.
+		return m, nil
+	}
+	h, ok := m.hits[row+m.hitScroll]
 	if !ok || h.kind == hitNone {
 		return m, nil
 	}

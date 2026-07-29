@@ -150,6 +150,10 @@ type Model struct {
 	hits      map[int]hit
 	hitTop    int
 	hitScroll int
+	// hitRows is how many rows of the body are on screen, which is not always
+	// how many the pane gave it: a windowed body spends its last row on the
+	// scroll hint.
+	hitRows int
 	// tabRow is the screen row the folder tabs' labels are on, and tabHits their
 	// spans across it. tabRow is -1 when the frame has no tabs.
 	tabRow  int
