@@ -120,7 +120,7 @@ and leaves your store alone.
 | [Jobs](docs/jobs.md) | what a job is, its fields, schedules, tags, parking, editing from the board |
 | [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, parking and resuming |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
-| [The board](docs/board.md) | every key, the tabs, the inspector, search |
+| [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |
 
@@ -140,7 +140,7 @@ npx skills add bon5co/bermuda
 
 ## Status
 
-**v2.2.1**, in daily use on the machine it was written for. Every part of it —
+**v2.3.0**, in daily use on the machine it was written for. Every part of it —
 jobs, flows, threads, claims, the scheduler and its off switch — is checked on
 each release by installing it from GitHub into a bare Ubuntu container and using
 it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).

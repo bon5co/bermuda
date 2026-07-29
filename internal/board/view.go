@@ -101,12 +101,12 @@ func (m *Model) listPane() pane {
 	// is only meaningful on runs and enter only launches on flows, and a help
 	// line that grows past the pane width wraps, which costs a row the
 	// arithmetic above did not budget for.
-	help := "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · M mouse · q quit"
+	help := "tab lists · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · M mouse · q quit"
 	switch m.focus {
 	case focusRuns:
-		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · space steps · l/→ open · a attach · M mouse · q quit"
+		help = "tab lists · / search · [ ] page · j/k move · space steps · l/→ open · a attach · M mouse · q quit"
 	case focusFlows:
-		help = "tab threads/jobs/runs/flows · / search · [ ] page · j/k move · enter run · u unpark · r reload · M mouse · q quit"
+		help = "tab lists · / search · [ ] page · j/k move · enter run · u unpark · r reload · M mouse · q quit"
 	}
 	bottom.WriteString("\n" + helpStyle.Render(help))
 	p.bottom = bottom.String()
@@ -157,7 +157,7 @@ func (m *Model) threadPane(p pane) pane {
 	}
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
-		"tab threads/jobs/runs/flows · < > thread · t pick · i say · / search · j/k scroll · 1 live · M mouse · q quit"))
+		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 1 live · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
 }
