@@ -490,7 +490,7 @@ func TestRunsLimit(t *testing.T) {
 	const total = 60
 	for i := range total {
 		putRun(t, s, ctx, Run{
-			ID: string(rune('a'+i/26)) + string(rune('a'+i%26)),
+			ID:    string(rune('a'+i/26)) + string(rune('a'+i%26)),
 			JobID: "j", Outcome: OutcomeDone,
 			StartedAt: base.Add(time.Duration(i) * time.Minute),
 		})
