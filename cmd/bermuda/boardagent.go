@@ -7,9 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/runner"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // Bermuda's own row in Herdr's sidebar.

@@ -16,9 +16,9 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/mention"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/mention"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // The thread's command line.

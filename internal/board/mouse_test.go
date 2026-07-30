@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // Mouse tests, driven against the rendered frame rather than against the hit

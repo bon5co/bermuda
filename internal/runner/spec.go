@@ -3,7 +3,7 @@ package runner
 import (
 	"strings"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // FromStore converts a stored job into a runnable job.

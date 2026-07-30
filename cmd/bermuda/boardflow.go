@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/flow"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // What the board's FLOWS tab does, kept here in the command layer where flows

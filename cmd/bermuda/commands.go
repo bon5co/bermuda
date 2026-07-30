@@ -9,11 +9,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/board"
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/runner"
-	"github.com/bon5co/bermuda/internal/store"
-	tokens "github.com/bon5co/bermuda/internal/usage"
+	"github.com/bon5co/bermuda/v2/internal/board"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/store"
+	tokens "github.com/bon5co/bermuda/v2/internal/usage"
 )
 
 // openStore opens the store in the state directory.

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // finishedBoard is a board holding one of each kind of one-shot, plus a

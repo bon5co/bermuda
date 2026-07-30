@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/runner"
-	"github.com/bon5co/bermuda/internal/version"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/version"
 )
 
 // commands is every subcommand bermuda answers to.

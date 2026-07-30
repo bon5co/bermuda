@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/flow"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // The command layer's half of a flow: the run row and the step rows have to

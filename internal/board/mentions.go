@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/bon5co/bermuda/internal/mention"
+	"github.com/bon5co/bermuda/v2/internal/mention"
 )
 
 // Showing who a message was addressed to.

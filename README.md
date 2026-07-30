@@ -103,7 +103,7 @@ For `bermuda` as a command anywhere, install the CLI too — a separate copy on
 your `$PATH`, talking to the same store:
 
 ```bash
-go install github.com/bon5co/bermuda/cmd/bermuda@latest
+go install github.com/bon5co/bermuda/v2/cmd/bermuda@latest
 ```
 
 And the skill, so your agents know how to drive it — see
@@ -144,7 +144,7 @@ npx skills add bon5co/bermuda
 
 ## Status
 
-**v2.4.0**, in daily use on the machine it was written for. Every part of it —
+**v2.4.1**, in daily use on the machine it was written for. Every part of it —
 jobs, flows, threads, claims, the scheduler and its off switch — is checked on
 each release by installing it from GitHub into a bare Ubuntu container and using
 it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).

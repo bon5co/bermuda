@@ -9,7 +9,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	tokens "github.com/bon5co/bermuda/internal/usage"
+	tokens "github.com/bon5co/bermuda/v2/internal/usage"
 )
 
 // usageCmd answers "which job is expensive" in one command.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // applyArgs parses argv against the real job flag set and applies it to j, the

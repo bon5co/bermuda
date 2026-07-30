@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 func TestSearchMatchesEveryFieldSomeoneWouldType(t *testing.T) {

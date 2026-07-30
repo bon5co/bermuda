@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/bon5co/bermuda/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/runner"
 )
 
 // renderDetail shows one job's full configuration and its run history, which

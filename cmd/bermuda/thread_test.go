@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // noWorkspace makes a test answer the workspace question itself.

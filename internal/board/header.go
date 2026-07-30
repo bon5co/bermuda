@@ -5,7 +5,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/bon5co/bermuda/internal/version"
+	"github.com/bon5co/bermuda/v2/internal/version"
 )
 
 // Status dot colours: green when the board is functioning, red when something

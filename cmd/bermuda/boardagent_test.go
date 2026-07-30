@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // The row carries its counts in words and stays idle whatever they are. A

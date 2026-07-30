@@ -6,8 +6,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/bon5co/bermuda/internal/sched"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/sched"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // The inspector fills the space to the right of the jobs table with a summary

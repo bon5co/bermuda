@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/mention"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/mention"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // deadHerd answers every question the way a machine with no herdr server does.

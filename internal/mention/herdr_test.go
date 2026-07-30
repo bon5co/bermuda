@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // fakeHerdr writes a herdr stand-in that answers `agent list` with the given

@@ -1,7 +1,7 @@
 package board
 
 import (
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // Resolving the cursor to the thing it points at. Every one of these works on

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/runner"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // A sweep runs what the catchup policy says it owes.

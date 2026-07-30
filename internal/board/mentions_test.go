@@ -11,7 +11,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 
-	"github.com/bon5co/bermuda/internal/mention"
+	"github.com/bon5co/bermuda/v2/internal/mention"
 )
 
 // fakeHerd stands in for herdr. No board test may reach the real socket: the
