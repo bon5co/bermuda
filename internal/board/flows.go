@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/bon5co/bermuda/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/flow"
 )
 
 // The FLOWS tab: what there is to call, and what happened last time it was

@@ -1,4 +1,4 @@
-module github.com/bon5co/bermuda
+module github.com/bon5co/bermuda/v2
 
 go 1.26.5
 

@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // boardWideCmd opens the board as a full-width horizontal split.

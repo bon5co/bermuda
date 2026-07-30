@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/lockfile"
+	"github.com/bon5co/bermuda/v2/internal/lockfile"
 )
 
 // Stopping bermuda used to mean killing two processes inside the same five

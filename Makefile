@@ -17,7 +17,7 @@
 
 BIN     := bin/bermuda
 PKG     := ./cmd/bermuda
-VERSION_PKG := github.com/bon5co/bermuda/internal/version
+VERSION_PKG := github.com/bon5co/bermuda/v2/internal/version
 
 # `git describe` gives the most specific name this commit has:
 #   v1.2.3            exactly a tag

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // The two tables. Columns are declared as data so the tab rule can measure the

@@ -8,7 +8,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // Telling herdr who this agent is.

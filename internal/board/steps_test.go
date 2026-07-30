@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // A flow is one row on the runs list, because it was launched once. What

@@ -21,7 +21,7 @@ import (
 
 // Tag is set at build time for a released version:
 //
-//	go build -ldflags "-X github.com/bon5co/bermuda/internal/version.Tag=v1.2.3"
+//	go build -ldflags "-X github.com/bon5co/bermuda/v2/internal/version.Tag=v1.2.3"
 //
 // When it is set it wins, because a human-chosen semver says more than a
 // commit hash. When it is not, the revision is the honest answer.

@@ -3,7 +3,7 @@ package board
 import (
 	"strings"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // Search filters both lists from a single query, and paging keeps a long list

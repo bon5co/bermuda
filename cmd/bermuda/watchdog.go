@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/lockfile"
+	"github.com/bon5co/bermuda/v2/internal/lockfile"
 )
 
 // Bermuda keeps two processes alive that watch each other: the scheduler,

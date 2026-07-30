@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // The thread an agent is in without being asked.

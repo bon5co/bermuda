@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // These tests are about what a step is told and where it is put. A flow's steps

@@ -16,8 +16,9 @@ bermuda --version
 
 If that is not found, Bermuda is installed as a herdr plugin but not on `$PATH`.
 The plugin's own copy lives under the herdr-managed checkout; `go install
-github.com/bon5co/bermuda/cmd/bermuda@latest` puts one where you can type it.
-Both talk to the same store.
+github.com/bon5co/bermuda/v2/cmd/bermuda@latest` puts one where you can type it.
+Both talk to the same store. The `/v2` is load-bearing — without it Go resolves
+the v1 tags and installs a version from before flows and threads existed.
 
 ## Threads — what is currently true
 

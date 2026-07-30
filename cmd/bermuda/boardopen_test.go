@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // A board asked for from a shell that has a pane divides that pane; one asked

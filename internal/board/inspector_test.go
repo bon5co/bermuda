@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // wrap has a line budget because it shares a pane with the job table: text

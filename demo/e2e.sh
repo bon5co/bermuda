@@ -88,6 +88,37 @@ step "the binary the manifest built"
 check "bermuda --version reports a build"  "revision" bermuda --version
 check "usage lists the documented commands" "bermuda stop" bermuda --help
 
+step "go install, the README's other way in"
+# The only path here that asks the module proxy anything. Everything else builds
+# from a checkout, which is why `module github.com/bon5co/bermuda` survived five
+# v2 releases: `go install …@latest` could not see any of the v2 tags, quietly
+# resolved the newest v1 one, and installed a bermuda from before flows and
+# threads existed — reporting itself as v1.1.1 and complaining about nothing.
+MODULE=$(sed -n 's/^module //p' "$ROOT/go.mod" | head -1)
+MAJOR=$(sed -n 's/^version = "\([0-9]*\)\..*/\1/p' "$MANIFEST" | head -1)
+if [ "${MAJOR:-0}" -ge 2 ] 2>/dev/null; then
+    case "$MODULE" in
+        */v"$MAJOR") ok "the module path carries the released major ($MODULE)" ;;
+        *) bad "go.mod says $MODULE, but this is a v$MAJOR release" \
+               "go install would resolve the newest v1 tag and say nothing" ;;
+    esac
+fi
+out=$(GOBIN=/tmp/gobin go install "$MODULE/cmd/bermuda@latest" 2>&1); status=$?
+if [ $status -ne 0 ] && grep -q "no matching versions" <<<"$out"; then
+    # The first release at a new major has no published tag under the new path
+    # until it is tagged. Not a failure, but never silent either.
+    echo "  --   $MODULE has no published tag yet, so go install @latest has nothing to fetch"
+elif [ $status -ne 0 ]; then
+    bad "go install $MODULE/cmd/bermuda@latest" "$(tail -3 <<<"$out")"
+else
+    ok "go install $MODULE/cmd/bermuda@latest"
+    got=$(/tmp/gobin/bermuda --version 2>&1 | head -1)
+    case "$got" in
+        *"v$MAJOR."*) ok "the installed CLI is a v$MAJOR build ($got)" ;;
+        *) bad "go install produced \"$got\", which is not a v$MAJOR build" ;;
+    esac
+fi
+
 step "the skill ships with it"
 SKILL="$ROOT/skills/bermuda/SKILL.md"
 [ -f "$SKILL" ] && ok "skills/bermuda/SKILL.md is present" || bad "the published skill is missing"

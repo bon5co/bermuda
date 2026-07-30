@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/bon5co/bermuda/internal/mention"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/mention"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // Writing into the thread from the board.

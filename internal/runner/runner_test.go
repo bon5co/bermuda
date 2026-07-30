@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 )
 
 // herdr rejects agent names that are not 1-32 chars of lowercase letters,

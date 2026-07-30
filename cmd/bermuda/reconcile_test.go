@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bon5co/bermuda/internal/runner"
-	"github.com/bon5co/bermuda/internal/store"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
 // writeResult puts a result file where a finished run would have left one.
