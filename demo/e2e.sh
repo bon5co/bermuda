@@ -112,7 +112,15 @@ steps:
   - id: two
     run: 'echo "two saw [$BERMUDA_PREVIOUS]"'
 YAML
-check "flow run completes"       "done"       bermuda flow run greenfield --input xyzzy
+out=$(bermuda flow run greenfield --input xyzzy 2>&1)
+grep -q '"outcome": "done"' <<<"$out" && ok "flow run completes" || bad "flow run did not finish" "$out"
+# A flow run opens a space of its own so its steps share a thread. There is no
+# herdr server in this container, which is the case that has to degrade rather
+# than refuse: the thread is how steps compare notes, not what makes them run in
+# order, and a flow that would not start without a window is a worse failure than
+# one whose steps cannot talk.
+grep -q "share no thread" <<<"$out" && ok "with no herdr the flow says so and runs anyway" \
+    || bad "a flow with no space did not say so" "$out"
 check "run is recorded"          "greenfield" bermuda run list
 
 # latest_run picks the newest run of one flow.
