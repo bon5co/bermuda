@@ -139,11 +139,12 @@ every step's tab is created inside it, and all of them read and write one thread
 ```
 run  20260730T101500Z-triage
 job  triage
-thread  flow-triage-101500z
+space  FLOWS:triage:a1B2c3
+thread  flows-triage-a1b2c3
 ```
 
 ```
-$ bermuda thread log --thread flow-triage-101500z
+$ bermuda thread log --thread flows-triage-a1b2c3
 21:57  note  triage (20260730T101500Z-triage)  flow triage, run …: 3 steps — assess then patch then verify
 21:58  note  triage-assess (assess)            the arm64 failure is in the C shim, not in the Go
 22:04  note  triage-patch (patch)              the fixture DB was already migrated; do not run it again

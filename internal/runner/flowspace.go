@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -64,41 +65,37 @@ func (s *FlowSpace) HasThread() bool {
 
 // SpaceLabel names a flow run's space.
 //
-// The label is what the thread id is slugged from, once, at creation, so it is
-// chosen to read as an id afterwards: `Flow triage 101500Z` becomes
-// `flow-triage-101500z`. The time is the run's, not today's date, because the
-// realistic collision is two runs of one flow on one day and a full timestamp
-// would make every thread id in every delivered message forty characters long.
-func SpaceLabel(flowID, runID string) string {
-	stamp := runStamp(runID)
-	label := "Flow " + strings.TrimSpace(flowID)
-	if stamp != "" {
-		label += " " + stamp
+// The suffix is random rather than derived from the run id because this name
+// only has to keep concurrent spaces apart. The run record stores the workspace
+// id after creation, so a resume reuses the space it already had instead of
+// trying to reconstruct its name — which is why the run is not an argument at
+// all: a parameter the label ignores invites the next reader to believe the
+// name can be recomputed from it.
+func SpaceLabel(flowID string) string {
+	id := strings.TrimSpace(flowID)
+	if id == "" {
+		id = "flow"
 	}
-	return label
+	return "FLOWS:" + id + ":" + nanoID6()
 }
 
-// runStamp is the time-of-day part of a run id, which is shaped
-// 20060102T150405Z-<job>.
+const nanoIDAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+
+// nanoID6 returns six characters from Nano ID's URL-safe alphabet.
 //
-// An id in any other shape gets no stamp rather than a guess: the label is only
-// a name, and a wrong one that looks like a timestamp is worse than a short one.
-func runStamp(runID string) string {
-	id := strings.TrimSpace(runID)
-	t := strings.Index(id, "T")
-	if t < 0 || len(id) < t+8 {
-		return ""
+// There are exactly 64 choices, so taking the low six bits of each
+// cryptographically random byte gives every character the same probability.
+// crypto/rand.Read on the Go version this module targets either fills the
+// buffer or terminates the process if the operating system's random source is
+// irrecoverably unavailable, which leaves no weaker fallback id to collide.
+func nanoID6() string {
+	var random [6]byte
+	rand.Read(random[:])
+	var id [6]byte
+	for i, b := range random {
+		id[i] = nanoIDAlphabet[b&63]
 	}
-	stamp := id[t+1 : t+8] // HHMMSSZ
-	if !strings.HasSuffix(stamp, "Z") {
-		return ""
-	}
-	for _, r := range stamp[:len(stamp)-1] {
-		if r < '0' || r > '9' {
-			return ""
-		}
-	}
-	return stamp
+	return string(id[:])
 }
 
 // threadContract is appended to every agent step's prompt when the flow has a
