@@ -198,6 +198,14 @@ type Run struct {
 	// the job would resume a parked run as a different run.
 	Flow  string
 	Input string
+
+	// Space and Thread are the herdr workspace this run's steps shared and the
+	// thread that space owns. They are recorded because a resume has to land in
+	// the same conversation the first attempt did: the steps that already ran
+	// posted their findings there, and a resumed run that opened a fresh thread
+	// would split one run's record in two with nothing saying so.
+	Space  string
+	Thread string
 }
 
 // Duration returns how long the run took, or 0 while it is still going.
@@ -287,6 +295,8 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"runs", "model", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "space_id", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "thread_id", "TEXT NOT NULL DEFAULT ''"},
 }
 
 // Open opens (and migrates) the store at dir/bermuda.db.
@@ -575,7 +585,7 @@ func (s *Store) DeleteJob(ctx context.Context, id string) error {
 const runColumns = `id, job_id, trigger, outcome, park_reason, status, note,
 	run_dir, tab_id, agent_name, started_at, ended_at,
 	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
-	flow_id, flow_input`
+	flow_id, flow_input, space_id, thread_id`
 
 // PutRun inserts or updates a run.
 func (s *Store) PutRun(ctx context.Context, r Run) error {
@@ -588,7 +598,7 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO runs (`+runColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  trigger=excluded.trigger, outcome=excluded.outcome,
 		  park_reason=excluded.park_reason, status=excluded.status,
@@ -598,11 +608,12 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 		  cache_read_tokens=excluded.cache_read_tokens,
 		  cache_creation_tokens=excluded.cache_creation_tokens,
 		  model=excluded.model,
-		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
+		  flow_id=excluded.flow_id, flow_input=excluded.flow_input,
+		  space_id=excluded.space_id, thread_id=excluded.thread_id`,
 		r.ID, r.JobID, r.Trigger, r.Outcome, r.ParkReason, r.Status, r.Note,
 		r.RunDir, r.TabID, r.AgentName, r.StartedAt.Unix(), ended,
 		r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheCreationTokens,
-		r.Model, r.Flow, r.Input)
+		r.Model, r.Flow, r.Input, r.Space, r.Thread)
 	return err
 }
 
@@ -613,7 +624,7 @@ func scanRun(rows interface{ Scan(...any) error }) (Run, error) {
 	err := rows.Scan(&r.ID, &r.JobID, &r.Trigger, &r.Outcome, &r.ParkReason,
 		&r.Status, &r.Note, &r.RunDir, &r.TabID, &r.AgentName, &started, &ended,
 		&r.InputTokens, &r.OutputTokens, &r.CacheReadTokens,
-		&r.CacheCreationTokens, &r.Model, &r.Flow, &r.Input)
+		&r.CacheCreationTokens, &r.Model, &r.Flow, &r.Input, &r.Space, &r.Thread)
 	if err != nil {
 		return r, err
 	}

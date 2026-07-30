@@ -223,6 +223,12 @@ func flowStatus(argv []string) error {
 	}
 	fmt.Fprintf(w, "progress\t%d/%d steps\nstarted\t%s\n", done, len(steps),
 		rec.StartedAt.Format(time.RFC3339))
+	// Where the steps compared notes. The per-step notes below are the one line
+	// each step published; the thread is everything else they found, and without
+	// this line nothing on screen says it exists.
+	if t := strings.TrimSpace(rec.Thread); t != "" {
+		fmt.Fprintf(w, "thread\t%s\n", t)
+	}
 	if err := w.Flush(); err != nil {
 		return err
 	}
@@ -245,6 +251,9 @@ func flowStatus(argv []string) error {
 	}
 	if rec.Outcome == "parked" || rec.Outcome == "failed" {
 		fmt.Printf("\nresume with: bermuda flow resume %s\n", rec.ID)
+	}
+	if t := strings.TrimSpace(rec.Thread); t != "" {
+		fmt.Printf("what the steps found: bermuda thread log --thread %s\n", t)
 	}
 	return nil
 }
@@ -270,14 +279,22 @@ func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*
 	if err := s.SeedRunSteps(ctx, rec.ID, def.Steps); err != nil {
 		return nil, fmt.Errorf("record steps: %w", err)
 	}
+	// One space for the whole run, opened before the first step so every step's
+	// tab lands in it and all of them share the thread that space owns. A resume
+	// reuses the one it recorded, which is how the second half of a run ends up in
+	// the same conversation as the first.
+	resumed := strings.TrimSpace(rec.Space) != ""
+	space := openFlowSpace(ctx, s, def, &rec, j.CWD)
 	rec.Outcome, rec.ParkReason, rec.EndedAt = "running", "", nil
 	if err := s.PutRun(ctx, rec); err != nil {
 		return nil, fmt.Errorf("record run start: %w", err)
 	}
+	briefFlowSpace(ctx, s, space, def, rec, resumed)
 
 	r := &runner.Runner{Herdr: herdrcli.New(), StateDir: stateDir()}
 	w := &runner.Flow{
 		Launch: r.ExecuteIn,
+		Space:  space,
 		// Persisted as each step starts and settles, so a flow that is
 		// three hours into its second step says so on the board rather than
 		// looking untouched until the end.
@@ -291,6 +308,9 @@ func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*
 	if err := s.PutRun(ctx, rec); err != nil {
 		fmt.Fprintln(os.Stderr, "bermuda: persist flow run:", err)
 	}
+	// A finished flow gives its space back, the way a finished run gives its tab
+	// back; a parked one leaves both open, because a human has to look at it.
+	closeFlowSpace(ctx, s, space, def, rec, wr)
 
 	// A flow is reported as a run, because that is what every caller — the
 	// daemon, the board, `run list` — already knows how to read.

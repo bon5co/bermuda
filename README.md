@@ -41,6 +41,10 @@ bermuda flow run triage --input 'PR #431 fails on arm64'
 
 A step that fails stops everything after it and keeps everything before it, so
 `bermuda flow resume <run>` picks up where it stopped without paying twice.
+
+The run also opens **a space of its own**, so every step is in one thread and
+says what it found there — the chain carries the verdict, the thread carries the
+evidence nobody should have to rediscover.
 → [flows](docs/flows.md)
 
 ## Jobs — a clock it never has to remember
@@ -118,7 +122,7 @@ and leaves your store alone.
 | | |
 |---|---|
 | [Jobs](docs/jobs.md) | what a job is, its fields, schedules, tags, parking, editing from the board |
-| [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, parking and resuming |
+| [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, the run's own space and thread, parking and resuming |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
 | [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |

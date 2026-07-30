@@ -186,6 +186,14 @@ resource has to be able to give it back where it took it.
 A thread you made by hand has no workspace. Those are never auto-closed: herdr's
 list says nothing about whether you are done with them.
 
+**A flow run makes a space, and therefore a thread, without anybody asking.** The
+steps of one run are separate agents that cannot see each other's context, so the
+space is what lets them compare notes: every step's tab goes in it, every step is
+told the thread in its prompt, and `$BERMUDA_THREAD` is set in the step's shell so
+no command needs the flag. The thread is retired when the run finishes and its
+space closes — closed, not deleted, so `thread log --thread <id>` still reads
+every finding. See [flows](flows.md#a-run-gets-its-own-space-and-the-steps-share-its-thread).
+
 `global` always exists, is created on demand, and cannot be deleted: it is where
 every unqualified write lands, and where every message written before threads
 existed was migrated to. `thread rm` also refuses a thread that still holds
