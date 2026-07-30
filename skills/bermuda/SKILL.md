@@ -278,9 +278,21 @@ live database: copying `bermuda.db` alone gave 0 messages, copying it with
 
 ## Board
 
-`bermuda board`. `1`/`2`/`3` jobs/runs/threads, `j`/`k` move, `/` search, `R` run
-the selected job, `space` expand a flow run's steps, `i` write into the
-thread, `<`/`>` step along the thread row, `t` thread picker, `q` quit.
+`bermuda board`. `1`/`2`/`3`/`4` are the tabs left to right —
+threads/jobs/runs/flows — `tab` cycles them, `j`/`k` move, `/` search, `R` run
+the selected job, `space` expand a flow run's steps, `i` write into the thread,
+`<`/`>` step along the thread row, `t` thread picker, `q` quit.
+
+The `FLOWS` tab is every flow on disk with the state of its last run, which is
+where a parked one is seen: `enter` calls the flow under the cursor and asks for
+its input if it declares one, `u` resumes a parked run of it. A file that will
+not parse is a row there too, with the reason beside it — it is invisible
+everywhere else.
+
+The mouse works: click a row to select it, click the selected row to open it,
+click a tab to switch lists, wheel to move. `M` hands the mouse back to the
+terminal, for when the person at the keyboard wants to select text off the
+board.
 
 **You cannot draw it here.** An agent's shell has no TTY, so `bermuda board`
 does not run the UI in your terminal — it opens the board as a herdr pane next
