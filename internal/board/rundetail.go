@@ -103,6 +103,11 @@ func (m *Model) renderRunDetail() string {
 	}
 	row("agent", r.AgentName)
 	row("herdr tab", r.TabID)
+	// A flow run's steps compared notes somewhere, and the notes below are only
+	// the one line each step published. Without this the thread is invisible: the
+	// board would show a finished flow and no sign that the reasoning behind it is
+	// still readable.
+	row("thread", r.Thread)
 	// One line, counts abbreviated, so a long number cannot push the column
 	// layout apart.
 	row("tokens", usage.Line(usage.Usage{

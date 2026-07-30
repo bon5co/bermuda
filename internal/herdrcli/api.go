@@ -124,6 +124,15 @@ func (c *Client) TabClose(ctx context.Context, tabID string) error {
 	return c.run(ctx, nil, "tab", "close", tabID)
 }
 
+// WorkspaceClose closes a workspace and everything in it.
+//
+// Only ever called on a space bermuda created and recorded — a flow run's own
+// space, once its steps have finished. Closing one bermuda merely found would
+// take a person's window away from them.
+func (c *Client) WorkspaceClose(ctx context.Context, workspaceID string) error {
+	return c.run(ctx, nil, "workspace", "close", workspaceID)
+}
+
 // WorkspaceList lists workspaces.
 func (c *Client) WorkspaceList(ctx context.Context) ([]Workspace, error) {
 	var out struct {

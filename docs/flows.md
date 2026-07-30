@@ -121,6 +121,62 @@ discovered mid-flow has already spent an agent turn producing a prompt with
 literal braces in it, which the agent will then do its best to interpret. For the
 same reason `{{previous}}` in the *first* step is refused: nothing ran before it.
 
+## A run gets its own space, and the steps share its thread
+
+One line travels down the chain. Everything else a step learned dies with the
+process — which is how the fourth step comes to rediscover that the migration
+already ran, that the arm64 failure is in the C shim, that the credentials in the
+README are stale. Each rediscovery costs an agent turn, and some of them fail
+instead.
+
+A team of people does not work that way: they say what they found where the
+others can hear it, and the record outlives whoever was in the room. Bermuda
+already has that shape — [a thread belongs to a herdr
+workspace](threads.md#the-workspace-is-the-thread), and every agent in that space
+is in the thread without joining it. So **a flow run opens a space of its own**,
+every step's tab is created inside it, and all of them read and write one thread:
+
+```
+run  20260730T101500Z-triage
+job  triage
+thread  flow-triage-101500z
+```
+
+```
+$ bermuda thread log --thread flow-triage-101500z
+21:57  note  triage (20260730T101500Z-triage)  flow triage, run …: 3 steps — assess then patch then verify
+21:58  note  triage-assess (assess)            the arm64 failure is in the C shim, not in the Go
+22:04  note  triage-patch (patch)              the fixture DB was already migrated; do not run it again
+22:09  note  triage (20260730T101500Z-triage)  flow triage finished: 3/3 steps ok
+```
+
+Every agent step is told this in its prompt, next to the result contract, because
+a step is a fresh agent that has read nothing and a shared thread nobody mentions
+is a thread nobody writes to. The instruction is about *what* to post, not only
+how: findings, not status. `run:` steps get `$BERMUDA_THREAD` in their
+environment for the same reason — a test runner that knows which suite is flaky
+is exactly the finding a later step would otherwise go looking for.
+
+The chain still carries the verdict, and `{{previous}}` is still one published
+line rather than a transcript. The thread carries the evidence.
+
+- **The space is per run, not per flow.** Two runs of one flow are two
+  investigations, and merging them would hand the second run's second step the
+  first run's stale conclusions.
+- **A resume lands in the same conversation.** The run records its space and its
+  thread, so the half that runs tomorrow writes where the half that ran today
+  did. If the space has gone in the meantime a new one is opened and the old
+  thread id is named on stderr — the earlier findings are still readable, and
+  nothing pretends the record is continuous when it is not.
+- **A finished flow gives its space back**, the way a finished run gives its tab
+  back; a parked one leaves it open, because a human has to look at it. Closing
+  is not deleting: `bermuda thread log --thread <id>` reads every word of a
+  closed thread, and `bermuda flow status` prints the command.
+- **No herdr, no space, and the flow still runs.** The thread is how steps
+  compare notes; it is not what makes them run in order. Every failure on this
+  path degrades to what happened before the feature existed, with one line on
+  stderr.
+
 ## Steps
 
 A step is either an `agent` (a prompt) or a `run` (a shell command), never both.

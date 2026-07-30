@@ -47,6 +47,11 @@ type Flow struct {
 	Launch StepLauncher
 	// Shell runs a command step, defaulting to `sh -c`.
 	Shell ShellRunner
+	// Space is the herdr workspace this run's steps share, and the thread that
+	// space owns. Nil runs the steps where any other run's would go, which is what
+	// happened before a flow had a space of its own: they still chain, they just
+	// have nowhere to compare notes.
+	Space *FlowSpace
 	// Report is called when a step starts and again when it settles, so a
 	// caller can persist progress while the flow is still going: a flow
 	// that recorded itself only at the end would show nothing for the hour it
@@ -274,6 +279,17 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 		return
 	}
 	j := StepJob(job, step)
+	if w.Space.Usable() {
+		// Every step of one run in one space, so all of them are in the thread that
+		// space owns. A step whose space has gone falls back inside the launcher
+		// rather than failing here.
+		j.WorkspaceID = w.Space.WorkspaceID
+	}
+	if w.Space.HasThread() {
+		// Told on every step, because a step is a fresh agent that has read
+		// nothing: a shared thread nobody mentions is a thread nobody writes to.
+		j.Prompt += ThreadContract(w.Space.Thread)
+	}
 	// BERMUDA_STEP_DIR names the same directory as BERMUDA_RUN_DIR, which the
 	// launcher injects. Both are given because a step is a run to the agent
 	// writing result.json, and a step to the flow reading it.
@@ -287,6 +303,13 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 		// would drown the instruction it was meant to illustrate.
 		flow.EnvInput:    vals.Input,
 		flow.EnvPrevious: vals.Previous,
+	}
+	if w.Space.HasThread() {
+		// So `bermuda thread post` inside the step needs no flag. The prompt above
+		// says to post; a flag it has to remember on every call is a flag it
+		// eventually forgets, and the message then lands in global where nobody in
+		// this flow is reading.
+		j.Env[EnvThread] = w.Space.Thread
 	}
 	// The step id is part of the agent's run id, so every step of a flow is
 	// a differently named agent. That is what makes "a different subagent is a
@@ -335,6 +358,12 @@ func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Ste
 		"BERMUDA_STEP_ID="+step.ID,
 		"BERMUDA_JOB_ID="+job.ID)
 	env = append(env, vals.Env()...)
+	if w.Space.HasThread() {
+		// A command step has no prompt to instruct, but a script that wants to say
+		// something — a test runner reporting which suite is flaky — reaches the
+		// same conversation the agent steps are in.
+		env = append(env, EnvThread+"="+w.Space.Thread)
+	}
 
 	out, err := shell(ctx, step.Run, job.CWD, env)
 	// Kept for a human, never parsed: the exit status is the verdict.

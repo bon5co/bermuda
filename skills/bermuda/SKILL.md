@@ -236,12 +236,20 @@ bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
   `run` step they are `$BERMUDA_INPUT` and `$BERMUDA_PREVIOUS`. A step never
   inherits the previous agent's *context* — that is deliberate, so a reviewing
   step cannot absorb the writing step's assumptions.
+- **A run opens its own space, and every step shares that space's thread.** The
+  chain hands the next step one line; the thread is where everything else a step
+  learned survives it. If you are a flow step: `bermuda thread log` before you
+  start, `bermuda thread post '<finding>'` as you learn things — no `--thread`
+  flag, the shell is already in that conversation. Findings, not status. The
+  thread id is on `bermuda flow status <run>`, and it stays readable after the run
+  closes its space.
 - Per-step `model` / `effort` / `kind` / `subagent` default to the calling job's
   and override it. All four are refused on a `run` step.
 - A step is complete when its `result.json` says ok. A step that fails or writes
   none **parks the flow there** and the later steps never start. Exit code 1.
-- `resume` reuses the run row and directory: completed steps are found on disk
-  and are not paid for twice. It replays with the input the run *started* with.
+- `resume` reuses the run row, directory, space and thread: completed steps are
+  found on disk and are not paid for twice, and the second half of the run writes
+  where the first half did. It replays with the input the run *started* with.
 - Refused when the file is read: haiku (named or inherited — the floor is
   sonnet), duplicate ids, a step with both `agent` and `run` or neither, agent
   config on a `run` step, an unknown key, and `{{anything-else}}`. Calling a flow

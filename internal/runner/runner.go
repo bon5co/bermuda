@@ -94,6 +94,15 @@ type Job struct {
 	Timeout time.Duration
 	// Env is injected into the agent's shell alongside BERMUDA_RUN_DIR.
 	Env map[string]string
+	// WorkspaceID puts this run's tab in a named space instead of the one
+	// bermuda owns. A flow sets it so every step of one run lands in the same
+	// space and therefore in the same thread; a space is a membership list, and
+	// steps that share one can read each other's findings.
+	//
+	// A space that has gone is not a reason to refuse the run: the tab falls back
+	// to bermuda's own space, which is where it would have gone before this
+	// existed.
+	WorkspaceID string
 	// Persistent keeps this job's agent alive between runs and reuses it,
 	// skipping tab creation and agent startup. The agent's context is cleared
 	// before each run, so runs stay independent: reuse is about avoiding
@@ -242,7 +251,7 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 		}
 	}
 
-	ws, err := r.ensureWorkspace(ctx, job.CWD)
+	spaceID, err := r.spaceFor(ctx, job)
 	if err != nil {
 		return run, fmt.Errorf("ensure workspace: %w", err)
 	}
@@ -252,7 +261,7 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 		env[k] = v
 	}
 
-	pane, err := r.Herdr.TabCreate(ctx, ws.WorkspaceID, job.ID, job.CWD, env)
+	pane, err := r.Herdr.TabCreate(ctx, spaceID, job.ID, job.CWD, env)
 	if err != nil {
 		return run, fmt.Errorf("create tab: %w", err)
 	}
@@ -645,4 +654,24 @@ func readResult(runDir string) (*Result, error) {
 // not by being called Bermuda, which is a name anybody may already have used.
 func (r *Runner) ensureWorkspace(ctx context.Context, cwd string) (*herdrcli.Workspace, error) {
 	return EnsureWorkspace(ctx, r.Herdr, r.StateDir, cwd)
+}
+
+// spaceFor is which workspace this run's tab goes in: the one the job named, or
+// bermuda's own.
+//
+// A named space that herdr no longer has falls back rather than failing. The
+// space is where the run is *legible* — it decides which thread the agents in it
+// share — and a run refused because its window was closed would make a
+// coordination convenience into the thing that stops the work.
+func (r *Runner) spaceFor(ctx context.Context, job Job) (string, error) {
+	if id := strings.TrimSpace(job.WorkspaceID); id != "" {
+		if ws, err := r.Herdr.WorkspaceGet(ctx, id); err == nil && ws != nil {
+			return ws.WorkspaceID, nil
+		}
+	}
+	ws, err := r.ensureWorkspace(ctx, job.CWD)
+	if err != nil {
+		return "", err
+	}
+	return ws.WorkspaceID, nil
 }

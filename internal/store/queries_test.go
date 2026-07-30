@@ -625,6 +625,7 @@ func TestRunRoundTripsUsageAndFlow(t *testing.T) {
 		StartedAt: started, EndedAt: &ended,
 		InputTokens: 1, OutputTokens: 2, CacheReadTokens: 3, CacheCreationTokens: 4,
 		Model: "opus", Flow: "nightly", Input: "x",
+		Space: "ws-7", Thread: "flow-nightly-101500z",
 	})
 
 	got, err := s.Run(ctx, "r")
@@ -650,6 +651,11 @@ func TestRunRoundTripsUsageAndFlow(t *testing.T) {
 		{"Model", got.Model, "opus"},
 		{"Flow", got.Flow, "nightly"},
 		{"Input", got.Input, "x"},
+		// A resume reads these back to land in the space and the thread the first
+		// attempt used. Lost, the second half of one run holds its conversation
+		// somewhere else, and nothing says so.
+		{"Space", got.Space, "ws-7"},
+		{"Thread", got.Thread, "flow-nightly-101500z"},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
