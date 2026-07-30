@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -144,24 +145,28 @@ func TestASpaceWithNoThreadStillGroupsTheSteps(t *testing.T) {
 	}
 }
 
-// The label is what the thread id is slugged from, so it is checked here rather
-// than being left to read well by luck: an opaque id would appear in every
-// delivered mention and every `thread log` a human types.
-func TestASpaceIsNamedAfterItsFlowAndRun(t *testing.T) {
-	cases := []struct{ flow, run, want string }{
-		{"triage", "20260730T101500Z-triage", "Flow triage 101500Z"},
-		{"release-check", "20260730T004501Z-release-check", "Flow release-check 004501Z"},
-		// A run id in some other shape gets no stamp rather than a guess: a wrong
-		// timestamp is worse than a short label.
-		{"triage", "manual-run", "Flow triage"},
+// A flow's name makes its spaces recognizable, while the random suffix keeps
+// two runs of that flow from asking herdr for the same label. The suffix is
+// checked by shape because making it predictable for a test would also make it
+// predictable for concurrent runs.
+func TestASpaceIsNamedAfterItsFlow(t *testing.T) {
+	cases := []struct{ flow, prefix string }{
+		{"triage", "FLOWS:triage:"},
+		{" release-check ", "FLOWS:release-check:"},
+		// Empty flow ids should remain recognizable rather than producing an
+		// empty segment that looks like a formatting bug.
+		{" \t", "FLOWS:flow:"},
 	}
 	for _, c := range cases {
-		if got := SpaceLabel(c.flow, c.run); got != c.want {
-			t.Errorf("SpaceLabel(%q, %q) = %q, want %q", c.flow, c.run, got, c.want)
+		got := SpaceLabel(c.flow)
+		want := regexp.MustCompile("^" + regexp.QuoteMeta(c.prefix) + `[A-Za-z0-9_-]{6}$`)
+		if !want.MatchString(got) {
+			t.Errorf("SpaceLabel(%q) = %q, want shape %s", c.flow, got, want)
 		}
 	}
-	if got := store.SlugThread(SpaceLabel("triage", "20260730T101500Z-triage")); got != "flow-triage-101500z" {
-		t.Errorf("thread id would be %q, want flow-triage-101500z", got)
+	// Two runs of one flow must not ask herdr for the same name.
+	if a, b := SpaceLabel("triage"), SpaceLabel("triage"); a == b {
+		t.Errorf("two spaces for one flow got the same label %q", a)
 	}
 }
 

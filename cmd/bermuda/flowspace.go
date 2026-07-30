@@ -65,7 +65,7 @@ func openFlowSpace(ctx context.Context, s *store.Store, def flow.Flow, rec *stor
 			"--thread %s\n", firstNonEmpty(rec.Thread, store.GlobalThread))
 	}
 
-	label := runner.SpaceLabel(def.ID, rec.ID)
+	label := runner.SpaceLabel(def.ID)
 	ws, _, err := h.WorkspaceCreate(ctx, label, cwd, nil)
 	if err != nil || ws == nil {
 		fmt.Fprintln(os.Stderr, "bermuda: could not open a space for this flow, so its steps "+
