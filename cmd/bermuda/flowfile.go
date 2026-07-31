@@ -220,8 +220,13 @@ func jobsUsingFlow(id string) ([]string, error) {
 		return nil, err
 	}
 	var out []string
+	want := strings.TrimSpace(id)
 	for _, j := range jobs {
-		if strings.EqualFold(strings.TrimSpace(j.Flow), strings.TrimSpace(id)) {
+		// A job that names no flow starts no flow. Without this, an id that
+		// trims to empty -- `flow rm "  "` -- matches every prompt job on the
+		// machine, and the caller is told its flow is in use by jobs that have
+		// never heard of it.
+		if flow := strings.TrimSpace(j.Flow); flow != "" && strings.EqualFold(flow, want) {
 			out = append(out, j.ID)
 		}
 	}
