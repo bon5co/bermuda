@@ -134,6 +134,60 @@ func TestExecuteSendsAFlowJobDownTheFlowPath(t *testing.T) {
 	}
 }
 
+// The resume above calls runFlow with a record it already holds, which is not
+// the situation the morning after: then the only thing anyone has is the run id
+// printed in the park message, and `bermuda flow resume` has to find the rest in
+// the run row. It reads Flow back to decide there is anything to resume at all,
+// so a scheduled run that did not record its flow is unresumable — and every
+// scheduled flow run comes from Execute.
+func TestAScheduledFlowRunRecordsItsFlowSoResumeCanFindIt(t *testing.T) {
+	s := flowStore(t)
+	ctx := context.Background()
+	work := t.TempDir()
+	gate := filepath.Join(work, "gate")
+
+	writeFlow(t, "wf", "steps:\n"+
+		"  - id: sync\n    run: true\n"+
+		"  - id: gate\n    run: test -f "+gate+"\n")
+	job := store.Job{ID: "nightly", Name: "Nightly", CWD: work, Kind: "claude",
+		Model: "sonnet", Enabled: true, Flow: "wf", Input: "everything since yesterday"}
+	if err := s.PutJob(ctx, job); err != nil {
+		t.Fatal(err)
+	}
+
+	run, _ := Execute(ctx, s, job, "scheduled")
+	if run == nil || string(run.Outcome) != "parked" {
+		t.Fatalf("the run ended %+v, want parked at the gate", run)
+	}
+	rec, err := s.Run(ctx, run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Flow != "wf" {
+		t.Errorf("the stored run names flow %q, want \"wf\": resume refuses a run with no flow", rec.Flow)
+	}
+	// The input has to be the one the run started with, not whatever the job
+	// carries today, or a resume quietly becomes a different run.
+	if rec.Input != "everything since yesterday" {
+		t.Errorf("the stored run kept input %q, want the one it was started with", rec.Input)
+	}
+
+	// The real entry point, holding nothing but the run id.
+	if err := os.WriteFile(gate, []byte("open"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := flowResume([]string{run.RunID}); err != nil {
+		t.Fatalf("`bermuda flow resume %s` failed: %v", run.RunID, err)
+	}
+	rec, err = s.Run(ctx, run.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec.Outcome != "done" {
+		t.Errorf("after resume the run reads %q, want done", rec.Outcome)
+	}
+}
+
 // The old spelling has to keep dispatching, because the callers that hold it
 // are the ones nobody re-reads: cron entries, launcher scripts, and the SKILL
 // text an agent memorised. A renamed verb fails at 04:00, in a shell nobody is
