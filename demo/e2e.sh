@@ -245,6 +245,21 @@ grep -q "loop_exhausted" <<<"$out" && ok "a loop that runs out of attempts parks
     || bad "a bounded loop did not stop where it said" "$out"
 grep -q "resume with" <<<"$out" && ok "a parked loop says how to resume it" || bad "no resume line on a parked loop" "$out"
 
+# What a parked run leaves for the person who has to deal with it. There is no
+# herdr in this container, so there is no room to label — the thread is the half
+# that has to be written either way, and it is the half that used to stop
+# mid-sentence: every step's findings, and nothing saying how the run ended.
+thread=$(bermuda flow status "$(latest_run exhausts)" 2>&1 | awk '$1=="thread"{print $2}')
+if [ -n "$thread" ]; then
+    out=$(bermuda thread log --thread "$thread" --limit 20 2>&1)
+    grep -q "parked" <<<"$out" && ok "the thread records how a parked run ended" \
+        || bad "a parked run left its thread stopped mid-sentence" "$out"
+    grep -q "flow resume" <<<"$out" && ok "the thread says how to pick it up again" \
+        || bad "no resume command in the thread" "$out"
+else
+    bad "a parked flow run has no thread to read"
+fi
+
 # An edge pointing forward is a branch, and a flow is a series. Refused when the
 # file is read, so the flow that would loop into itself never starts.
 cat > "$FLOWS/branchy.yml" <<'YAML'

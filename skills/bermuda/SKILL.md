@@ -248,6 +248,10 @@ bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
   and override it. All four are refused on a `run` step.
 - A step is complete when its `result.json` says ok. A step that fails or writes
   none **parks the flow there** and the later steps never start. Exit code 1.
+  A parked run leaves its space open with the verdict in the space label, a tab
+  sitting on the run directory, and the ending posted to its thread. **Closing
+  that space is how a human acknowledges it** — bermuda never closes one, and a
+  resume takes the verdict back off the label.
 - A checker can hand the work back instead of parking:
   `on_fail: {goto: <earlier step>, max_loops: 2}` (default 1, ceiling 8). The
   edge names the step that *caused* the failure, never itself — the maker is what

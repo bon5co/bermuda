@@ -52,7 +52,21 @@ func openFlowSpace(ctx context.Context, s *store.Store, def flow.Flow, rec *stor
 
 	if id := strings.TrimSpace(rec.Space); id != "" {
 		if ws, err := h.WorkspaceGet(ctx, id); err == nil && ws != nil {
-			space := &runner.FlowSpace{WorkspaceID: ws.WorkspaceID, Label: ws.Label,
+			label := ws.Label
+			if base := runner.LabelBase(label); base != label {
+				// The room was renamed when this run parked. It is running
+				// again, so the verdict comes off — a space that still says
+				// "parked verify" while verify is running is a screen that
+				// contradicts itself, and the label is what an operator trusts
+				// first.
+				if err := h.WorkspaceRename(ctx, ws.WorkspaceID, base); err != nil {
+					fmt.Fprintln(os.Stderr, "bermuda: this space still carries its last "+
+						"park in its name:", err)
+				} else {
+					label = base
+				}
+			}
+			space := &runner.FlowSpace{WorkspaceID: ws.WorkspaceID, Label: label,
 				Thread: strings.TrimSpace(rec.Thread)}
 			if space.Thread == "" {
 				space.Thread = ensureSpaceThread(ctx, s, ws.WorkspaceID, ws.Label)
@@ -126,10 +140,7 @@ func closeFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace
 		return
 	}
 	if wr == nil || wr.Outcome != runner.OutcomeDone {
-		if space.HasThread() {
-			fmt.Fprintf(os.Stderr, "bermuda: this run's space is still open, and what its "+
-				"steps found is in thread %s\n", space.Thread)
-		}
+		parkFlowSpace(ctx, s, space, def, rec, wr)
 		return
 	}
 	if space.HasThread() {
@@ -150,6 +161,131 @@ func closeFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace
 	if err := h.WorkspaceClose(ctx, space.WorkspaceID); err != nil {
 		fmt.Fprintln(os.Stderr, "bermuda: this flow's space is finished with but still open:", err)
 	}
+}
+
+// spaceKeeper is the part of herdr the park path uses.
+//
+// An interface rather than the client itself so a test can watch what a park
+// does to a room without a live herdr: the whole point of this path is which
+// calls it makes, and a test that made them for real would rename and open tabs
+// in whatever window the machine running the suite happens to have.
+type spaceKeeper interface {
+	PaneList(ctx context.Context, workspaceID string) ([]herdrcli.Pane, error)
+	TabCreate(ctx context.Context, workspaceID, label, cwd string, env map[string]string) (*herdrcli.Pane, error)
+	WorkspaceRename(ctx context.Context, workspaceID, label string) error
+}
+
+// keeper returns the herdr client, or nil when there is none. A variable so a
+// test can substitute one.
+var keeper = func() spaceKeeper {
+	h := herdrcli.New()
+	if h == nil {
+		return nil
+	}
+	return h
+}
+
+// parkFlowSpace leaves the room in a state an operator can act on.
+//
+// A parked run keeps its space, because a human has to look at it. That was
+// half the mechanism: the space stayed open and nothing in it said why, so a
+// flow of `run:` steps left an open room with a blank shell in it and the
+// verdict only in the database. The record is written where somebody standing
+// in the room can read it — the thread gets the ending, the label gets the
+// verdict, and one tab lands on the artifacts.
+//
+// The space is not closed here and never will be: closing it is how the
+// operator acknowledges the run, which is a thing only they can do. Herdr
+// refuses to close the last tab in a workspace, so the room outlives every tab
+// in it and the ack is unambiguous.
+func parkFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace,
+	def flow.Flow, rec store.Run, wr *runner.FlowRun) {
+
+	note, stoppedAt, reason := "the run did not finish", "", runner.ParkReason("")
+	if wr != nil {
+		note, stoppedAt, reason = wr.Note(), wr.StoppedAt, wr.ParkReason
+	}
+	if space.HasThread() {
+		// The ending, in the conversation that holds everything else about this
+		// run. A thread that stops mid-sentence is the shape a reader has to
+		// leave to interpret; the resume command is here because this is where
+		// somebody is when they want it.
+		//
+		// The thread stays open, unlike a finished run's: a resume writes into
+		// it, and closing it now would split one run's record at its least
+		// useful moment.
+		postToFlowThread(ctx, s, space, def, rec,
+			fmt.Sprintf("flow %s parked: %s — resume with: bermuda flow resume %s",
+				def.ID, note, rec.ID))
+	}
+
+	h := keeper()
+	if h == nil {
+		return
+	}
+	if label := strings.TrimSpace(space.Label); label != "" {
+		if err := h.WorkspaceRename(ctx, space.WorkspaceID,
+			runner.LabelParked(label, stoppedAt, reason)); err != nil {
+			fmt.Fprintln(os.Stderr, "bermuda: this space keeps its running name:", err)
+		}
+	}
+	// A tab sitting on the run directory, named for the verdict. An agent step
+	// that failed already left its own tab and that is the better thing to read;
+	// this is for the case there is none — a `run:` step has no agent and no
+	// pane, so without it the room is a blank shell. It costs one tab in the
+	// case where both exist, which is cheaper than the case where neither does.
+	//
+	// One per room, not one per park: a run that is resumed and parks again is
+	// the ordinary case for a flow that needs a human, and a tab per attempt
+	// turns the room an operator opened for the verdict into a pile of
+	// identical shells. The one already sitting in the run directory is that
+	// tab — no step's tab is there, because a step runs in the job's working
+	// directory.
+	if dir := strings.TrimSpace(rec.RunDir); dir != "" && !hasPaneIn(ctx, h, space.WorkspaceID, dir) {
+		env := map[string]string{"BERMUDA_RUN_ID": rec.ID, "BERMUDA_RUN_DIR": dir}
+		if space.HasThread() {
+			env[runner.EnvThread] = space.Thread
+		}
+		if _, err := h.TabCreate(ctx, space.WorkspaceID, parkedTabLabel(stoppedAt, reason), dir, env); err != nil {
+			fmt.Fprintln(os.Stderr, "bermuda: no tab for this run's evidence:", err)
+		}
+	}
+	fmt.Fprintf(os.Stderr, "bermuda: this run parked and its space is still open — "+
+		"close the space to acknowledge it.\n  bermuda flow status %s\n", rec.ID)
+	if space.HasThread() {
+		fmt.Fprintf(os.Stderr, "  bermuda thread log --thread %s\n", space.Thread)
+	}
+}
+
+// hasPaneIn reports whether the space already holds a shell sitting in this
+// directory.
+//
+// A herdr that cannot answer is treated as "no": the cost of the wrong guess is
+// one spare tab, and the cost of the other wrong guess is a parked run with
+// nothing in its room.
+func hasPaneIn(ctx context.Context, h spaceKeeper, workspaceID, dir string) bool {
+	panes, err := h.PaneList(ctx, workspaceID)
+	if err != nil {
+		return false
+	}
+	for _, p := range panes {
+		if p.CWD == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// parkedTabLabel names the tab an operator lands in.
+func parkedTabLabel(stoppedAt string, reason runner.ParkReason) string {
+	label := "parked"
+	if stoppedAt != "" {
+		label += ": " + stoppedAt
+	}
+	if reason != "" {
+		label += " (" + string(reason) + ")"
+	}
+	return label
 }
 
 // postToFlowThread writes one line into the flow's thread as the run itself.
