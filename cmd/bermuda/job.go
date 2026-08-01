@@ -676,9 +676,16 @@ func firstLine(s string) string {
 func Execute(ctx context.Context, s *store.Store, j store.Job, trigger string) (*runner.Run, error) {
 	if j.IsFlow() {
 		runID := newRunID(j.ID)
+		// Flow and Input go on the run, not just on the job. Resume reads them
+		// back from the run row, so a run that does not carry them cannot be
+		// resumed at all — and every scheduled flow run arrives here, which made
+		// that every flow run a job ever started. The park message printed by
+		// the same binary says "resume with: bermuda flow resume <run>"; without
+		// this it answered "is not a flow run; there is nothing to resume".
 		run, err := runFlow(ctx, s, j, store.Run{
 			ID: runID, JobID: j.ID, Trigger: trigger, RunDir: runDirFor(runID),
 			Outcome: "running", StartedAt: time.Now(),
+			Flow: j.Flow, Input: j.Input,
 		})
 		disableOneShot(ctx, s, j, run)
 		return run, err
