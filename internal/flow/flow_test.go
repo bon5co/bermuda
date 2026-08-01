@@ -275,3 +275,64 @@ func TestSkipPermissionsIsRefusedOnARunStep(t *testing.T) {
 		t.Fatal("skip_permissions was accepted on a run step")
 	}
 }
+
+// The backward edge is read from the file like everything else, and a typo
+// inside it is refused for the same reason a typo outside it is: a flow that
+// silently drops `max_lops` is a heal loop with a bound nobody set.
+func TestABackwardEdgeIsReadFromTheFile(t *testing.T) {
+	dir := write(t, "heal", `
+steps:
+  - id: implement
+    agent: write the thing
+  - id: verify
+    agent: review the diff
+    on_fail:
+      goto: implement
+      max_loops: 2
+`)
+	f, err := Load(dir, "heal")
+	if err != nil {
+		t.Fatal(err)
+	}
+	of := f.Steps[1].OnFail
+	if of == nil {
+		t.Fatal("on_fail was dropped; the flow would park instead of healing")
+	}
+	if of.Goto != "implement" || of.MaxLoops != 2 {
+		t.Errorf("on_fail read back as %+v", of)
+	}
+	if f.Steps[0].OnFail != nil {
+		t.Error("a step that declared no edge has one")
+	}
+
+	bad := write(t, "typo", `
+steps:
+  - id: implement
+    agent: write
+  - id: verify
+    agent: review
+    on_fail:
+      goto: implement
+      max_lops: 2
+`)
+	if _, err := Load(bad, "typo"); err == nil {
+		t.Fatal("a misspelled key inside on_fail was accepted")
+	}
+}
+
+// A flow file that declares an edge the runner would refuse is refused when it
+// is read. Discovering it mid-flow means an agent turn has already been spent.
+func TestAnEdgePointingForwardIsRefusedAtReadTime(t *testing.T) {
+	dir := write(t, "branchy", `
+steps:
+  - id: verify
+    agent: review
+    on_fail:
+      goto: ship
+  - id: ship
+    agent: ship it
+`)
+	if _, err := Load(dir, "branchy"); err == nil {
+		t.Fatal("an edge pointing forward was accepted; a flow is a series")
+	}
+}

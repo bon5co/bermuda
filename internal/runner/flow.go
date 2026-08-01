@@ -28,6 +28,14 @@ import (
 // nobody checked. Everything a completed step wrote stays on disk, which is
 // what makes resume cheap — and resume being cheap is what removes the pressure
 // to wave a failed step through.
+//
+// A step may also declare `on_fail: {goto: <earlier step>}`, which turns the
+// park into one more attempt. That is for the shape a park serves badly: the
+// last step is a reviewer, it found something real, and the step that can fix it
+// is the one three above that wrote the code. Parking there is correct and
+// useless — it waits for a human to say "try again". The edge points backward
+// because the step that fails is the checker and the step that must run again is
+// the maker; a retry in place would re-read the same unchanged work.
 
 // StepLauncher starts one agent step and runs it to completion, in its own
 // process with its own directory.
@@ -72,6 +80,18 @@ const OutcomeRunning Outcome = "running"
 // The step keeps its own outcome — the flow parks, the step failed.
 const ParkStepFailed ParkReason = "step_failed"
 
+// ParkLoopExhausted is why a flow parked: a step with an on_fail edge kept
+// failing and has used every loop it declared. It is a park like any other —
+// the attempts are in the thread and the run resumes — rather than a silent
+// give-up after an hour of rewriting.
+const ParkLoopExhausted ParkReason = "loop_exhausted"
+
+// ParkLoopStuck is why a flow parked: the step failed twice running with the
+// same verdict, so the retry changed nothing it was checking. A loop that is
+// not converging is worth stopping before the loop count runs out, because the
+// remaining attempts are the same attempt.
+const ParkLoopStuck ParkReason = "loop_stuck"
+
 // StepRun is one step's execution.
 type StepRun struct {
 	ID    string
@@ -85,7 +105,12 @@ type StepRun struct {
 	AgentName  string
 	// Reused marks a step this attempt did not run because a previous attempt
 	// already completed it.
-	Reused    bool
+	Reused bool
+	// Attempt is which try at this step this run is on, counting from one. It is
+	// above one only when a backward edge sent the flow through here again, and
+	// it is on the record so a reader can tell a step that took forty minutes
+	// from a step that took four attempts of ten.
+	Attempt   int
 	StartedAt time.Time
 	EndedAt   time.Time
 	Err       error
@@ -104,8 +129,12 @@ type FlowRun struct {
 	// step finished.
 	StoppedAt string
 	// Steps is what this attempt did, which on a park is only the steps up to
-	// and including the one that stopped it.
+	// and including the one that stopped it. A step a backward edge sent the
+	// flow through twice appears twice, in the order it ran: the rejected
+	// attempt is part of what happened.
 	Steps []StepRun
+	// Loops is how many backward edges this run took.
+	Loops int
 	// Total is how many steps were declared. It is not len(Steps): a flow
 	// that parked at step two of four is 1/4, and saying 1/2 would report the
 	// two steps it managed as the whole job.
@@ -116,9 +145,18 @@ type FlowRun struct {
 }
 
 // Done reports how many steps completed, of how many declared.
+//
+// Counted by step id and by the last thing each one did, not by rows: a step a
+// backward edge ran twice has two records, and adding them up would report
+// 4/3 steps ok — a number that says the flow did more work than it declared
+// rather than that it did the same work twice.
 func (w *FlowRun) Done() (done, total int) {
+	last := map[string]Outcome{}
 	for _, s := range w.Steps {
-		if s.Outcome == OutcomeDone {
+		last[s.ID] = s.Outcome
+	}
+	for _, outcome := range last {
+		if outcome == OutcomeDone {
 			done++
 		}
 	}
@@ -128,14 +166,23 @@ func (w *FlowRun) Done() (done, total int) {
 // Note is the one-line summary of a flow run.
 func (w *FlowRun) Note() string {
 	done, total := w.Done()
+	// Said out loud, because a run that healed itself looks exactly like a run
+	// that worked first time, and the difference is forty minutes and a
+	// rewritten diff.
+	retried := ""
+	if w.Loops == 1 {
+		retried = ", 1 retry"
+	} else if w.Loops > 1 {
+		retried = fmt.Sprintf(", %d retries", w.Loops)
+	}
 	if w.StoppedAt == "" {
-		return fmt.Sprintf("%d/%d steps ok", done, total)
+		return fmt.Sprintf("%d/%d steps ok%s", done, total, retried)
 	}
 	reason := string(w.ParkReason)
 	if reason == "" {
 		reason = "stopped"
 	}
-	return fmt.Sprintf("%d/%d steps, parked at %s (%s)", done, total, w.StoppedAt, reason)
+	return fmt.Sprintf("%d/%d steps%s, parked at %s (%s)", done, total, retried, w.StoppedAt, reason)
 }
 
 // StepDir is where one step's artifacts live: under the run, named by the step,
@@ -191,7 +238,21 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 	// to step three, or the resumed run is not the run that was interrupted.
 	previous := ""
 
-	for i, step := range def.Steps {
+	// What the loopbacks have spent, by the step that spent it. Both are kept
+	// per step rather than per run: two verifiers in one flow are two separate
+	// budgets, and a flow that healed once at step two should not arrive at step
+	// five with nothing left.
+	loops := map[string]int{}
+	// The verdict each looping step last failed on, which is how a stuck loop is
+	// told from a converging one.
+	lastVerdict := map[string]string{}
+	// Which try at each step this run is on.
+	attempts := map[string]int{}
+	// The rejection waiting to be handed to the step a backward edge jumped to.
+	var pending *retry
+
+	for i := 0; i < len(def.Steps); i++ {
+		step := def.Steps[i]
 		sr := StepRun{ID: step.ID, Index: i, Kind: step.Label(),
 			Dir: StepDir(runDir, step.ID)}
 
@@ -200,11 +261,14 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 			// whole point of resume: the expensive steps are exactly the ones a
 			// human would otherwise be tempted to wave through.
 			sr.Outcome, sr.Reused, sr.Note = OutcomeDone, true, res.Note
+			sr.Attempt = attempts[step.ID]
 			wr.Steps = append(wr.Steps, sr)
 			previous = res.Note
 			continue
 		}
 
+		attempts[step.ID]++
+		sr.Attempt = attempts[step.ID]
 		sr.StartedAt = time.Now()
 		sr.Outcome = OutcomeRunning
 		w.report(sr)
@@ -213,6 +277,12 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 		// Expanded here rather than when the file was read, because {{previous}}
 		// is not knowable until the step before it has finished.
 		step = flow.Expand(step, vals)
+		if pending != nil && pending.target == step.ID {
+			// After the expansion, so a verdict that happens to contain braces is
+			// text rather than a placeholder.
+			step = pending.brief(step, sr.Attempt)
+			pending = nil
+		}
 
 		if err := w.prepare(sr.Dir); err != nil {
 			sr.Outcome, sr.ParkReason, sr.Err = OutcomeParked, ParkNoResult, err
@@ -225,6 +295,39 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 		sr.EndedAt = time.Now()
 		w.report(sr)
 		wr.Steps = append(wr.Steps, sr)
+
+		if sr.Outcome == OutcomeFailed && step.OnFail != nil {
+			// A declared backward edge: this step judged the work and rejected
+			// it, and the step that produced the work gets to try again.
+			//
+			// Only OutcomeFailed loops. A step that parked wrote no verdict —
+			// it died, or it timed out, or it is waiting on a human — and
+			// rewriting code on that signal is a heal loop against an
+			// environment failure, which never converges because nothing was
+			// wrong with the code.
+			target, reason, err := w.loopBack(def.Steps, i, runDir, loops, lastVerdict, sr.Note)
+			switch {
+			case err != nil:
+				// The span could not be cleared, so a retry would hand the
+				// verifier steps it thinks are already done. That is a harness
+				// problem, not a verdict.
+				wr.Outcome, wr.StoppedAt, wr.Err = OutcomeParked, step.ID, err
+				wr.ParkReason = ParkNoResult
+				return wr, err
+			case target >= 0:
+				wr.Loops++
+				// previous is already this step's note, so the step being
+				// re-run is handed the verdict that rejected it.
+				pending = &retry{target: def.Steps[target].ID, from: step.ID, verdict: sr.Note}
+				i = target - 1
+				continue
+			}
+			// Out of loops, or looping without moving. Park, with the reason the
+			// edge ran out rather than the plain failure — "it failed" and "it
+			// failed the same way three times" are different things to be told.
+			wr.Outcome, wr.StoppedAt, wr.ParkReason = OutcomeParked, step.ID, reason
+			return wr, nil
+		}
 
 		if sr.Outcome != OutcomeDone {
 			// Park here. B must not run on A's unverified claim, and a dead A
@@ -247,6 +350,98 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 		}
 	}
 	return wr, nil
+}
+
+// loopBack decides what a failed step's on_fail edge does, and clears the way
+// if the answer is "go back".
+//
+// It returns the index to resume at, or -1 and the reason the flow parks
+// instead. The bookkeeping maps are the caller's, keyed by the step that owns
+// the edge, and are updated here so the decision and its cost live together.
+func (w *Flow) loopBack(steps []store.Step, at int, runDir string,
+	loops map[string]int, lastVerdict map[string]string, verdict string) (int, ParkReason, error) {
+
+	step := steps[at]
+	of := step.OnFail
+	if loops[step.ID] >= of.Loops() {
+		return -1, ParkLoopExhausted, nil
+	}
+	// Compared to the previous rejection rather than to some notion of progress,
+	// because the verdict is the only thing the harness can read. Two identical
+	// rejections mean the retry changed nothing this step can see, and the loops
+	// left would spend the same tokens to be told the same thing. An empty
+	// verdict is not evidence of anything, so it does not park the run.
+	if trimmed := strings.TrimSpace(verdict); trimmed != "" && trimmed == lastVerdict[step.ID] {
+		return -1, ParkLoopStuck, nil
+	}
+
+	target := store.StepIndex(steps, of.Goto)
+	if target < 0 || target >= at {
+		// ValidateSteps refuses both of these before a flow can run, so reaching
+		// here means the definition changed under the run.
+		return -1, "", fmt.Errorf("step %s sends on_fail to %q, which is not a step declared before it",
+			step.ID, of.Goto)
+	}
+	// Every step from the target through this one, not just the target. The
+	// reuse path skips any step whose result.json says ok, so leaving the steps
+	// in between would re-run the maker and then hand this step the same
+	// verdict it just rejected, produced by an attempt that never happened.
+	//
+	// Kept rather than deleted: the rejected attempt's verdict beside the
+	// attempt that replaced it is what makes a loop that parked readable
+	// afterwards, and the file it is renamed out of the way of is the only one
+	// anything reads.
+	attempt := loops[step.ID] + 1
+	for _, s := range steps[target : at+1] {
+		dir := StepDir(runDir, s.ID)
+		kept := filepath.Join(dir, fmt.Sprintf("result.attempt-%d.json", attempt))
+		if err := os.Rename(filepath.Join(dir, "result.json"), kept); err != nil && !os.IsNotExist(err) {
+			return -1, "", err
+		}
+	}
+	loops[step.ID]++
+	lastVerdict[step.ID] = strings.TrimSpace(verdict)
+	return target, "", nil
+}
+
+// retry is the rejection a backward edge carries to the step it jumped to.
+//
+// {{previous}} already holds the verdict, but a maker step usually reads
+// {{input}} and never mentions {{previous}} — it is the first step of its span,
+// and the value it would show is the note of whatever ran before it. Without
+// this the agent is re-run with the prompt that produced the rejected work and
+// no idea it was rejected, which reliably produces the same work again.
+type retry struct {
+	// target is the step being re-run, and from is the step that rejected it.
+	target string
+	from   string
+	// verdict is the rejecting step's published note.
+	verdict string
+}
+
+// brief prepends the rejection to a step's prompt. A run step is returned
+// untouched: it reads $BERMUDA_PREVIOUS, and rewriting a shell command would
+// corrupt any command that legitimately contains the text.
+func (r *retry) brief(s store.Step, attempt int) store.Step {
+	if !s.IsAgent() {
+		return s
+	}
+	verdict := strings.TrimSpace(r.verdict)
+	if verdict == "" {
+		// A step that failed without saying why still has to be reported as a
+		// rejection, or the retry reads as an unexplained re-run.
+		verdict = "(it reported failure without saying why — the thread is the only record of what it saw)"
+	}
+	s.Agent = fmt.Sprintf(`This is attempt %d at this step. Attempt %d was rejected by step %q:
+
+%s
+
+Read this run's thread before changing anything — every attempt's findings are in it — and address that verdict. Producing the same work again produces the same rejection.
+
+---
+
+%s`, attempt, attempt-1, r.from, verdict, s.Agent)
+	return s
 }
 
 func (w *Flow) report(sr StepRun) {
@@ -315,7 +510,7 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 	// a differently named agent. That is what makes "a different subagent is a
 	// different agent" true by construction rather than by remembering: there is
 	// no path here that hands one step's live agent to the next.
-	run, err := w.Launch(ctx, j, stepRunID(runID, step.ID), sr.Dir)
+	run, err := w.Launch(ctx, j, stepRunID(runID, step.ID, sr.Attempt), sr.Dir)
 	if run != nil {
 		sr.Outcome, sr.ParkReason, sr.AgentName = run.Outcome, run.ParkReason, run.AgentName
 		if run.Result != nil {
@@ -423,4 +618,15 @@ func lastLine(out []byte) string {
 // stepRunID is the run id one step is launched under. It carries the step id so
 // the agent name derived from it names the step, and so two steps of the same
 // flow can never be the same agent.
-func stepRunID(runID, stepID string) string { return runID + "-" + stepID }
+//
+// A retry carries its attempt too, and that is not cosmetic: a step that failed
+// keeps its tab open for a human to look at, so the rejected attempt's agent is
+// still there under the name the next attempt would ask for. Two agents cannot
+// share a name — the retry would be refused, or worse, handed the agent that
+// produced the work it is supposed to redo.
+func stepRunID(runID, stepID string, attempt int) string {
+	if attempt > 1 {
+		return fmt.Sprintf("%s-%s-a%d", runID, stepID, attempt)
+	}
+	return runID + "-" + stepID
+}

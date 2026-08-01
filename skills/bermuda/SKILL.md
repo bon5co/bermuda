@@ -248,6 +248,15 @@ bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
   and override it. All four are refused on a `run` step.
 - A step is complete when its `result.json` says ok. A step that fails or writes
   none **parks the flow there** and the later steps never start. Exit code 1.
+- A checker can hand the work back instead of parking:
+  `on_fail: {goto: <earlier step>, max_loops: 2}` (default 1, ceiling 8). The
+  edge names the step that *caused* the failure, never itself — the maker is what
+  has to run again. Everything from the target through the checker re-runs, the
+  retried step is told which step rejected it and why, and the loop stops on the
+  bound (`loop_exhausted`) or on a verdict identical to the last one
+  (`loop_stuck`). Only a real verdict loops: a step that died still parks. Keep
+  push/deploy/publish steps *after* the checker — everything inside the loop runs
+  again every attempt.
 - `resume` reuses the run row, directory, space and thread: completed steps are
   found on disk and are not paid for twice, and the second half of the run writes
   where the first half did. It replays with the input the run *started* with.

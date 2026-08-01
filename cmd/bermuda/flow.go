@@ -337,6 +337,13 @@ func persistStep(ctx context.Context, s *store.Store, runID string, sr runner.St
 	if rec.Note == "" && sr.Err != nil {
 		rec.Note = sr.Err.Error()
 	}
+	if sr.Attempt > 1 {
+		// One row per step, so a step a backward edge ran three times overwrites
+		// itself twice. Without this the status table shows the last attempt as
+		// though it were the only one, and a flow that spent forty minutes
+		// healing reads as one that worked first time.
+		rec.Note = fmt.Sprintf("attempt %d: %s", sr.Attempt, rec.Note)
+	}
 	if !sr.EndedAt.IsZero() {
 		t := sr.EndedAt
 		rec.EndedAt = &t

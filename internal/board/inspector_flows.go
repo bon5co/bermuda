@@ -178,6 +178,12 @@ func flowStepLine(n int, s store.Step, width int) string {
 		}
 		right += " " + model
 	}
+	if s.OnFail != nil {
+		// Which step this one hands back to. A reader who cannot see the edge
+		// reads a run that spent forty minutes on step three as a hung flow
+		// rather than as one healing itself.
+		right += " ↺" + s.OnFail.Goto
+	}
 	num := itoa(n) + "."
 
 	// The name gets whatever the rest leaves. It is what resume, the run detail

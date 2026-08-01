@@ -40,7 +40,10 @@ bermuda flow run triage --input 'PR #431 fails on arm64'
 ```
 
 A step that fails stops everything after it and keeps everything before it, so
-`bermuda flow resume <run>` picks up where it stopped without paying twice.
+`bermuda flow resume <run>` picks up where it stopped without paying twice. A
+step that would rather hand the work back than wait for a human says so — a
+reviewer's `on_fail: {goto: patch, max_loops: 2}` re-runs the step that caused
+what it rejected, bounded and told why.
 
 The run also opens **a space of its own**, so every step is in one thread and
 says what it found there — the chain carries the verdict, the thread carries the

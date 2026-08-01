@@ -28,7 +28,12 @@ type fakeAgent struct {
 	// results maps step id to the result its agent writes. A step with no entry
 	// writes nothing, which is an agent that died.
 	results map[string]Result
-	calls   []agentCall
+	// scripted maps step id to one result per attempt, consumed in order and
+	// falling back to results once it runs out. It is what a loopback test needs
+	// and a linear one does not: a step whose answer changes between attempts is
+	// the entire premise of a flow that heals itself.
+	scripted map[string][]Result
+	calls    []agentCall
 }
 
 type agentCall struct {
@@ -42,7 +47,12 @@ func (f *fakeAgent) launch(_ context.Context, job Job, runID, dir string) (*Run,
 	stepID := job.Env["BERMUDA_STEP_ID"]
 	f.calls = append(f.calls, agentCall{stepID: stepID, runID: runID, dir: dir, job: job})
 
-	if res, ok := f.results[stepID]; ok {
+	if queue, ok := f.scripted[stepID]; ok && len(queue) > 0 {
+		if err := writeResult(dir, queue[0]); err != nil {
+			return nil, err
+		}
+		f.scripted[stepID] = queue[1:]
+	} else if res, ok := f.results[stepID]; ok {
 		if err := writeResult(dir, res); err != nil {
 			return nil, err
 		}
@@ -381,5 +391,332 @@ func TestAFlowRefusesToStartOnInvalidSteps(t *testing.T) {
 	}
 	if len(agent.calls) != 0 {
 		t.Errorf("an agent started for an invalid flow: %v", agent.started())
+	}
+}
+
+// The loopback. A flow whose last step is a reviewer can only ever park and
+// wait for a human, and most of what a reviewer catches is fixable by the step
+// that produced it. These tests are about that handback being bounded: it goes
+// back to the maker, it re-runs the span, and it stops on its own.
+
+// looping is the shape every test below uses: a maker, and a checker that sends
+// the flow back to it.
+func looping(max int) flow.Flow {
+	return flowDef(
+		store.Step{ID: "implement", Agent: "write the thing"},
+		store.Step{ID: "verify", Agent: "review the diff",
+			OnFail: &store.OnFail{Goto: "implement", MaxLoops: max}},
+	)
+}
+
+// The edge points at the maker, not at the checker. A retry in place would
+// re-read the same unchanged diff and reject it again.
+func TestAFailedStepSendsTheFlowBackToTheStepThatCausedIt(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "the retry check is inverted"},
+			ok("clean"),
+		}},
+	}
+	wr, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir)
+	if err != nil {
+		t.Fatalf("flow failed: %v", err)
+	}
+	if wr.Outcome != OutcomeDone {
+		t.Fatalf("outcome %s/%s, want done: the second attempt passed", wr.Outcome, wr.ParkReason)
+	}
+	if got := strings.Join(agent.started(), ","); got != "implement,verify,implement,verify" {
+		t.Errorf("steps ran %q, want implement,verify,implement,verify", got)
+	}
+	if wr.Loops != 1 {
+		t.Errorf("run recorded %d loops, want 1", wr.Loops)
+	}
+	// Two steps were declared and two are done. Counting the four records would
+	// report 4/2, which says the flow did more than it was asked rather than
+	// that it did the same thing twice.
+	if done, total := wr.Done(); done != 2 || total != 2 {
+		t.Errorf("progress %d/%d, want 2/2", done, total)
+	}
+	if !strings.Contains(wr.Note(), "1 retry") {
+		t.Errorf("the run's note reads %q and does not say it healed", wr.Note())
+	}
+}
+
+// The retried maker is handed the verdict that rejected it. Without it the
+// agent is re-run with the prompt that produced the rejected work and no idea
+// it was rejected, which reliably produces the same work again.
+func TestTheRetriedStepIsToldWhyItIsRunningAgain(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "the retry check is inverted"},
+			ok("clean"),
+		}},
+	}
+	if _, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir); err != nil {
+		t.Fatalf("flow failed: %v", err)
+	}
+
+	first, second := agent.calls[0].job.Prompt, agent.calls[2].job.Prompt
+	if strings.Contains(first, "rejected") {
+		t.Errorf("the first attempt's prompt mentions a rejection: %q", first)
+	}
+	for _, want := range []string{"attempt 2", `rejected by step "verify"`,
+		"the retry check is inverted", "thread", "write the thing"} {
+		if !strings.Contains(second, want) {
+			t.Errorf("the retried prompt does not mention %q:\n%s", want, second)
+		}
+	}
+	// Whatever the retry says, the step still runs as its own fresh agent.
+	if agent.calls[0].runID == agent.calls[2].runID {
+		t.Error("both attempts ran under one run id, so the retry inherited the rejected attempt's context")
+	}
+}
+
+// Going back to the maker without clearing what came after it would re-run the
+// maker and then hand the checker the same verdict it just rejected, produced
+// by an attempt that never happened.
+func TestTheWholeSpanRerunsNotJustTheTarget(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it"), "format": ok("formatted")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "unhandled nil"},
+			ok("clean"),
+		}},
+	}
+	def := flowDef(
+		store.Step{ID: "implement", Agent: "write the thing"},
+		store.Step{ID: "format", Agent: "tidy the diff"},
+		store.Step{ID: "verify", Agent: "review the diff",
+			OnFail: &store.OnFail{Goto: "implement", MaxLoops: 2}},
+	)
+	wr, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), def, "", "run1", dir)
+	if err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("flow ended %s/%s (%v), want done", wr.Outcome, wr.ParkReason, err)
+	}
+	want := "implement,format,verify,implement,format,verify"
+	if got := strings.Join(agent.started(), ","); got != want {
+		t.Errorf("steps ran %q, want %q: the step between the target and the checker was skipped as already done", got, want)
+	}
+}
+
+// An unattended heal loop that cannot converge is the expensive failure mode,
+// so the edge is bounded and running out is a park like any other.
+func TestALoopThatRunsOutOfAttemptsParks(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		// Different every time, so it is the count that stops this and not the
+		// no-progress check.
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "first complaint"},
+			{Status: "error", Note: "second complaint"},
+			{Status: "error", Note: "third complaint"},
+		}},
+	}
+	wr, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir)
+	if err != nil {
+		t.Fatalf("a loop running out is a park, not an error: %v", err)
+	}
+	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkLoopExhausted {
+		t.Fatalf("outcome %s/%s, want parked/loop_exhausted", wr.Outcome, wr.ParkReason)
+	}
+	if wr.StoppedAt != "verify" {
+		t.Errorf("parked at %q, want verify", wr.StoppedAt)
+	}
+	if got := strings.Count(strings.Join(agent.started(), ","), "implement"); got != 3 {
+		t.Errorf("the maker ran %d times, want 3: the first attempt and two loops", got)
+	}
+	if wr.Loops != 2 {
+		t.Errorf("run recorded %d loops, want 2", wr.Loops)
+	}
+	if !strings.Contains(wr.Note(), "2 retries") || !strings.Contains(wr.Note(), "loop_exhausted") {
+		t.Errorf("the run's note reads %q and does not say how it ended", wr.Note())
+	}
+}
+
+// A verdict identical to the last one means the retry changed nothing this step
+// can see. Spending the rest of the budget to be told the same thing again is
+// how an overnight loop burns a night.
+func TestAnIdenticalVerdictParksRatherThanLoopingAgain(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{
+			"implement": ok("wrote it"),
+			"verify":    {Status: "error", Note: "unhandled nil at line 40"},
+		},
+	}
+	// Room for five loops, and it stops after one: the cap is not what saved it.
+	wr, _ := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(5), "", "run1", dir)
+
+	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkLoopStuck {
+		t.Fatalf("outcome %s/%s, want parked/loop_stuck", wr.Outcome, wr.ParkReason)
+	}
+	if got := strings.Join(agent.started(), ","); got != "implement,verify,implement,verify" {
+		t.Errorf("steps ran %q: it kept looping on a verdict that never moved", got)
+	}
+	if wr.Loops != 1 {
+		t.Errorf("run recorded %d loops, want 1", wr.Loops)
+	}
+}
+
+// Only a verdict loops. A step that died wrote no judgement at all, and
+// rewriting code because the machine fell over is a heal loop against something
+// that was never wrong with the code.
+func TestAStepThatDiesParksInsteadOfLoopingBack(t *testing.T) {
+	dir := t.TempDir()
+	// verify has no scripted result and no result: its agent writes nothing.
+	agent := &fakeAgent{results: map[string]Result{"implement": ok("wrote it")}}
+	wr, _ := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(3), "", "run1", dir)
+
+	if wr.Outcome != OutcomeParked || wr.ParkReason != ParkNoResult {
+		t.Fatalf("outcome %s/%s, want parked/no_result", wr.Outcome, wr.ParkReason)
+	}
+	if got := strings.Join(agent.started(), ","); got != "implement,verify" {
+		t.Errorf("steps ran %q, want implement,verify: a dead step sent the flow back", got)
+	}
+	if wr.Loops != 0 {
+		t.Errorf("run recorded %d loops, want 0", wr.Loops)
+	}
+}
+
+// A run step is a checker too — `go test` is the cheapest reviewer there is —
+// and it reaches the maker the same way, through the environment rather than
+// through a rewritten command.
+func TestARunStepCanSendTheFlowBack(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{results: map[string]Result{"implement": ok("wrote it")}}
+	def := flowDef(
+		store.Step{ID: "implement", Agent: "write the thing"},
+		// Fails while the marker file is absent, and the maker's second attempt
+		// is what creates it: a checker that changes its mind for a reason.
+		store.Step{ID: "test", Run: "test -f " + filepath.Join(dir, "fixed"),
+			OnFail: &store.OnFail{Goto: "implement", MaxLoops: 2}},
+	)
+	launch := func(ctx context.Context, job Job, runID, stepDir string) (*Run, error) {
+		if strings.Contains(job.Prompt, "rejected by step") {
+			if err := os.WriteFile(filepath.Join(dir, "fixed"), []byte("x"), 0o644); err != nil {
+				return nil, err
+			}
+		}
+		return agent.launch(ctx, job, runID, stepDir)
+	}
+	wr, err := (&Flow{Launch: launch}).Execute(
+		context.Background(), flowJob(t), def, "", "run1", dir)
+	if err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("flow ended %s/%s (%v), want done", wr.Outcome, wr.ParkReason, err)
+	}
+	if wr.Loops != 1 {
+		t.Errorf("run recorded %d loops, want 1", wr.Loops)
+	}
+}
+
+// Which attempt a step is on is on the record, or the board shows a flow that
+// looks hung while it silently rewrites for forty minutes.
+func TestEachAttemptIsNumberedOnTheRecord(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "wrong"},
+			ok("clean"),
+		}},
+	}
+	rec := &recorder{}
+	wr, _ := (&Flow{Launch: agent.launch, Report: rec.report}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir)
+
+	want := []string{"implement:done", "verify:failed", "implement:done", "verify:done"}
+	if strings.Join(rec.settled, ",") != strings.Join(want, ",") {
+		t.Errorf("steps settled %v, want %v: the rejected attempt is part of what happened", rec.settled, want)
+	}
+	if len(wr.Steps) != 4 {
+		t.Fatalf("the run holds %d step records, want 4", len(wr.Steps))
+	}
+	for i, want := range []int{1, 1, 2, 2} {
+		if wr.Steps[i].Attempt != want {
+			t.Errorf("step %s record %d says attempt %d, want %d",
+				wr.Steps[i].ID, i, wr.Steps[i].Attempt, want)
+		}
+	}
+}
+
+// A loop that parked has to be readable afterwards, and the question a human
+// asks first is what the earlier attempts said. Deleting the rejected verdict
+// leaves only the one that parked.
+func TestARejectedVerdictIsKeptBesideTheAttemptThatReplacedIt(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "the retry check is inverted"},
+			ok("clean"),
+		}},
+	}
+	if _, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir); err != nil {
+		t.Fatalf("flow failed: %v", err)
+	}
+
+	kept, err := os.ReadFile(filepath.Join(StepDir(dir, "verify"), "result.attempt-1.json"))
+	if err != nil {
+		t.Fatalf("the rejected verdict is gone: %v", err)
+	}
+	if !strings.Contains(string(kept), "the retry check is inverted") {
+		t.Errorf("the kept verdict reads %q", kept)
+	}
+	// And the file everything reads is the attempt that replaced it.
+	res, err := readResult(StepDir(dir, "verify"))
+	if err != nil || res.Note != "clean" {
+		t.Errorf("result.json is %+v (%v), want the passing attempt", res, err)
+	}
+}
+
+// Resume after a loop parked is resume like any other: the steps before the
+// span are not redone, and the budget the human just refilled is a fresh one.
+func TestResumeAfterALoopParkStartsAtTheStepThatParked(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	job, def := flowJob(t), flowDef(
+		store.Step{ID: "pull", Run: "true"},
+		store.Step{ID: "implement", Agent: "write the thing"},
+		store.Step{ID: "verify", Agent: "review the diff",
+			OnFail: &store.OnFail{Goto: "implement", MaxLoops: 1}},
+	)
+
+	first := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "first complaint"},
+			{Status: "error", Note: "second complaint"},
+		}},
+	}
+	wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, def, "", "run1", dir)
+	if wr.ParkReason != ParkLoopExhausted {
+		t.Fatalf("first attempt parked for %q, want loop_exhausted", wr.ParkReason)
+	}
+
+	second := &fakeAgent{results: map[string]Result{
+		"implement": ok("would overwrite, if it ran"),
+		"verify":    ok("clean"),
+	}}
+	wr, err := (&Flow{Launch: second.launch}).Execute(ctx, job, def, "", "run1", dir)
+	if err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("resume ended %s/%s (%v), want done", wr.Outcome, wr.ParkReason, err)
+	}
+	if got := strings.Join(second.started(), ","); got != "verify" {
+		t.Errorf("resume started %q, want verify: the loop's last attempt at the maker was already done", got)
+	}
+	if res, _ := readResult(StepDir(dir, "implement")); res == nil || res.Note != "wrote it" {
+		t.Errorf("the maker's result is %+v: a completed step was re-run", res)
 	}
 }
