@@ -79,6 +79,40 @@ func SpaceLabel(flowID string) string {
 	return "FLOWS:" + id + ":" + nanoID6()
 }
 
+// parkedMark separates a space's name from the verdict appended when its run
+// parked. A separator rather than a rewrite, so the original name is recoverable
+// by cutting at it: a resume has to put the label back, and recomputing it is
+// not possible — SpaceLabel's suffix is random, and a resumed run that renamed
+// its space to a fresh name would be a different room to anyone watching.
+const parkedMark = " · "
+
+// LabelParked is the space's name with why its run stopped on the end.
+//
+// The room is what an operator sees first, and an open space named exactly as it
+// was while running says only that something happened. It is the label, not a
+// message, because a label survives being scrolled past.
+func LabelParked(label, stoppedAt string, reason ParkReason) string {
+	base := LabelBase(label)
+	verdict := "parked"
+	if stoppedAt != "" {
+		verdict += " " + stoppedAt
+	}
+	if reason != "" {
+		verdict += " (" + string(reason) + ")"
+	}
+	return base + parkedMark + verdict
+}
+
+// LabelBase is the space's name without any parked verdict, which is what a
+// resume renames it back to.
+func LabelBase(label string) string {
+	base, _, found := strings.Cut(label, parkedMark)
+	if !found {
+		return label
+	}
+	return base
+}
+
 const nanoIDAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
 
 // nanoID6 returns six characters from Nano ID's URL-safe alphabet.

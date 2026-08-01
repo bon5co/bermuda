@@ -194,3 +194,41 @@ func hasEnv(env []string, key, want string) bool {
 	}
 	return false
 }
+
+// The room an operator is looking at has to say why it is still open. A space
+// named exactly as it was while running says only that something happened.
+func TestASpaceLabelCarriesTheParkAndGivesItBack(t *testing.T) {
+	label := SpaceLabel("triage")
+	parked := LabelParked(label, "verify", ParkLoopExhausted)
+	for _, want := range []string{label, "verify", "loop_exhausted"} {
+		if !strings.Contains(parked, want) {
+			t.Errorf("the parked label %q does not mention %q", parked, want)
+		}
+	}
+	// A resume renames it back, and it has to be the same room: SpaceLabel's
+	// suffix is random, so a name that could not be recovered would have to be
+	// reinvented.
+	if got := LabelBase(parked); got != label {
+		t.Errorf("stripping the park gives %q, want the original %q", got, label)
+	}
+	if got := LabelBase(label); got != label {
+		t.Errorf("a label that was never parked came back as %q", got)
+	}
+	// Parking twice must not stack verdicts.
+	if got := LabelBase(LabelParked(parked, "build", ParkStepFailed)); got != label {
+		t.Errorf("a second park left %q behind", got)
+	}
+}
+
+// A park with nothing to say still has to be readable: the reason is missing
+// exactly when the flow died in a way nobody classified.
+func TestAParkedLabelWithoutAVerdictStillNamesTheRoom(t *testing.T) {
+	label := SpaceLabel("triage")
+	got := LabelParked(label, "", "")
+	if !strings.HasPrefix(got, label) || !strings.Contains(got, "parked") {
+		t.Errorf("bare parked label is %q", got)
+	}
+	if LabelBase(got) != label {
+		t.Errorf("stripping gives %q, want %q", LabelBase(got), label)
+	}
+}

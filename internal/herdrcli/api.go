@@ -133,6 +133,14 @@ func (c *Client) WorkspaceClose(ctx context.Context, workspaceID string) error {
 	return c.run(ctx, nil, "workspace", "close", workspaceID)
 }
 
+// WorkspaceRename sets a workspace's label.
+//
+// Only ever called on a space bermuda created and recorded. Renaming one it
+// merely found would relabel a person's own window out from under them.
+func (c *Client) WorkspaceRename(ctx context.Context, workspaceID, label string) error {
+	return c.run(ctx, nil, "workspace", "rename", workspaceID, label)
+}
+
 // WorkspaceList lists workspaces.
 func (c *Client) WorkspaceList(ctx context.Context) ([]Workspace, error) {
 	var out struct {

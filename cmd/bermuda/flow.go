@@ -229,6 +229,12 @@ func flowStatus(argv []string) error {
 	if t := strings.TrimSpace(rec.Thread); t != "" {
 		fmt.Fprintf(w, "thread\t%s\n", t)
 	}
+	// The room, for a run that left one open. A parked flow keeps its space so a
+	// human can look at it, and closing that space is how they say they have —
+	// which is impossible to act on if nothing names the space.
+	if sp := strings.TrimSpace(rec.Space); sp != "" && rec.Outcome == "parked" {
+		fmt.Fprintf(w, "space\t%s (close it to acknowledge this run)\n", sp)
+	}
 	if err := w.Flush(); err != nil {
 		return err
 	}

@@ -173,6 +173,18 @@ line rather than a transcript. The thread carries the evidence.
   back; a parked one leaves it open, because a human has to look at it. Closing
   is not deleting: `bermuda thread log --thread <id>` reads every word of a
   closed thread, and `bermuda flow status` prints the command.
+- **A parked run says so in its own room.** The thread gets the ending — `flow
+  triage parked: 1/3 steps, parked at verify (loop_stuck) — resume with: bermuda
+  flow resume <run>` — the space is relabelled `FLOWS:triage:a1B2c3 · parked
+  verify (loop_stuck)`, and one tab opens on the run directory where
+  `result.json`, `result.attempt-N.json` and `output.txt` are. A flow of `run:`
+  steps has no agent pane at all, so without that tab the room is a blank shell
+  and the verdict lives only in the database.
+- **Closing the space is the acknowledgement.** Bermuda never closes a parked
+  run's space, because "somebody has seen this" is not a thing the harness can
+  know. Herdr refuses to close the last tab in a workspace, so the room outlives
+  every tab in it and there is exactly one gesture that ends it. A resume takes
+  the verdict back off the label, so a room that says parked is parked.
 - **No herdr, no space, and the flow still runs.** The thread is how steps
   compare notes; it is not what makes them run in order. Every failure on this
   path degrades to what happened before the feature existed, with one line on
