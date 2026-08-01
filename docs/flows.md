@@ -253,6 +253,69 @@ c     run   pending
 
 `c` never started. That is the feature.
 
+## Handing the work back
+
+Parking is right when a human has to decide something. It is useless when the
+last step is a reviewer that found a real defect and the step that can fix it is
+the one three above it: the flow stops, and the only thing anyone does with it is
+say "try again". A step can declare that itself.
+
+```yaml
+steps:
+  - id: implement
+    agent: "{{input}} — write the fix."
+  - id: verify
+    agent: Adversarially review the diff. Fail if any finding survives.
+    on_fail:
+      goto: implement
+      max_loops: 2
+```
+
+**The edge points at the maker, not at the checker.** A `retries: 2` on `verify`
+would re-read the same unchanged diff twice and reject it twice — the step that
+failed is the one checking, and the step that must run again is the one that
+produced what it checked. `goto` therefore has to name a step declared *before*
+this one; an edge pointing forward is a branch, and a flow is a series.
+
+What happens when the edge is taken:
+
+- **The whole span re-runs, not just the target.** Everything from `goto` through
+  the step that failed has its `result.json` set aside, so the reuse path cannot
+  hand the checker a verdict produced by an attempt that never happened. The
+  rejected files are kept as `result.attempt-N.json` beside the ones that
+  replaced them.
+- **The retried step is told why it is running again.** `{{previous}}` becomes
+  the rejection, and the prompt is prefixed with which step rejected it, on which
+  attempt, and an instruction to read the run's thread first. A maker usually
+  reads `{{input}}` and never mentions `{{previous}}`; re-running it with the
+  prompt that produced the rejected work reliably produces the same work again.
+- **Only a verdict loops.** A step that ended without writing `result.json` — it
+  died, it timed out, it is waiting on a human — parks the way it always did.
+  Rewriting code because the machine fell over is a heal loop against something
+  that was never wrong with the code.
+- **It stops twice over.** `max_loops` (default 1, ceiling 8) bounds the
+  attempts, and a verdict identical to the previous one parks immediately: the
+  retry changed nothing the checker can see, and the loops left would spend the
+  same tokens to be told the same thing. The park reasons are `loop_exhausted`
+  and `loop_stuck`, and both are parks — the attempts are in the thread, the
+  rejected verdicts are on disk, and `bermuda flow resume` starts again at the
+  step that stopped with a fresh budget.
+- **Each attempt is its own agent.** The retry runs under its own run id, so it
+  cannot be handed the agent that produced the work it is meant to redo, and the
+  step's row on the board says which attempt it is on.
+
+**Everything inside the loop must be re-runnable.** A step between the target and
+the checker runs again every time the edge is taken, so pushing, deploying,
+publishing and opening PRs belong strictly *after* the checker passes. A loop
+that pushed on attempt one has to clean up after itself on attempt two, and that
+is where this goes bad.
+
+One thing the harness cannot tell yet: "the reviewer found a real defect" and
+"the database was down" are both a step reporting failure. A step that fails for
+an environmental reason will be looped against, up to its bound, before it parks.
+Until `result.json` carries a category, keep `on_fail` on steps whose failure
+means the work is wrong.
+
 ## On the board
 
 Flows have their own tab: what is callable, what each takes, and when it last
@@ -279,7 +342,14 @@ Space opens the steps under it.
 Templating beyond `{{input}}` and `{{previous}}`, the `expect:` assertion
 vocabulary, `check:` commands, `gate: human`, `fresh:`, parallelism, and
 branching. Series only — the failures this was built from were sequencing
-failures, not throughput ones.
+failures, not throughput ones. `on_fail` is not an exception to that: it is one
+edge backward along the same line, which is why it may only point at a step
+already declared.
+
+Also out for now: an escalation ladder on the retry (`escalate: {model: opus}`),
+failure classes in `result.json`, and per-attempt counters on the board's own
+columns. The first two are what turn a bounded retry into a heal that gets
+smarter; the counters are what stop a healing run from looking hung.
 
 The verb used to be `workflow`. It still dispatches, with a line on stderr, so a
 cron entry or launcher script written before the rename keeps running.

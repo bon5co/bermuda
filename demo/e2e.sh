@@ -189,6 +189,76 @@ run_id=$(latest_run breaks)
 out=$(bermuda flow status "$run_id" 2>&1)
 grep -q "never .*pending" <<<"$out" && ok "the step after a failure never starts" || bad "a step ran behind a failed one" "$out"
 
+# A checker that hands the work back. The maker only gets it right on its
+# second run, which is the shape the feature exists for: parking here would be
+# correct and useless, because the step that can fix it is the one above.
+cat > "$FLOWS/heals.yml" <<'YAML'
+steps:
+  - id: implement
+    run: 'if [ -f "$HOME/heal-tried" ]; then touch "$HOME/heal-fixed"; else touch "$HOME/heal-tried"; fi'
+  - id: verify
+    run: 'test -f "$HOME/heal-fixed"'
+    on_fail:
+      goto: implement
+      max_loops: 2
+YAML
+out=$(bermuda flow run heals 2>&1); status=$?
+grep -q '"outcome": "done"' <<<"$out" && ok "a flow heals itself and finishes" || bad "the loopback did not heal" "$out"
+[ $status -eq 0 ] && ok "a healed flow exits zero" || bad "a healed flow exited nonzero"
+run_id=$(latest_run heals)
+out=$(bermuda flow status "$run_id" 2>&1)
+grep -q "attempt 2" <<<"$out" && ok "the retried step says which attempt it is on" \
+    || bad "a healed run looks like one that worked first time" "$out"
+grep -q "2/2 steps" <<<"$out" && ok "a step run twice is still counted once" || bad "the retry was counted as extra work" "$out"
+
+# The two ways a loop stops on its own. Both are parks: the attempts are on
+# record and a human can resume, rather than an unattended run rewriting the
+# same code until somebody reads the token bill.
+cat > "$FLOWS/stuck.yml" <<'YAML'
+steps:
+  - id: implement
+    run: echo nothing changes
+  - id: verify
+    run: exit 1
+    on_fail:
+      goto: implement
+      max_loops: 5
+YAML
+bermuda flow run stuck >/dev/null 2>&1
+out=$(bermuda flow status "$(latest_run stuck)" 2>&1)
+grep -q "loop_stuck" <<<"$out" && ok "an unchanged verdict parks instead of looping again" \
+    || bad "a loop that changed nothing kept going" "$out"
+
+cat > "$FLOWS/exhausts.yml" <<'YAML'
+steps:
+  - id: implement
+    run: echo trying again
+  - id: verify
+    run: 'date +%s%N; exit 1'
+    on_fail:
+      goto: implement
+      max_loops: 2
+YAML
+bermuda flow run exhausts >/dev/null 2>&1
+out=$(bermuda flow status "$(latest_run exhausts)" 2>&1)
+grep -q "loop_exhausted" <<<"$out" && ok "a loop that runs out of attempts parks" \
+    || bad "a bounded loop did not stop where it said" "$out"
+grep -q "resume with" <<<"$out" && ok "a parked loop says how to resume it" || bad "no resume line on a parked loop" "$out"
+
+# An edge pointing forward is a branch, and a flow is a series. Refused when the
+# file is read, so the flow that would loop into itself never starts.
+cat > "$FLOWS/branchy.yml" <<'YAML'
+steps:
+  - id: verify
+    run: 'exit 1'
+    on_fail:
+      goto: ship
+  - id: ship
+    run: echo shipped
+YAML
+out=$(bermuda flow run branchy 2>&1); status=$?
+[ $status -ne 0 ] && ok "an on_fail pointing forward is refused" || bad "a forward edge ran" "$out"
+
 # A job starts a flow on a schedule; the job supplies the x.
 bermuda job add --id breaks-job --name "Breaks" --flow breaks --input none >/dev/null 2>&1
 check "a job can start a flow"   "breaks"    bermuda job list

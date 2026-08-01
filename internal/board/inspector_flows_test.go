@@ -324,3 +324,25 @@ func indexOfFlowRow(t *testing.T, fb *flowBoard, want flowRow) int {
 	t.Fatal("the row is not on the tab")
 	return 0
 }
+
+// A step that hands work back is not a step like the others: a run sitting on
+// it for forty minutes is a flow healing itself, and a reader who cannot see
+// the edge diagnoses that as a hung agent.
+func TestTheFlowsInspectorShowsABackwardEdge(t *testing.T) {
+	fb := newFlowBoard(t, map[string]string{"heal.yml": `about: fix and check
+steps:
+  - id: implement
+    agent: write the thing
+  - id: verify
+    agent: review the diff
+    on_fail:
+      goto: implement
+      max_loops: 2
+`})
+	fb.selectFlow(t, "heal")
+
+	panel := fb.renderFlowInspector(64)
+	if !strings.Contains(panel, "↺implement") {
+		t.Errorf("the flows inspector does not show where verify hands back:\n%s", panel)
+	}
+}

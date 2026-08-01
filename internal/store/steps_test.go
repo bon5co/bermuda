@@ -257,3 +257,73 @@ func TestRunStepsForManyRuns(t *testing.T) {
 		t.Errorf("asking about no runs failed: %v", err)
 	}
 }
+
+// A backward edge is the one place a flow stops being a straight line, so what
+// it may say is checked before anything runs. Every case below is a loop that
+// would either never terminate or never fix anything.
+func TestValidationRejectsAnImpossibleOnFail(t *testing.T) {
+	cases := []struct {
+		name  string
+		steps []Step
+		says  string
+	}{
+		{"pointing at itself", []Step{
+			{ID: "make", Agent: "write"},
+			{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "verify"}},
+		}, "itself"},
+		{"pointing forward", []Step{
+			{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "ship"}},
+			{ID: "ship", Agent: "ship"},
+		}, "declared before"},
+		{"pointing at nothing", []Step{
+			{ID: "make", Agent: "write"},
+			{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "typo"}},
+		}, "declared before"},
+		{"naming no step at all", []Step{
+			{ID: "make", Agent: "write"},
+			{ID: "verify", Agent: "review", OnFail: &OnFail{MaxLoops: 3}},
+		}, "no goto"},
+		{"asking for more loops than the ceiling", []Step{
+			{ID: "make", Agent: "write"},
+			{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "make", MaxLoops: 99}},
+		}, "ceiling"},
+		{"asking for a negative number of loops", []Step{
+			{ID: "make", Agent: "write"},
+			{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "make", MaxLoops: -1}},
+		}, "negative"},
+	}
+	for _, c := range cases {
+		err := ValidateSteps(c.steps, "sonnet")
+		if err == nil {
+			t.Errorf("%s: accepted", c.name)
+			continue
+		}
+		if !strings.Contains(err.Error(), c.says) {
+			t.Errorf("%s: refusal %q does not say %q", c.name, err, c.says)
+		}
+	}
+}
+
+// The edge a flow is meant to declare, on both kinds of step: `go test` is the
+// cheapest reviewer there is, and it should be able to hand back too.
+func TestAWorkableOnFailIsAccepted(t *testing.T) {
+	steps := []Step{
+		{ID: "make", Agent: "write"},
+		{ID: "test", Run: "go test ./...", OnFail: &OnFail{Goto: "make"}},
+		{ID: "verify", Agent: "review", OnFail: &OnFail{Goto: "make", MaxLoops: 2}},
+	}
+	if err := ValidateSteps(steps, "sonnet"); err != nil {
+		t.Fatalf("refused: %v", err)
+	}
+	// Unset is one attempt back, which is the conservative reading of a field
+	// somebody left out rather than a loop that never runs.
+	if got := steps[1].OnFail.Loops(); got != 1 {
+		t.Errorf("an unset max_loops allows %d loops, want 1", got)
+	}
+	if got := steps[2].OnFail.Loops(); got != 2 {
+		t.Errorf("max_loops 2 allows %d loops", got)
+	}
+	if got := (*OnFail)(nil).Loops(); got != 0 {
+		t.Errorf("a step with no edge allows %d loops, want 0", got)
+	}
+}

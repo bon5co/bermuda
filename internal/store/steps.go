@@ -54,7 +54,48 @@ type Step struct {
 	// false. Nil is the common case — flow steps run unattended, so the bypass is
 	// on by default and a step only names this to opt out.
 	SkipPermissions *bool `json:"skip_permissions,omitempty" yaml:"skip_permissions,omitempty"`
+
+	// OnFail sends the flow back to an earlier step instead of parking here.
+	// Nil — the common case — parks, which is what every step did before this
+	// existed.
+	OnFail *OnFail `json:"on_fail,omitempty" yaml:"on_fail,omitempty"`
 }
+
+// OnFail is a backward edge: this step reported failure, and the flow goes back
+// to an earlier one rather than stopping.
+//
+// It is on the step that *detects* the problem and it names the step that
+// *caused* it, which is the whole shape of the thing. A `retries: 3` on a
+// verifier would re-read the same unchanged diff three times and reject it three
+// times — the step that failed is the one checking, and the step that has to run
+// again is the one that produced what it checked.
+type OnFail struct {
+	// Goto is the id of the step to go back to. It must be declared before the
+	// step that names it: a flow is a series, and an edge that pointed forward
+	// would be a branch.
+	Goto string `json:"goto" yaml:"goto"`
+	// MaxLoops bounds how many times this step may send the flow back. Unset is
+	// one — a self-heal that gets a second try and then wants a human, which is
+	// the conservative reading of a field somebody left out.
+	MaxLoops int `json:"max_loops,omitempty" yaml:"max_loops,omitempty"`
+}
+
+// Loops is how many times this edge may be taken.
+func (o *OnFail) Loops() int {
+	if o == nil {
+		return 0
+	}
+	if o.MaxLoops <= 0 {
+		return 1
+	}
+	return o.MaxLoops
+}
+
+// maxLoopsCeiling is the largest max_loops a flow may declare. A loop that has
+// not converged in eight attempts is not going to on the ninth, and the failure
+// mode this bounds is an overnight heal loop that rewrites the same code until
+// somebody notices the token bill.
+const maxLoopsCeiling = 8
 
 // IsAgent reports whether this step runs an agent rather than a command.
 func (s Step) IsAgent() bool { return strings.TrimSpace(s.Agent) != "" }
@@ -92,7 +133,9 @@ func ValidateSteps(steps []Step, defaultModel string) error {
 	if len(steps) == 0 {
 		return nil // not a flow; a single-prompt job is the normal case
 	}
-	seen := map[string]bool{}
+	// The index each id was declared at, which on_fail needs: an edge may only
+	// point at a step that has already been seen by the time this one is read.
+	seen := map[string]int{}
 	for i, s := range steps {
 		id := strings.TrimSpace(s.ID)
 		if id == "" {
@@ -106,10 +149,14 @@ func ValidateSteps(steps []Step, defaultModel string) error {
 		// case-insensitive filesystem — so the second would resume as though
 		// the first had already run it.
 		key := strings.ToLower(id)
-		if seen[key] {
+		if _, dup := seen[key]; dup {
 			return fmt.Errorf("step id %q is used twice: ids must be unique within a flow", id)
 		}
-		seen[key] = true
+		seen[key] = i
+
+		if err := checkOnFail(id, s.OnFail, seen); err != nil {
+			return err
+		}
 
 		agent, cmd := strings.TrimSpace(s.Agent), strings.TrimSpace(s.Run)
 		switch {
@@ -171,6 +218,54 @@ func checkStepID(id string) error {
 		}
 	}
 	return nil
+}
+
+// checkOnFail validates one backward edge against the steps declared before it.
+//
+// seen holds the id of every step read so far, so an edge that names something
+// further down the file — or nothing at all — is refused here rather than
+// discovered by a flow that has already spent an hour reaching it.
+func checkOnFail(id string, of *OnFail, seen map[string]int) error {
+	if of == nil {
+		return nil
+	}
+	target := strings.TrimSpace(of.Goto)
+	if target == "" {
+		return fmt.Errorf("step %q has on_fail with no goto: an edge that names no step "+
+			"is a step that parks, which is what leaving on_fail out already does", id)
+	}
+	if strings.EqualFold(target, id) {
+		return fmt.Errorf("step %q sends on_fail back to itself: the step that fails is the "+
+			"one checking, and running it again re-reads the same unchanged work — "+
+			"goto the step that produced what this one rejected", id)
+	}
+	if _, ok := seen[strings.ToLower(target)]; !ok {
+		return fmt.Errorf("step %q sends on_fail to %q, which is not declared before it: "+
+			"a flow is a series, and an edge pointing forward would be a branch", id, target)
+	}
+	if of.MaxLoops < 0 {
+		return fmt.Errorf("step %q sets max_loops to %d: it is how many times this step may "+
+			"send the flow back, so it cannot be negative", id, of.MaxLoops)
+	}
+	if of.MaxLoops > maxLoopsCeiling {
+		return fmt.Errorf("step %q sets max_loops to %d, above the ceiling of %d: a loop that "+
+			"has not converged in %d attempts will not on the next one, and an unattended "+
+			"heal loop is the expensive way to find that out",
+			id, of.MaxLoops, maxLoopsCeiling, maxLoopsCeiling)
+	}
+	return nil
+}
+
+// StepIndex is where a step id sits in a declared sequence, or -1 if it is not
+// in it. Matched the way ids are validated — case-insensitively — so a goto
+// that ValidateSteps accepted resolves here.
+func StepIndex(steps []Step, id string) int {
+	for i, s := range steps {
+		if strings.EqualFold(strings.TrimSpace(s.ID), strings.TrimSpace(id)) {
+			return i
+		}
+	}
+	return -1
 }
 
 // encodeSteps renders the step list for storage. An empty list is stored as the
