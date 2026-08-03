@@ -720,3 +720,139 @@ func TestResumeAfterALoopParkStartsAtTheStepThatParked(t *testing.T) {
 		t.Errorf("the maker's result is %+v: a completed step was re-run", res)
 	}
 }
+
+// The bound has to outlive the process that set it.
+//
+// The loop counters used to live in Execute, so every `flow resume` began with
+// a full budget. Nothing has to be malicious for that to be unbounded: a
+// self-heal job that unparks whatever broke overnight refills an exhausted loop
+// every morning, and each refill costs a whole flow.
+func TestAResumeDoesNotHandBackTheLoopsAlreadySpent(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	job, def := flowJob(t), looping(1)
+
+	first := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "first complaint"},
+			{Status: "error", Note: "second complaint"},
+		}},
+	}
+	wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, def, "", "run1", dir)
+	if wr.ParkReason != ParkLoopExhausted {
+		t.Fatalf("first attempt parked for %q, want loop_exhausted", wr.ParkReason)
+	}
+
+	// The resume's checker keeps failing with something new every time, so only
+	// the ledger can stop it.
+	second := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it again")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "third complaint"},
+			{Status: "error", Note: "fourth complaint"},
+		}},
+	}
+	wr, _ = (&Flow{Launch: second.launch}).Execute(ctx, job, def, "", "run1", dir)
+
+	if wr.ParkReason != ParkLoopExhausted {
+		t.Fatalf("resume parked for %q, want loop_exhausted", wr.ParkReason)
+	}
+	if wr.Loops != 0 {
+		t.Errorf("the resume took %d more loops on a budget that was already spent", wr.Loops)
+	}
+	if got := strings.Join(second.started(), ","); got != "verify" {
+		t.Errorf("the resume ran %q; the maker was sent round again on a spent budget", got)
+	}
+}
+
+// The human who fixed the thing the loop kept failing on gets the allowance
+// back — by saying so, not by calling resume.
+func TestResetLoopsHandsTheBudgetBack(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	job, def := flowJob(t), looping(1)
+
+	first := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "first complaint"},
+			{Status: "error", Note: "second complaint"},
+		}},
+	}
+	if wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, def, "", "run1", dir); wr.ParkReason != ParkLoopExhausted {
+		t.Fatalf("first attempt parked for %q", wr.ParkReason)
+	}
+
+	second := &fakeAgent{
+		results:  map[string]Result{"implement": ok("fixed it properly")},
+		scripted: map[string][]Result{"verify": {{Status: "error", Note: "one last thing"}, ok("clean")}},
+	}
+	wr, err := (&Flow{Launch: second.launch, ResetLoops: true}).Execute(ctx, job, def, "", "run1", dir)
+	if err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("reset resume ended %s/%s (%v), want done", wr.Outcome, wr.ParkReason, err)
+	}
+	if wr.Loops != 1 {
+		t.Errorf("the reset resume took %d loops, want 1", wr.Loops)
+	}
+}
+
+// The no-progress check has to survive a resume too, or the first attempt after
+// one is spent rediscovering that the verdict has not moved.
+func TestAResumeRemembersTheVerdictItLastRejectedOn(t *testing.T) {
+	ctx, dir := context.Background(), t.TempDir()
+	job, def := flowJob(t), looping(5)
+	same := Result{Status: "error", Note: "unhandled nil at line 40"}
+
+	first := &fakeAgent{results: map[string]Result{"implement": ok("wrote it"), "verify": same}}
+	if wr, _ := (&Flow{Launch: first.launch}).Execute(ctx, job, def, "", "run1", dir); wr.ParkReason != ParkLoopStuck {
+		t.Fatalf("first attempt parked for %q, want loop_stuck", wr.ParkReason)
+	}
+
+	second := &fakeAgent{results: map[string]Result{"implement": ok("wrote it"), "verify": same}}
+	wr, _ := (&Flow{Launch: second.launch}).Execute(ctx, job, def, "", "run1", dir)
+	if wr.ParkReason != ParkLoopStuck {
+		t.Errorf("resume parked for %q, want loop_stuck", wr.ParkReason)
+	}
+	if wr.Loops != 0 {
+		t.Errorf("the resume spent %d loops on a verdict it had already seen", wr.Loops)
+	}
+	if got := strings.Join(second.started(), ","); got != "verify" {
+		t.Errorf("the resume ran %q, want verify alone", got)
+	}
+}
+
+// The ledger is a file in the run directory, like everything else that has to
+// outlive the process. A reader — or a human diagnosing a loop — can see what
+// was spent without the database.
+func TestTheLoopLedgerIsOnDiskWithTheRun(t *testing.T) {
+	dir := t.TempDir()
+	agent := &fakeAgent{
+		results: map[string]Result{"implement": ok("wrote it")},
+		scripted: map[string][]Result{"verify": {
+			{Status: "error", Note: "the retry check is inverted"}, ok("clean"),
+		}},
+	}
+	if _, err := (&Flow{Launch: agent.launch}).Execute(
+		context.Background(), flowJob(t), looping(2), "", "run1", dir); err != nil {
+		t.Fatalf("flow failed: %v", err)
+	}
+	ledger := readLoopLedger(dir)
+	if ledger.spent("verify") != 1 {
+		t.Errorf("the ledger says verify spent %d, want 1", ledger.spent("verify"))
+	}
+	if ledger.verdict("verify") != "the retry check is inverted" {
+		t.Errorf("the ledger kept verdict %q", ledger.verdict("verify"))
+	}
+	// A step that never looped is not in it, so the file says what happened
+	// rather than listing every step with a zero.
+	if ledger.spent("implement") != 0 {
+		t.Errorf("the maker is charged %d loops it never took", ledger.spent("implement"))
+	}
+	// An unreadable ledger must not stop a flow: the loop is still bounded by
+	// the no-progress check and by the step count.
+	if err := os.WriteFile(filepath.Join(dir, "loops.json"), []byte("{not json"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readLoopLedger(dir); got.spent("verify") != 0 {
+		t.Errorf("a corrupt ledger read as %+v, want empty", got)
+	}
+}

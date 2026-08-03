@@ -254,6 +254,8 @@ bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
   resume takes the verdict back off the label.
 - A checker can hand the work back instead of parking:
   `on_fail: {goto: <earlier step>, max_loops: 2}` (default 1, ceiling 8). The
+  **the budget survives a resume** (spent loops are in `loops.json` in the run
+  dir; `flow resume --reset-loops` hands it back deliberately). The
   edge names the step that *caused* the failure, never itself — the maker is what
   has to run again. Everything from the target through the checker re-runs, the
   retried step is told which step rejected it and why, and the loop stops on the

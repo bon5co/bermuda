@@ -60,6 +60,13 @@ type Flow struct {
 	// happened before a flow had a space of its own: they still chain, they just
 	// have nowhere to compare notes.
 	Space *FlowSpace
+	// ResetLoops gives a run's backward edges their full budget again.
+	//
+	// Off by default, because the budget surviving a resume is the point of
+	// recording it: the ordinary resume is "I looked at why it parked and it is
+	// worth continuing", not "spend the same allowance a second time". A human
+	// who has fixed the thing the loop kept failing on asks for this explicitly.
+	ResetLoops bool
 	// Report is called when a step starts and again when it settles, so a
 	// caller can persist progress while the flow is still going: a flow
 	// that recorded itself only at the end would show nothing for the hour it
@@ -238,14 +245,20 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 	// to step three, or the resumed run is not the run that was interrupted.
 	previous := ""
 
-	// What the loopbacks have spent, by the step that spent it. Both are kept
-	// per step rather than per run: two verifiers in one flow are two separate
-	// budgets, and a flow that healed once at step two should not arrive at step
-	// five with nothing left.
-	loops := map[string]int{}
-	// The verdict each looping step last failed on, which is how a stuck loop is
-	// told from a converging one.
-	lastVerdict := map[string]string{}
+	// What the backward edges have spent so far, read from the run directory
+	// rather than started fresh.
+	//
+	// This is the difference between a bound and a suggestion. The counters used
+	// to live in this function, so `flow resume` began every attempt with a full
+	// budget — and the thing that resumes a parked run is not always a human
+	// deciding it is worth another go: a self-heal job that unparks whatever
+	// broke overnight would refill an exhausted loop every morning, forever, at
+	// the cost of a whole flow each time. On disk, next to the results, the
+	// spend survives the process that spent it.
+	ledger := loopLedger{}
+	if !w.ResetLoops {
+		ledger = readLoopLedger(runDir)
+	}
 	// Which try at each step this run is on.
 	attempts := map[string]int{}
 	// The rejection waiting to be handed to the step a backward edge jumped to.
@@ -305,7 +318,7 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 			// rewriting code on that signal is a heal loop against an
 			// environment failure, which never converges because nothing was
 			// wrong with the code.
-			target, reason, err := w.loopBack(def.Steps, i, runDir, loops, lastVerdict, sr.Note)
+			target, reason, err := w.loopBack(def.Steps, i, runDir, &ledger, sr.Note)
 			switch {
 			case err != nil:
 				// The span could not be cleared, so a retry would hand the
@@ -359,11 +372,11 @@ func (w *Flow) Execute(ctx context.Context, job store.Job, def flow.Flow, input,
 // instead. The bookkeeping maps are the caller's, keyed by the step that owns
 // the edge, and are updated here so the decision and its cost live together.
 func (w *Flow) loopBack(steps []store.Step, at int, runDir string,
-	loops map[string]int, lastVerdict map[string]string, verdict string) (int, ParkReason, error) {
+	ledger *loopLedger, verdict string) (int, ParkReason, error) {
 
 	step := steps[at]
 	of := step.OnFail
-	if loops[step.ID] >= of.Loops() {
+	if ledger.spent(step.ID) >= of.Loops() {
 		return -1, ParkLoopExhausted, nil
 	}
 	// Compared to the previous rejection rather than to some notion of progress,
@@ -371,7 +384,7 @@ func (w *Flow) loopBack(steps []store.Step, at int, runDir string,
 	// rejections mean the retry changed nothing this step can see, and the loops
 	// left would spend the same tokens to be told the same thing. An empty
 	// verdict is not evidence of anything, so it does not park the run.
-	if trimmed := strings.TrimSpace(verdict); trimmed != "" && trimmed == lastVerdict[step.ID] {
+	if trimmed := strings.TrimSpace(verdict); trimmed != "" && trimmed == ledger.verdict(step.ID) {
 		return -1, ParkLoopStuck, nil
 	}
 
@@ -391,7 +404,7 @@ func (w *Flow) loopBack(steps []store.Step, at int, runDir string,
 	// attempt that replaced it is what makes a loop that parked readable
 	// afterwards, and the file it is renamed out of the way of is the only one
 	// anything reads.
-	attempt := loops[step.ID] + 1
+	attempt := ledger.spent(step.ID) + 1
 	for _, s := range steps[target : at+1] {
 		dir := StepDir(runDir, s.ID)
 		kept := filepath.Join(dir, fmt.Sprintf("result.attempt-%d.json", attempt))
@@ -399,9 +412,82 @@ func (w *Flow) loopBack(steps []store.Step, at int, runDir string,
 			return -1, "", err
 		}
 	}
-	loops[step.ID]++
-	lastVerdict[step.ID] = strings.TrimSpace(verdict)
+	ledger.record(step.ID, verdict)
+	// Written before the retry runs, not after it settles. A crash between the
+	// two would otherwise lose the attempt that was just paid for, and the loop
+	// this bounds is one that costs an agent every time round.
+	if err := writeLoopLedger(runDir, ledger); err != nil {
+		// A budget nobody can persist is not a budget. Parking here is the same
+		// treatment the un-clearable span gets above: a harness problem, not a
+		// verdict about the work.
+		return -1, "", err
+	}
 	return target, "", nil
+}
+
+// loopLedger is what one run's backward edges have spent, by the step that
+// spent it.
+//
+// It lives in the run directory for the same reason completion does: a resume
+// is a different process, often a different day, and anything held only in
+// memory is a bound that quietly resets. Per step rather than per run because
+// two checkers in one flow are two budgets — healing once at step two must not
+// leave step five with nothing.
+type loopLedger struct {
+	// Loops is how many times each step has taken its edge.
+	Loops map[string]int `json:"loops,omitempty"`
+	// Verdicts is what each step last rejected on, which is how a loop that is
+	// going nowhere is told from one that is converging. It is here rather than
+	// in memory so a resume does not have to spend an attempt rediscovering that
+	// the verdict has not moved.
+	Verdicts map[string]string `json:"verdicts,omitempty"`
+}
+
+func (l *loopLedger) spent(stepID string) int      { return l.Loops[stepID] }
+func (l *loopLedger) verdict(stepID string) string { return l.Verdicts[stepID] }
+
+// record charges one loop to a step.
+func (l *loopLedger) record(stepID, verdict string) {
+	if l.Loops == nil {
+		l.Loops = map[string]int{}
+	}
+	if l.Verdicts == nil {
+		l.Verdicts = map[string]string{}
+	}
+	l.Loops[stepID]++
+	l.Verdicts[stepID] = strings.TrimSpace(verdict)
+}
+
+// loopLedgerPath is where a run keeps it: beside the steps, inside the run
+// directory, so it is copied, archived and deleted with everything else the run
+// produced.
+func loopLedgerPath(runDir string) string { return filepath.Join(runDir, "loops.json") }
+
+// readLoopLedger reads what has been spent. A run that never looped has no
+// file, and an unreadable one reads as empty — a corrupt ledger must not stop a
+// flow, and the loop it fails to bound is still bounded by the step count and
+// by the no-progress check.
+func readLoopLedger(runDir string) loopLedger {
+	var l loopLedger
+	b, err := os.ReadFile(loopLedgerPath(runDir))
+	if err != nil {
+		return l
+	}
+	if err := json.Unmarshal(b, &l); err != nil {
+		return loopLedger{}
+	}
+	return l
+}
+
+func writeLoopLedger(runDir string, l *loopLedger) error {
+	b, err := json.Marshal(l)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(runDir, 0o755); err != nil {
+		return err
+	}
+	return os.WriteFile(loopLedgerPath(runDir), b, 0o644)
 }
 
 // retry is the rejection a backward edge carries to the step it jumped to.

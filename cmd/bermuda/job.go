@@ -686,7 +686,7 @@ func Execute(ctx context.Context, s *store.Store, j store.Job, trigger string) (
 			ID: runID, JobID: j.ID, Trigger: trigger, RunDir: runDirFor(runID),
 			Outcome: "running", StartedAt: time.Now(),
 			Flow: j.Flow, Input: j.Input,
-		})
+		}, flowOpts{})
 		disableOneShot(ctx, s, j, run)
 		return run, err
 	}
