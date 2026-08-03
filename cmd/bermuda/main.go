@@ -91,6 +91,7 @@ Usage:
   bermuda flow run <id> [--input ...] Call a flow with an x
   bermuda flow status <run>           Per-step outcome and duration
   bermuda flow resume <run>           Restart at the step that parked
+                     [--reset-loops]  ...and give its on_fail edges a full budget again
 
   A flow is a YAML file in ~/.bermuda/flows, edited directly by whoever writes
   it. Steps run in order, each agent step in its own process with its own

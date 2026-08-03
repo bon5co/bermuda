@@ -309,9 +309,17 @@ What happens when the edge is taken:
   attempts, and a verdict identical to the previous one parks immediately: the
   retry changed nothing the checker can see, and the loops left would spend the
   same tokens to be told the same thing. The park reasons are `loop_exhausted`
-  and `loop_stuck`, and both are parks — the attempts are in the thread, the
-  rejected verdicts are on disk, and `bermuda flow resume` starts again at the
-  step that stopped with a fresh budget.
+  and `loop_stuck`, and both are parks — the attempts are in the thread and the
+  rejected verdicts are on disk.
+- **The budget survives the resume.** What each edge has spent is written to
+  `loops.json` in the run directory, beside the results, for the same reason
+  completion lives there: a resume is a different process on a different day.
+  A bound held in memory is not a bound — `flow resume` would hand back a full
+  allowance every time, and the thing calling resume is not always a human who
+  looked. A self-heal job that unparks whatever broke overnight would refill an
+  exhausted loop every morning, forever, at the cost of a whole flow each time.
+  `bermuda flow resume <run> --reset-loops` is how somebody who fixed the
+  underlying problem asks for the allowance back, out loud.
 - **Each attempt is its own agent.** The retry runs under its own run id, so it
   cannot be handed the agent that produced the work it is meant to redo, and the
   step's row on the board says which attempt it is on.
@@ -357,6 +365,13 @@ branching. Series only — the failures this was built from were sequencing
 failures, not throughput ones. `on_fail` is not an exception to that: it is one
 edge backward along the same line, which is why it may only point at a step
 already declared.
+
+**Still unbounded: wall clock and tokens.** The loop count is capped and now
+survives a resume, so a misconfigured flow cannot cycle forever. What it can do
+is take a long time doing it: the job timeout applies *per step*, so one run is
+bounded by `(steps + loopbacks) × timeout`, and eight loops of a forty-minute
+agent step is a night. There is no deadline that parks a run for spending too
+long, only one that parks a step.
 
 Also out for now: an escalation ladder on the retry (`escalate: {model: opus}`),
 failure classes in `result.json`, and per-attempt counters on the board's own

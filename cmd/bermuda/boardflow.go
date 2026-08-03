@@ -45,7 +45,7 @@ func startFlowFromBoard(s *store.Store, flowID, input string) error {
 		Outcome: "running", StartedAt: time.Now(),
 		Flow: def.ID, Input: input,
 	}
-	_, err = runFlow(context.Background(), s, flowJob(def, dir, "", ""), rec)
+	_, err = runFlow(context.Background(), s, flowJob(def, dir, "", ""), rec, flowOpts{})
 	return err
 }
 
@@ -66,6 +66,6 @@ func resumeFlowRun(s *store.Store, runID string) error {
 	if stored, err := s.Job(ctx, rec.JobID); err == nil {
 		j = *stored
 	}
-	_, err = runFlow(ctx, s, j, *rec)
+	_, err = runFlow(ctx, s, j, *rec, flowOpts{})
 	return err
 }

@@ -244,6 +244,26 @@ out=$(bermuda flow status "$(latest_run exhausts)" 2>&1)
 grep -q "loop_exhausted" <<<"$out" && ok "a loop that runs out of attempts parks" \
     || bad "a bounded loop did not stop where it said" "$out"
 grep -q "resume with" <<<"$out" && ok "a parked loop says how to resume it" || bad "no resume line on a parked loop" "$out"
+# The maker ran three times: the first attempt and the two loops the flow
+# declared. The number is the whole bound, so it is the thing to assert on.
+grep -q "attempt 3" <<<"$out" && ok "a loop's attempts are counted on the record" \
+    || bad "the run does not say how many attempts it made" "$out"
+
+# The bound has to survive `flow resume`, or it is a bound per attempt and
+# anything that resumes on a schedule loops forever, a day at a time. The run's
+# own note counts the retries this attempt took: a resume on a spent budget
+# takes none, and says so by not mentioning any.
+exhausted_run=$(latest_run exhausts)
+out=$(bermuda flow resume "$exhausted_run" 2>&1)
+grep -q "loop_exhausted" <<<"$out" && ! grep -q "retries" <<<"$out" \
+    && ok "a resume does not hand back loops already spent" \
+    || bad "the resume refilled an exhausted loop" "$out"
+# ...and the human who fixed the underlying problem can ask for it back.
+out=$(bermuda flow resume "$exhausted_run" --reset-loops 2>&1)
+grep -q "2 retries" <<<"$out" && ok "--reset-loops hands the budget back" \
+    || bad "--reset-loops did not restore the loop budget" "$out"
+[ -f "$BERMUDA_STATE_DIR/runs/$exhausted_run/loops.json" ] \
+    && ok "what the loops spent is on disk with the run" || bad "no loop ledger in the run directory"
 
 # What a parked run leaves for the person who has to deal with it. There is no
 # herdr in this container, so there is no room to label — the thread is the half

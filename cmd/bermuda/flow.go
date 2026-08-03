@@ -120,7 +120,7 @@ func flowRun(argv []string) error {
 		Outcome: "running", StartedAt: time.Now(),
 		Flow: def.ID, Input: *input,
 	}
-	run, execErr := runFlow(ctx, s, j, rec)
+	run, execErr := runFlow(ctx, s, j, rec, flowOpts{})
 	if run != nil {
 		printRun(run)
 	}
@@ -142,8 +142,20 @@ func exitUnlessDone(run *runner.Run) {
 }
 
 func flowResume(argv []string) error {
-	if len(argv) == 0 {
-		return errors.New("usage: bermuda flow resume <run>")
+	fs := flag.NewFlagSet("flow resume", flag.ExitOnError)
+	// A resume continues the run, including what its backward edges have already
+	// spent — that is what makes max_loops a bound rather than a bound per
+	// attempt. This is for the human who fixed the thing the loop kept failing
+	// on and wants the allowance back, said out loud rather than granted
+	// silently to anything that calls resume on a schedule.
+	resetLoops := fs.Bool("reset-loops", false,
+		"give this run's on_fail edges their full max_loops again")
+	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
+		return errors.New("usage: bermuda flow resume <run> [--reset-loops]")
+	}
+	runID := argv[0]
+	if err := fs.Parse(argv[1:]); err != nil {
+		return err
 	}
 	s, err := openStore()
 	if err != nil {
@@ -152,7 +164,7 @@ func flowResume(argv []string) error {
 	defer s.Close()
 
 	ctx := context.Background()
-	rec, err := s.Run(ctx, argv[0])
+	rec, err := s.Run(ctx, runID)
 	if err != nil {
 		return err
 	}
@@ -174,7 +186,7 @@ func flowResume(argv []string) error {
 	if stored, err := s.Job(ctx, rec.JobID); err == nil {
 		j = *stored
 	}
-	run, execErr := runFlow(ctx, s, j, *rec)
+	run, execErr := runFlow(ctx, s, j, *rec, flowOpts{ResetLoops: *resetLoops})
 	if run != nil {
 		printRun(run)
 	}
@@ -269,7 +281,15 @@ func flowStatus(argv []string) error {
 // The same call serves a first run and a resume: the run row and the run
 // directory are reused, so completed steps are found where the earlier attempt
 // left them and are not run again.
-func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*runner.Run, error) {
+// flowOpts are the knobs a caller turns that are not part of the run itself.
+// A struct rather than a bare boolean at five call sites, where `false` would
+// say nothing about what is being declined.
+type flowOpts struct {
+	// ResetLoops hands a run's backward edges their full max_loops again.
+	ResetLoops bool
+}
+
+func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run, opts flowOpts) (*runner.Run, error) {
 	if rec.RunDir == "" {
 		rec.RunDir = runDirFor(rec.ID)
 	}
@@ -304,7 +324,8 @@ func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run) (*
 		// Persisted as each step starts and settles, so a flow that is
 		// three hours into its second step says so on the board rather than
 		// looking untouched until the end.
-		Report: func(sr runner.StepRun) { persistStep(ctx, s, rec.ID, sr) },
+		Report:     func(sr runner.StepRun) { persistStep(ctx, s, rec.ID, sr) },
+		ResetLoops: opts.ResetLoops,
 	}
 	wr, execErr := w.Execute(ctx, j, def, rec.Input, rec.ID, rec.RunDir)
 

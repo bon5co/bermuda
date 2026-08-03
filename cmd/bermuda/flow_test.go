@@ -83,7 +83,7 @@ func TestAParkedFlowResumesWithoutRedoingTheCompletedSteps(t *testing.T) {
 	if err := os.WriteFile(gate, []byte("open"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	resumed, err := runFlow(ctx, s, job, *rec)
+	resumed, err := runFlow(ctx, s, job, *rec, flowOpts{})
 	if err != nil {
 		t.Fatalf("resume failed: %v", err)
 	}
