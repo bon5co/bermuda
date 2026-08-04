@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"text/tabwriter"
 	"time"
@@ -17,8 +18,33 @@ import (
 )
 
 // openStore opens the store in the state directory.
+//
+// Opening rewrites any tag list stored before tags were sanitised on write --
+// case-different or oddly-spaced duplicates that display and count as separate
+// tags. That pass is silent on a clean database, which is every database after
+// the first open, but rewriting a person's stored data without saying so is not
+// something to do quietly, so a non-zero count goes to stderr. Stderr, not
+// stdout: `job list --json` is piped into other programs.
 func openStore() (*store.Store, error) {
-	return store.Open(stateDir())
+	s, err := store.Open(stateDir())
+	if err != nil {
+		return nil, err
+	}
+	reportTagBackfill(os.Stderr, s.TagsNormalized)
+	return s, nil
+}
+
+// reportTagBackfill announces the rows tag normalisation rewrote, and says
+// nothing at all when it had nothing to do.
+func reportTagBackfill(w io.Writer, n int) {
+	if n == 0 {
+		return
+	}
+	jobs := "jobs"
+	if n == 1 {
+		jobs = "job"
+	}
+	fmt.Fprintf(w, "bermuda: normalised tags on %d %s\n", n, jobs)
 }
 
 // boardCmd runs the TUI board.
