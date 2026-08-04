@@ -1103,3 +1103,64 @@ CREATE INDEX room_messages_resource ON room_messages(resource, seq);
 		}
 	}
 }
+
+// TTL is what the thread log and the board print beside a claim, and both gate
+// on it being positive. A forever-hold must therefore come back as exactly 0:
+// anything else would print a lease on the one claim that has none, which is
+// precisely the hold a human needs to notice.
+func TestTTLIsWhatTheClaimAskedForAndZeroWhenItAskedForever(t *testing.T) {
+	cases := []struct {
+		name string
+		msg  ThreadMessage
+		want time.Duration
+	}{
+		{"a lease", ThreadMessage{CreatedAt: base,
+			ExpiresAt: ptr(base.Add(20 * time.Minute))}, 20 * time.Minute},
+		{"no expiry at all", ThreadMessage{CreatedAt: base}, 0},
+		// A lease that has already lapsed still reports what it asked for.
+		// TTL is the length of the hold requested, not the time remaining, and
+		// reading it as remaining would make an expired claim look unbounded.
+		{"a lease already lapsed", ThreadMessage{CreatedAt: base,
+			ExpiresAt: ptr(base.Add(-time.Minute))}, -time.Minute},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.msg.TTL(); got != c.want {
+				t.Errorf("TTL = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// The claim is written and read back through SQLite, where both instants are
+// stored to the second. The TTL a reader prints has to be the one the claim was
+// taken with — a round trip that shifted either instant would misreport every
+// lease in the log.
+func TestTTLSurvivesTheRoundTripThroughTheLog(t *testing.T) {
+	s := newThread(t)
+	ctx := context.Background()
+
+	if _, err := s.ThreadClaim(ctx, ClaimRequest{Resource: "browser", By: alice,
+		Why: "tiktok signup", TTL: 20 * time.Minute, Now: base}); err != nil {
+		t.Fatal(err)
+	}
+
+	log, err := s.ThreadLog(ctx, ThreadFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var claim *ThreadMessage
+	for i := range log {
+		if log[i].Kind == KindClaim {
+			claim = &log[i]
+		}
+	}
+	if claim == nil {
+		t.Fatal("the claim is not in the log")
+	}
+	if got := claim.TTL(); got != 20*time.Minute {
+		t.Errorf("TTL read back as %v, want the 20m it was claimed for", got)
+	}
+}
+
+func ptr(t time.Time) *time.Time { return &t }
