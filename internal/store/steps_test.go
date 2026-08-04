@@ -327,3 +327,58 @@ func TestAWorkableOnFailIsAccepted(t *testing.T) {
 		t.Errorf("a step with no edge allows %d loops, want 0", got)
 	}
 }
+
+// StepIndex is how an on_fail edge becomes a place to resume. The runner
+// compares what it returns against the failing step's own position and refuses
+// anything at or after it, so an index that is merely off — rather than absent
+// — either replays the wrong half of the flow or turns a legal backward edge
+// into a hard error mid-run.
+func TestStepIndexResolvesAGotoTheWayValidationAcceptedIt(t *testing.T) {
+	steps := []Step{
+		{ID: "make", Agent: "write"},
+		{ID: "test", Run: "go test ./..."},
+		{ID: "verify", Agent: "review"},
+	}
+	cases := []struct {
+		name string
+		id   string
+		want int
+	}{
+		{"the first step", "make", 0},
+		{"a step in the middle", "test", 1},
+		{"the last step", "verify", 2},
+		// Validation matches ids case-insensitively and trims them, so a goto
+		// it accepted has to resolve here. If it did not, the runner would
+		// reject at runtime an edge the flow was allowed to declare.
+		{"a goto in another case", "MAKE", 0},
+		{"a goto with surrounding space", "  test  ", 1},
+		{"a step that is not in the flow", "deploy", -1},
+		{"nothing at all", "", -1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := StepIndex(steps, c.id); got != c.want {
+				t.Errorf("StepIndex(%q) = %d, want %d", c.id, got, c.want)
+			}
+		})
+	}
+}
+
+// An empty flow has no steps to find, and the answer is -1 rather than a panic
+// or a zero that would point at a step that does not exist.
+func TestStepIndexOnAFlowWithNoSteps(t *testing.T) {
+	if got := StepIndex(nil, "make"); got != -1 {
+		t.Errorf("StepIndex on no steps = %d, want -1", got)
+	}
+}
+
+// Ids are unique — validation refuses a duplicate — so the first match is the
+// only match. This pins the tie-break anyway: were a duplicate ever to reach
+// here, resuming at the earlier step re-runs work, while the later one would
+// skip it.
+func TestStepIndexTakesTheFirstOfARepeatedID(t *testing.T) {
+	steps := []Step{{ID: "make"}, {ID: "test"}, {ID: "make"}}
+	if got := StepIndex(steps, "make"); got != 0 {
+		t.Errorf("StepIndex = %d, want the first occurrence at 0", got)
+	}
+}
