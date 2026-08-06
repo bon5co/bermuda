@@ -96,6 +96,9 @@ type Model struct {
 	// flowInput is the open "what is this flow called with" box; nil when
 	// nothing is being launched.
 	flowInput *flowPrompt
+	// prune is the open "delete these finished one-shots?" box; nil when
+	// nothing has been asked. See prune.go.
+	prune *prunePrompt
 
 	cursor int
 	focus  focus
@@ -506,6 +509,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.wasDetail {
 			// The page we were on no longer exists.
 			m.detail, m.detailRuns, m.cursor = nil, nil, 0
+		}
+		return m, m.load()
+
+	case jobsPrunedMsg:
+		// The count is reported even when the deletion failed partway, so a
+		// half-finished prune does not read as though nothing was written.
+		m.status = itoa(msg.n) + " finished one-shot(s) pruned; runs kept"
+		if msg.err != nil {
+			m.err = msg.err
 		}
 		return m, m.load()
 
