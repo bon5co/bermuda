@@ -140,6 +140,11 @@ func (m *Model) pageRows() int {
 		// moment the reader most needs to be told that esc cancels.
 		rows -= blockRows(m.renderFlowInput())
 	}
+	if m.prune != nil {
+		// Same arithmetic: the confirmation names one job per line, so it is
+		// the tallest box the bottom of the pane has to hold.
+		rows -= blockRows(m.renderPrune())
+	}
 	if rows < 3 {
 		rows = 3
 	}

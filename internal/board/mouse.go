@@ -169,10 +169,11 @@ func (m *Model) selectable() bool {
 
 // click selects whatever is under the pointer.
 func (m *Model) click(x, y int) (tea.Model, tea.Cmd) {
-	if m.editor != nil || m.flowInput != nil || m.compose != nil {
-		// A box that is being typed into owns the input. A click that moved the
-		// selection under an open compose box would post the message to a
-		// different thread than the one it was written in.
+	if m.editor != nil || m.flowInput != nil || m.compose != nil || m.prune != nil {
+		// An open box owns the input. A click that moved the selection under an
+		// open compose box would post the message to a different thread than
+		// the one it was written in, and one under the prune confirmation would
+		// change the list the reader is being asked about.
 		return m, nil
 	}
 	if cmd, ok := m.clickTab(x, y); ok {

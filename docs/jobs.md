@@ -92,8 +92,10 @@ and `--all` on the command line bring them back, marked `(finished)`. Nothing
 else is hidden: a parked one-shot still wants a human, a failed one must be
 noticed, one that has never run is still pending, and a recurring job is never
 finished whatever its last run says. `bermuda job prune` clears them, and lists
-what it would delete without deleting anything until `--yes`. Deleting a job
-keeps its runs, so pruning loses the schedule, not the record of what happened.
+what it would delete without deleting anything until `--yes`. `P` on the board
+does the same thing, and asks first: it names every job it would remove and
+waits for `y`, since anything else cancels. Deleting a job keeps its runs, so
+pruning loses the schedule, not the record of what happened.
 
 `--persistent` reuses one long-lived agent per job instead of starting a fresh
 one each run, skipping tab and startup cost. The agent's context is cleared

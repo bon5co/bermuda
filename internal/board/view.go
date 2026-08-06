@@ -96,12 +96,17 @@ func (m *Model) listPane() pane {
 		// than no box.
 		bottom.WriteString(m.renderFlowInput())
 	}
+	if m.prune != nil {
+		// Pinned for the same reason, and more so: this box is the only place
+		// the reader can see what a yes would delete.
+		bottom.WriteString(m.renderPrune())
+	}
 	bottom.WriteString(m.renderFooter())
 	// Each list gets its own help line rather than one long shared one: space
 	// is only meaningful on runs and enter only launches on flows, and a help
 	// line that grows past the pane width wraps, which costs a row the
 	// arithmetic above did not budget for.
-	help := "tab lists · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · p pause · n new · M mouse · q quit"
+	help := "tab lists · / search · [ ] page · j/k move · l/→ open · R run · f fav · F finished · P prune · p pause · n new · M mouse · q quit"
 	switch m.focus {
 	case focusRuns:
 		help = "tab lists · / search · [ ] page · j/k move · space steps · l/→ open · a attach · M mouse · q quit"

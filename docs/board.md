@@ -45,6 +45,7 @@ its own with what it did and how long it took:
 | `p` | pause / resume |
 | `f` | pin / unpin a favorite (favorites sort to the top) |
 | `F` | show / hide finished one-shots (hidden by default) |
+| `P` | prune finished one-shots — names them and waits for `y` (jobs list) |
 | `a` | focus the run's agent |
 | `space` | open a flow run's steps (runs list) |
 | `/` | search — filters both lists as you type |

@@ -14,8 +14,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// not reach. It is checked ahead of everything except the boxes that are
 	// being typed into, where `M` is a letter.
 	if msg.String() == "M" && m.editor == nil && m.flowInput == nil &&
-		m.compose == nil && !m.searching {
+		m.compose == nil && m.prune == nil && !m.searching {
 		return m, m.toggleMouse()
+	}
+	// The prune confirmation owns the keyboard while it is open, and ahead of
+	// every other view: it is a question with a default of no, so any key that
+	// reached a list underneath would answer it by walking away from a box that
+	// is still on screen.
+	if m.prune != nil {
+		return m.handlePruneKey(msg)
 	}
 	// Deepest view first: the editor owns the keyboard while it is open.
 	if m.editor != nil {
@@ -137,6 +144,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showFinished = !m.showFinished
 		m.cursor, m.scroll = 0, 0
 		return m, nil
+	case "P":
+		// Clearing them out. Two keystrokes, not one: this deletes several jobs
+		// at once, so it opens a box naming them and waits to be told yes.
+		if m.focus != focusJobs {
+			return m, nil
+		}
+		return m, m.openPrune()
 	}
 	return m, nil
 }
