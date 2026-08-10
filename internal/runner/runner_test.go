@@ -49,6 +49,20 @@ func TestAgentNameDistinctPerRun(t *testing.T) {
 	}
 }
 
+// Runs of the same job on different days must not collide either. A run id is
+// "<timestamp>-<job id>", so truncating to the tail kept the clock time and cut
+// the date: rt-template-daily's 19:00 run was named "t190002z-rt-template-daily"
+// on two consecutive days, and herdr rejected the second with agent_name_taken
+// before the run dir was even created.
+func TestAgentNameDistinctAcrossDaysForLongJobID(t *testing.T) {
+	const job = "rt-template-daily"
+	a := agentName(job, "20260809T190002Z-"+job)
+	b := agentName(job, "20260810T190002Z-"+job)
+	if a == b {
+		t.Errorf("agentName collided across days: %q", a)
+	}
+}
+
 // The incident: herdr reported the agent gone thirty seconds into a
 // twenty-five-minute step, while the agent went on working for another ten
 // minutes and then wrote its result file. Losing sight of a process is not
