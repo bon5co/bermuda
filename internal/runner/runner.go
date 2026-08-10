@@ -602,13 +602,21 @@ func (r *Runner) classify(run *Run, status herdrcli.AgentStatus, promptErr error
 func agentName(jobID, runID string) string {
 	name := sanitizeAgentName("bm-" + jobID + "-" + runID)
 	if len(name) > 32 {
-		// Keep the tail: run ids differ in their trailing characters, so
-		// truncating the head preserves uniqueness between concurrent runs.
-		name = name[len(name)-32:]
-		name = strings.TrimLeft(name, "-_0123456789")
-		if name == "" {
-			name = "bm"
-		}
+		// Keeping the tail looks right -- run ids differ at the end -- but a run
+		// id is "<timestamp>-<job id>", so for any job whose id is long enough
+		// the tail is the job id plus the clock part of the timestamp and the
+		// date is what gets cut. Two runs of rt-template-daily a day apart were
+		// both named "t190002z-rt-template-daily", herdr refused the second with
+		// agent_name_taken, and the run died before it wrote anything.
+		//
+		// So keep the readable head and append a digest of the whole name, the
+		// same shape persistentAgentName uses: the digest covers the timestamp
+		// whether or not it survived truncation.
+		sum := fnv.New32a()
+		_, _ = sum.Write([]byte(name))
+		digest := strconv.FormatUint(uint64(sum.Sum32()), 36)
+		head := strings.TrimRight(name[:31-len(digest)], "-_")
+		name = head + "-" + digest
 	}
 	return name
 }
