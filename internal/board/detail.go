@@ -62,6 +62,7 @@ func (m *Model) renderDetail() string {
 	row("add dirs", strings.Join(j.AddDirs, ", "))
 	row("extra args", j.ExtraArgs)
 	row("budget", j.MaxBudgetUSD)
+	row("auto-compact", j.AutoCompact)
 	row("argv", dimStyle.Render(strings.Join(runner.BuildAgentArgs(*j), " ")))
 
 	b.WriteString("\n" + headerStyle.Render("PROMPT") + "\n")

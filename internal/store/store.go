@@ -104,6 +104,15 @@ type Job struct {
 	ExtraArgs       string // shell-quoted or newline-separated passthrough
 	SkipPermissions bool
 	MaxBudgetUSD    string
+	// AutoCompact is the agent's auto-compact window: "auto", or a token count
+	// from 100000 to 1000000. Empty leaves the agent's own default alone.
+	//
+	// Modelled rather than left to ExtraArgs because it is the knob that decides
+	// what a long run costs: every turn rereads the conversation so far, so a
+	// smaller window shrinks every later reread. Too small and the run compacts
+	// away context it still needs, thrashes, and costs more -- a trade-off worth
+	// showing on the board rather than burying in an args string.
+	AutoCompact string
 
 	// Scheduling.
 	Schedule        ScheduleType
@@ -278,6 +287,7 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"jobs", "extra_args", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "skip_permissions", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "max_budget_usd", "TEXT NOT NULL DEFAULT ''"},
+	{"jobs", "autocompact", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "schedule_type", "TEXT NOT NULL DEFAULT 'manual'"},
 	{"jobs", "interval_seconds", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "cron_expr", "TEXT NOT NULL DEFAULT ''"},
@@ -404,7 +414,7 @@ func (s *Store) Close() error { return s.db.Close() }
 
 const jobColumns = `id, name, description, tags, prompt, cwd, kind, model, permission_mode,
 	allowed_tools, disallowed_tools, add_dirs, extra_args, skip_permissions, max_budget_usd,
-	schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
+	autocompact, schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
 	enabled, favorite, persistent, created_at, updated_at, flow_id, flow_input`
 
 // PutJob inserts or replaces a job.
@@ -441,7 +451,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	// also stop anyone writing the job first and the flow second.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO jobs (`+jobColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  name=excluded.name, description=excluded.description, tags=excluded.tags,
 		  prompt=excluded.prompt,
@@ -449,7 +459,8 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		  permission_mode=excluded.permission_mode, allowed_tools=excluded.allowed_tools,
 		  disallowed_tools=excluded.disallowed_tools, add_dirs=excluded.add_dirs,
 		  extra_args=excluded.extra_args, skip_permissions=excluded.skip_permissions,
-		  max_budget_usd=excluded.max_budget_usd, schedule_type=excluded.schedule_type,
+		  max_budget_usd=excluded.max_budget_usd, autocompact=excluded.autocompact,
+		  schedule_type=excluded.schedule_type,
 		  interval_seconds=excluded.interval_seconds, cron_expr=excluded.cron_expr,
 		  run_at=excluded.run_at, catchup=excluded.catchup, timeout_ms=excluded.timeout_ms,
 		  enabled=excluded.enabled, favorite=excluded.favorite,
@@ -458,7 +469,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		j.ID, j.Name, j.Description, strings.Join(j.Tags, ","),
 		j.Prompt, j.CWD, j.Kind, j.Model, j.PermissionMode,
 		j.AllowedTools, j.DisallowedTools, strings.Join(j.AddDirs, "\n"), j.ExtraArgs,
-		boolToInt(j.SkipPermissions), j.MaxBudgetUSD,
+		boolToInt(j.SkipPermissions), j.MaxBudgetUSD, j.AutoCompact,
 		string(j.Schedule), j.IntervalSeconds, j.CronExpr, runAt, j.Catchup,
 		j.Timeout.Milliseconds(), boolToInt(j.Enabled), boolToInt(j.Favorite),
 		boolToInt(j.Persistent), j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
@@ -473,7 +484,7 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 	var skip, enabled, favorite, persistent int
 	err := rows.Scan(&j.ID, &j.Name, &j.Description, &tags, &j.Prompt, &j.CWD, &j.Kind,
 		&j.Model, &j.PermissionMode, &j.AllowedTools, &j.DisallowedTools, &addDirs,
-		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &schedule, &j.IntervalSeconds,
+		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &j.AutoCompact, &schedule, &j.IntervalSeconds,
 		&j.CronExpr, &runAt, &j.Catchup, &timeoutMS, &enabled, &favorite,
 		&persistent, &created, &updated, &j.Flow, &j.Input)
 	if err != nil {

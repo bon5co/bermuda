@@ -123,6 +123,12 @@ func BuildAgentArgs(j store.Job) []string {
 	if j.MaxBudgetUSD != "" {
 		args = append(args, "--max-budget-usd", j.MaxBudgetUSD)
 	}
+	// Emitted before the passthrough so that a job which also spells
+	// --autocompact into --extra-args still wins: claude takes the last
+	// occurrence, and an explicit passthrough is the more specific request.
+	if a := strings.TrimSpace(j.AutoCompact); a != "" {
+		args = append(args, "--autocompact", a)
+	}
 	return append(args, splitArgs(j.ExtraArgs)...)
 }
 

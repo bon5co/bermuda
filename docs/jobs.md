@@ -70,6 +70,36 @@ Every job names a model. Leaving `--model` unset resolves to `sonnet` rather
 than to whatever the agent happens to default to, so a schedule's cost and
 capability cannot change underneath it without the job changing.
 
+`--autocompact` sets the agent's auto-compact window — `auto`, or a token count
+from 100000 to 1000000:
+
+```bash
+bermuda job edit rt-template-daily --autocompact 200000
+```
+
+Every model turn rereads the conversation so far, so on a long run the same
+prefix is paid for again on every later turn. Measured on one job here: 119
+turns per run, 63K–93K tokens of inherited context before any useful work, late
+turns rereading 193K–251K tokens each — 15.6M cache-read tokens per run against
+136 KiB of actual tool output. The context was not full of results; it was full
+of a prefix, replayed.
+
+A smaller window caps how large that prefix grows before it is summarised, so it
+shrinks every later reread. It is not free: compaction discards detail, and a
+window near the job's own baseline makes a run compact, immediately refill and
+compact again — thrashing, which costs more and forgets more. Size it above the
+inherited baseline plus the largest single tool result the job must hold.
+
+The value is checked when the job is written rather than when it runs, because
+the alternative is finding a typo at 04:00 as an agent that refuses to start.
+It is emitted before `--extra-args`, so a job that spells the flag into its own
+passthrough still wins.
+
+Two things it is not: it does not shrink the baseline, which is the bigger prize
+— trimming an inherited `CLAUDE.md` by 20K tokens saves that on every one of
+those 119 turns — and it does nothing for a short job that never approaches the
+window at all.
+
 Schedules: `manual`, `--cron`, `--interval`, `--at` (one-shot, disables itself
 after it runs). `--catchup` decides what happens to fires missed while nothing
 was running:
