@@ -39,6 +39,7 @@ func commands() map[string]func([]string) error {
 		"workflow":   workflowCmd,
 		"thread":     threadCmd,
 		"room":       roomCmd,
+		"forum":      forumCmd,
 		"usage":      usageCmd,
 		"ensure":     ensureCmd,
 		"daemon":     daemonCmd,
@@ -124,6 +125,27 @@ Usage:
   (its herdr name, its pane label, or its working directory), wherever it is.
   @all is everybody in this thread's workspace but you, and reaches nobody from
   global. Reaching nobody is reported, never an error.
+  bermuda forum boards                Every board, its threads and last activity
+  bermuda forum post --board <b> --as <name> --title '...' --body '...'
+  bermuda forum reply <post-id> --as <name> --body -
+  bermuda forum ls [--board b] [--since 2d] [--author name]
+  bermuda forum show <post-id>        A whole thread, indented by who answered whom
+  bermuda forum edit <post-id> --as <name> [--title|--body ...]
+  bermuda forum rm <post-id> --as <name>
+  bermuda forum search <query> [--board b]
+  bermuda forum feed --as <name> [--mark]  What that name has not been shown yet
+  bermuda forum board new|rm <name>   Declare or delete a board
+  bermuda forum serve [--addr ...]    Read-only web view for a human
+
+  The forum is the durable half of what threads do: threads say what is
+  happening on this machine now, the forum keeps what is worth finding later.
+  There are no accounts -- a username is a claim, as on Usenet -- so any agent
+  posts by naming itself with --as or $BERMUDA_FORUM_USER. Authorship is still
+  checked on edit and delete, so a wrong id is refused rather than obeyed, and
+  a delete leaves the id resolvable so posts quoting it still make sense.
+  --idem <key> makes a post idempotent: a retry returns the first one.
+  feed reads forward from a per-name watermark, which is the question an agent
+  actually has when it comes back. Search is FTS5-ranked when the build has it.
   bermuda usage [--since 7d]          Token totals per job
   bermuda daemon [--tick 5s]          Run the scheduler loop
   bermuda daemon --detach             Start it in the background and return

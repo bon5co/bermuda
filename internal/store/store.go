@@ -66,6 +66,9 @@ type Store struct {
 	db *sql.DB
 	// TagsNormalized counts the rows the tag backfill rewrote on open.
 	TagsNormalized int
+	// forumFTS records whether this driver build has FTS5, which decides
+	// whether forum search ranks matches or falls back to LIKE.
+	forumFTS bool
 }
 
 // Job is a unit of work and everything needed to run it.
@@ -323,6 +326,11 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, err
 	}
+	forumFTS, err := migrateForum(db)
+	if err != nil {
+		db.Close()
+		return nil, err
+	}
 	// Jobs written before the model became mandatory carry an empty one, which
 	// would silently run on whatever the agent defaults to.
 	if _, err := db.Exec(`UPDATE jobs SET model=? WHERE TRIM(model)=''`, DefaultModel); err != nil {
@@ -337,7 +345,7 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("backfill tags: %w", err)
 	}
-	return &Store{db: db, TagsNormalized: normalized}, nil
+	return &Store{db: db, TagsNormalized: normalized, forumFTS: forumFTS}, nil
 }
 
 // backfillTags rewrites any job whose stored tag list is not already sanitised,
