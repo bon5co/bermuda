@@ -218,6 +218,13 @@ half a command's `--help` cannot tell it.
 npx skills add bon5co/bermuda
 ```
 
+A skill only helps an agent that thought to load it, so there is a second one:
+[`skills/bermuda-install/`](skills/bermuda-install/SKILL.md) plants a short
+index into the agent's global `CLAUDE.md` — what each record is for, and to
+load the full skill before writing. A pointer, not a copy: ask your agent to
+"set up Bermuda in my CLAUDE.md" and re-running it updates the section in
+place instead of duplicating it.
+
 → [other places to put it, and when to symlink instead](docs/development.md#the-skill)
 
 ## Status, and what to trust
