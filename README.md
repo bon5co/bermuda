@@ -1,20 +1,43 @@
 # Bermuda
 
-**Bermuda gives [herdr](https://herdr.dev) agents superpowers.** A flow is a
-sequence it cannot skip. A job is a clock it never has to remember. A thread is
-shared memory with a lease on whatever only one agent may hold. And every step
-stays a live terminal you can attach to, interrupt, and answer.
+Ask one agent to do five things and it will do four and report success.
+**Bermuda moves the sequence out of the agent's head and into the harness.**
 
-![The board's flows tab, with a flow's steps in the inspector](assets/board-flows.png)
+Bermuda is not an agent. It is the layer beneath whatever agent you already run
+on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
+flow is a sequence the agent cannot skip. A job is a clock it never has to
+remember. A thread is shared memory with a lease on whatever only one agent may
+hold. And every step stays a live terminal you can attach to, interrupt, and
+answer. If you have not yet watched an agent skip step three and call the task
+done, start with [why sequences belong in the harness](docs/why-the-harness.md)
+— it is the failure this tool exists for.
+
+**What you need first**, plainly: [herdr](https://herdr.dev),
+[Claude Code](https://claude.com/claude-code) as the agent it drives, and a Go
+toolchain. Nothing else — no daemon to install, no config file.
+
+**What it costs you to walk away: nothing.** Everything lives in `~/.bermuda`,
+and `herdr plugin uninstall bon5co/bermuda` removes the plugin and leaves your
+store alone. For a tool that schedules unattended agents on your machine, the
+exit being one command is part of the design, not a footnote.
+
+**Sixty seconds to the first run** — no YAML, no job, no setup:
 
 ```bash
 herdr plugin install bon5co/bermuda
+bermuda run-once --prompt 'Look around this machine and say, in five lines, what it runs.'
 ```
+
+That is a real agent in a real tab, launched by the harness instead of by you.
+When the work needs a sequence no step may fall out of, that is a flow; when it
+needs to happen at 04:00 with nobody awake, that is a job.
+
+![The board's flows tab, with a flow's steps in the inspector](assets/board-flows.png)
 
 ## Flows — a sequence it cannot skip
 
-Ask one agent to do five things and it will do four and report success. A flow
-moves the sequence out of the agent's head and into the harness:
+The failure at the top of this page — four of five, reported as success — is
+what a flow removes. The sequence stops being the agent's job:
 
 ```yaml
 # ~/.bermuda/flows/triage.yml
@@ -152,6 +175,7 @@ and leaves your store alone.
 
 | | |
 |---|---|
+| [Why sequences belong in the harness](docs/why-the-harness.md) | the failure this tool exists for, with the transcript |
 | [Jobs](docs/jobs.md) | what a job is, its fields, schedules, tags, parking, editing from the board |
 | [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, the run's own space and thread, parking and resuming |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
@@ -174,12 +198,35 @@ npx skills add bon5co/bermuda
 
 → [other places to put it, and when to symlink instead](docs/development.md#the-skill)
 
-## Status
+## Status, and what to trust
 
-**v2.6.0**, in daily use on the machine it was written for. Every part of it —
-jobs, flows, threads, claims, the scheduler and its off switch — is checked on
-each release by installing it from GitHub into a bare Ubuntu container and using
-it there: see [end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).
+**v2.6.0**, one maintainer, in daily use on the machine it was written for.
+Few stars and a single author is a fair thing to hesitate over in software that
+runs agents unattended, so here is the posture stated outright rather than
+papered over.
+
+**What a release is actually checked against.** Every part of Bermuda — jobs,
+flows, threads, claims, the forum, the scheduler and its off switch — is
+exercised on each release by installing it **from GitHub into a bare Ubuntu
+container and using it there, the way a stranger would**, ending with an
+uninstall that must leave the store behind:
+[end to end, as a stranger](docs/development.md#end-to-end-as-a-stranger).
+Every check in that suite is a promise this README or the docs make; when the
+suite and the docs disagree, one of them is a bug.
+
+**What Bermuda can and cannot do to your machine.** Bermuda schedules, launches,
+and records — the shell belongs to the agents it launches, under whatever
+permissions the harness gives them. Jobs and flow steps run Claude Code with
+permission checks disabled *by default*, because an unattended run has nobody to
+answer a prompt; that default and its off switch are documented where you set
+them: [jobs](docs/jobs.md#how-a-run-behaves), [flows](docs/flows.md#steps).
+Bermuda itself opens no ports except the forum's read-only web view, which
+binds `127.0.0.1` and nothing else, and it phones nothing home.
+
+**If the project stops**, your store keeps working: `~/.bermuda` is a SQLite
+database plus your flow YAML, readable with `sqlite3` and a text editor, and
+the last released binary keeps running it. There is no server to sunset and no
+account to lose.
 
 The contract is the CLI. Everything else lives under `internal/`, so nothing here
 is importable as a Go library — deliberately.
