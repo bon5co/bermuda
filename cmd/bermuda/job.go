@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -37,6 +38,7 @@ type jobFlags struct {
 	extraArgs       *string
 	skipPermissions *bool
 	maxBudget       *string
+	autoCompact     *string
 
 	schedule *string
 	interval *time.Duration
@@ -69,6 +71,7 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		extraArgs:       fs.String("extra-args", "", "raw passthrough args"),
 		skipPermissions: fs.Bool("skip-permissions", true, "run with permission checks disabled (default: jobs are unattended)"),
 		maxBudget:       fs.String("max-budget-usd", "", "per-run budget cap"),
+		autoCompact:     fs.String("autocompact", "", "auto-compact window: auto, or 100000-1000000 tokens"),
 
 		schedule: fs.String("schedule", "", "manual|interval|cron|once (inferred from --cron/--interval/--at)"),
 		interval: fs.Duration("interval", 0, "run every interval, e.g. 1h"),
@@ -118,6 +121,13 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	assign("extra-args", func() { j.ExtraArgs = *f.extraArgs })
 	assign("skip-permissions", func() { j.SkipPermissions = *f.skipPermissions })
 	assign("max-budget-usd", func() { j.MaxBudgetUSD = *f.maxBudget })
+	assign("autocompact", func() { j.AutoCompact = *f.autoCompact })
+	// Validated on the way in, not at run time: `200k` or `2000000` would
+	// otherwise store happily and only surface at 04:00, as an agent that
+	// refuses to start inside a run nobody is watching.
+	if err := validateAutoCompact(j.AutoCompact); err != nil {
+		return err
+	}
 	assign("catchup", func() { j.Catchup = *f.catchup })
 	assign("timeout", func() { j.Timeout = *f.timeout })
 	assign("enabled", func() { j.Enabled = *f.enabled })
@@ -345,6 +355,9 @@ func jobShow(argv []string) error {
 	}
 	if j.MaxBudgetUSD != "" {
 		line("max-budget-usd", j.MaxBudgetUSD)
+	}
+	if j.AutoCompact != "" {
+		line("autocompact", j.AutoCompact)
 	}
 	line("agent argv", strings.Join(runner.BuildAgentArgs(*j), " "))
 	if err := w.Flush(); err != nil {
@@ -753,4 +766,25 @@ func parseWhen(s string) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("cannot parse time %q: use RFC3339 or '2006-01-02 15:04'", s)
+}
+
+// validateAutoCompact accepts what claude accepts: "auto", or a token count
+// from 100000 to 1000000. Empty means "leave the agent's own default alone".
+//
+// The bounds are the agent's, not ours, so a value outside them is rejected
+// here rather than passed on to fail later: the whole point of storing this on
+// the job is that a scheduled run has nobody present to read the refusal.
+func validateAutoCompact(v string) error {
+	v = strings.TrimSpace(v)
+	if v == "" || v == "auto" {
+		return nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fmt.Errorf("autocompact must be \"auto\" or a token count like 200000, got %q", v)
+	}
+	if n < 100_000 || n > 1_000_000 {
+		return fmt.Errorf("autocompact must be between 100000 and 1000000 tokens, got %d", n)
+	}
+	return nil
 }

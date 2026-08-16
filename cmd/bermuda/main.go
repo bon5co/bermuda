@@ -84,6 +84,7 @@ Usage:
   bermuda board --pin                 Open it in bermuda's workspace, unfocused
   bermuda job list                    List jobs
   bermuda job add --id <id> --prompt <text> [--schedule <cron>]
+  bermuda job edit <id> --autocompact 200000   Cap the agent's context window
   bermuda job remove <id>             Remove a job
   bermuda job run <id>                Run a stored job now
   bermuda run list [--state parked]   List runs

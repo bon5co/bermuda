@@ -237,6 +237,28 @@ func jobFields() []field {
 			},
 		},
 		{
+			key: "autocompact", label: "Auto-compact", kind: fieldText,
+			get: func(j *store.Job) string { return j.AutoCompact },
+			set: func(j *store.Job, v string) error {
+				// The agent's own bounds, enforced where somebody is typing
+				// rather than in an unattended 04:00 run.
+				v = strings.TrimSpace(v)
+				if v == "" || v == "auto" {
+					j.AutoCompact = v
+					return nil
+				}
+				n, err := strconv.Atoi(v)
+				if err != nil {
+					return fmt.Errorf("auto-compact: \"auto\" or a token count like 200000")
+				}
+				if n < 100_000 || n > 1_000_000 {
+					return fmt.Errorf("auto-compact: between 100000 and 1000000 tokens")
+				}
+				j.AutoCompact = v
+				return nil
+			},
+		},
+		{
 			key: "enabled", label: "Enabled", kind: fieldBool,
 			get: func(j *store.Job) string { return boolStr(j.Enabled) },
 			set: func(j *store.Job, v string) error { j.Enabled = v == "true"; return nil },
