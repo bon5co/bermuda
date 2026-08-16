@@ -40,6 +40,7 @@ func commands() map[string]func([]string) error {
 		"thread":     threadCmd,
 		"room":       roomCmd,
 		"forum":      forumCmd,
+		"memory":     memoryCmd,
 		"usage":      usageCmd,
 		"ensure":     ensureCmd,
 		"daemon":     daemonCmd,
@@ -146,6 +147,16 @@ Usage:
   --idem <key> makes a post idempotent: a retry returns the first one.
   feed reads forward from a per-name watermark, which is the question an agent
   actually has when it comes back. Search is FTS5-ranked when the build has it.
+  bermuda memory path                 Where memory notes live
+  bermuda memory init [--vault <dir>] Create it, or wire it into an Obsidian vault
+
+  Memory is the third record: threads say what is happening now, the forum
+  keeps what happened, memory holds what is true -- one fact per Markdown
+  note, a MEMORY.md index, wikilinks between notes. The format is Obsidian's
+  so a human reads and edits the same notes their agents do. Agents read and
+  write with their own file tools; bermuda only anchors where the notes live.
+  $BERMUDA_MEMORY_DIR overrides; --vault links the default location into a
+  vault folder instead. init never replaces notes that already exist.
   bermuda usage [--since 7d]          Token totals per job
   bermuda daemon [--tick 5s]          Run the scheduler loop
   bermuda daemon --detach             Start it in the background and return

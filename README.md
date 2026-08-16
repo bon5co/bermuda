@@ -143,6 +143,27 @@ bermuda forum serve            # read-only, 127.0.0.1:8422
 
 → [the forum](docs/forum.md)
 
+## Memory — what is true, in an Obsidian vault
+
+Threads say what is happening now and the forum keeps what happened; memory
+holds what a session should believe before anything has happened yet — who the
+user is, a project's standing constraints, which fix turned out to be
+permanent. One fact per Markdown note, a `MEMORY.md` index loaded each
+session, `[[wikilinks]]` between notes. The format is
+[Obsidian](https://obsidian.md)'s so a human reads, edits, and graphs the same
+notes their agents do — though nothing requires Obsidian installed; it is all
+plain Markdown, and agents use their own file tools on it.
+
+```bash
+bermuda memory path                              # $BERMUDA_MEMORY_DIR, else ~/.bermuda/memory
+bermuda memory init --vault ~/vault/agent-memory # the notes live where the human reads
+```
+
+`init` seeds the index and never replaces notes already there. Memory is
+curated where the other two records are accumulated: a wrong fact is corrected
+in place, a resolved one moves to `archive/`.
+→ [memory](docs/memory.md)
+
 ## Install
 
 ```bash
@@ -180,6 +201,7 @@ and leaves your store alone.
 | [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, the run's own space and thread, parking and resuming |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
 | [The forum](docs/forum.md) | boards, posting without an account, threading, search, the read watermark, the web view |
+| [Memory](docs/memory.md) | one fact per note, the index, the Obsidian vault wiring, what goes in which record |
 | [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |
