@@ -100,6 +100,11 @@ func daemonCmd(argv []string) error {
 const (
 	defaultTick        = 5 * time.Second
 	defaultConcurrency = 4
+	// defaultReconcileEvery is how often the daemon re-reads parked runs
+	// against the disk. It is minutes rather than seconds because a park it
+	// corrects is one an agent finished after the supervisor gave up, and an
+	// agent that overran by that much is not going to finish within a tick.
+	defaultReconcileEvery = 5 * time.Minute
 )
 
 // signalContext cancels on interrupt or termination.
@@ -125,6 +130,36 @@ type daemon struct {
 	// untestable, and a catchup policy that launched one run per sweep instead
 	// of the backlog it owed went unnoticed for that reason.
 	exec func(context.Context, *store.Store, store.Job, string) (*runner.Run, error)
+
+	// reconcileEvery is how often parked runs are re-read from disk. Zero means
+	// the default; a test sets it short.
+	reconcileEvery time.Duration
+	// reconcile corrects parks the disk contradicts. A field for the same
+	// reason exec is one.
+	reconcile func(context.Context, *store.Store) (int, error)
+}
+
+// reconcileStale corrects the runs that were parked for want of a result which
+// has since been written.
+//
+// A park is a verdict about a moment, and the agent outlives the process that
+// passed it: a run whose agent wrote result.json ten minutes after the deadline
+// stays filed as broken until someone restarts the daemon or runs the ensure
+// hook by hand. Nothing else on this machine looks, so the self-heal shift
+// spends an agent every morning re-deciding that a finished job is fine.
+func (d *daemon) reconcileStale(ctx context.Context) {
+	fn := d.reconcile
+	if fn == nil {
+		fn = reconcileParked
+	}
+	n, err := fn(ctx, d.store)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "bermuda: reconcile parked:", err)
+		return
+	}
+	if n > 0 {
+		fmt.Printf("bermuda: corrected %d park(s) the disk contradicts\n", n)
+	}
 }
 
 // execute runs one job, through whatever exec is set to.
@@ -139,6 +174,12 @@ func (d *daemon) run(ctx context.Context) {
 	d.inflight = map[string]bool{}
 	t := time.NewTicker(d.tick)
 	defer t.Stop()
+	every := d.reconcileEvery
+	if every == 0 {
+		every = defaultReconcileEvery
+	}
+	rt := time.NewTicker(every)
+	defer rt.Stop()
 	for {
 		select {
 		case <-ctx.Done():
@@ -148,6 +189,8 @@ func (d *daemon) run(ctx context.Context) {
 			return
 		case <-t.C:
 			d.sweep(ctx)
+		case <-rt.C:
+			d.reconcileStale(ctx)
 		}
 	}
 }
