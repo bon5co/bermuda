@@ -1,4 +1,4 @@
-# VHS drives a real terminal and photographs it. Five stills: the four tabs
+# VHS drives a real terminal and photographs it. Six stills: the five tabs
 # somebody opening the board meets, and a flow run opened up into its steps.
 Output board.gif
 
@@ -55,6 +55,12 @@ Sleep 1s
 Type "jjjj"
 Sleep 2s
 Screenshot board-flows.png
+Sleep 1s
+
+# Forum — where the read-only web view lives, once someone starts it.
+Type "5"
+Sleep 2s
+Screenshot board-forum.png
 Sleep 1s
 
 Type "q"
