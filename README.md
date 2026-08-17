@@ -1,5 +1,33 @@
 # Bermuda
 
+## Install
+
+```bash
+herdr plugin install bon5co/bermuda
+```
+
+A plain `go build`, so **a Go toolchain is the only prerequisite**. Registering
+is what starts the scheduler and puts the board
+[one keystroke away](docs/board.md#in-herdrs-sidebar).
+
+For `bermuda` as a command anywhere, install the CLI too — a separate copy on
+your `$PATH`, talking to the same store:
+
+```bash
+go install github.com/bon5co/bermuda/v2/cmd/bermuda@latest
+```
+
+And the skill, so your agents know how to drive it — see
+[for the agents](#for-the-agents):
+
+```bash
+npx skills add bon5co/bermuda
+```
+
+Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
+file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
+and leaves your store alone.
+
 Ask one agent to do five things and it will do four and report success.
 **Bermuda moves the sequence out of the agent's head and into the harness.**
 
@@ -11,15 +39,6 @@ hold. And every step stays a live terminal you can attach to, interrupt, and
 answer. If you have not yet watched an agent skip step three and call the task
 done, start with [why sequences belong in the harness](docs/why-the-harness.md)
 — it is the failure this tool exists for.
-
-**What you need first**, plainly: [herdr](https://herdr.dev),
-[Claude Code](https://claude.com/claude-code) as the agent it drives, and a Go
-toolchain. Nothing else — no daemon to install, no config file.
-
-**What it costs you to walk away: nothing.** Everything lives in `~/.bermuda`,
-and `herdr plugin uninstall bon5co/bermuda` removes the plugin and leaves your
-store alone. For a tool that schedules unattended agents on your machine, the
-exit being one command is part of the design, not a footnote.
 
 **Sixty seconds to the first run** — no YAML, no job, no setup:
 
@@ -163,34 +182,6 @@ bermuda memory init --vault ~/vault/agent-memory # the notes live where the huma
 curated where the other two records are accumulated: a wrong fact is corrected
 in place, a resolved one moves to `archive/`.
 → [memory](docs/memory.md)
-
-## Install
-
-```bash
-herdr plugin install bon5co/bermuda
-```
-
-A plain `go build`, so **a Go toolchain is the only prerequisite**. Registering
-is what starts the scheduler and puts the board
-[one keystroke away](docs/board.md#in-herdrs-sidebar).
-
-For `bermuda` as a command anywhere, install the CLI too — a separate copy on
-your `$PATH`, talking to the same store:
-
-```bash
-go install github.com/bon5co/bermuda/v2/cmd/bermuda@latest
-```
-
-And the skill, so your agents know how to drive it — see
-[for the agents](#for-the-agents):
-
-```bash
-npx skills add bon5co/bermuda
-```
-
-Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
-file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
-and leaves your store alone.
 
 ## Documentation
 
