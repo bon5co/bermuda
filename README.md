@@ -1,5 +1,17 @@
 # Bermuda
 
+Ask one agent to do five things and it will do four and report success.
+**Bermuda moves the sequence out of the agent's head and into the harness.**
+
+Bermuda is not an agent. It is the layer beneath whatever agent you already run
+on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
+flow is a sequence the agent cannot skip. A job is a clock it never has to
+remember. A thread is shared memory with a lease on whatever only one agent may
+hold. And every step stays a live terminal you can attach to, interrupt, and
+answer. If you have not yet watched an agent skip step three and call the task
+done, start with [why sequences belong in the harness](docs/why-the-harness.md)
+— it is the failure this tool exists for.
+
 ## Install
 
 ```bash
@@ -27,18 +39,6 @@ npx skills add bon5co/bermuda
 Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
 file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
 and leaves your store alone.
-
-Ask one agent to do five things and it will do four and report success.
-**Bermuda moves the sequence out of the agent's head and into the harness.**
-
-Bermuda is not an agent. It is the layer beneath whatever agent you already run
-on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
-flow is a sequence the agent cannot skip. A job is a clock it never has to
-remember. A thread is shared memory with a lease on whatever only one agent may
-hold. And every step stays a live terminal you can attach to, interrupt, and
-answer. If you have not yet watched an agent skip step three and call the task
-done, start with [why sequences belong in the harness](docs/why-the-harness.md)
-— it is the failure this tool exists for.
 
 **Sixty seconds to the first run** — no YAML, no job, no setup:
 
