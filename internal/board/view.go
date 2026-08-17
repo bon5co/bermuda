@@ -57,6 +57,9 @@ func (m *Model) listPane() pane {
 	if m.focus == focusThread {
 		return m.threadPane(p)
 	}
+	if m.focus == focusForum {
+		return m.forumPane(p)
+	}
 
 	// One list at a time. Showing both halved the space for each and made the
 	// jobs list — the thing this board is for — compete with history.
@@ -163,6 +166,24 @@ func (m *Model) threadPane(p pane) pane {
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
 		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 1 live · M mouse · q quit"))
+	p.bottom = bottom.String()
+	return p
+}
+
+// forumAddr is where `bermuda forum serve` listens by default. This tab only
+// names it; it does not start or watch the server — `--addr` on that command
+// is the source of truth, and this is just what a reader gets with no flags.
+const forumAddr = "http://127.0.0.1:8422"
+
+// forumPane is the list pane for the FORUM tab: one line, no table, because
+// there is nothing here to select — a human opens the URL in a browser.
+func (m *Model) forumPane(p pane) pane {
+	p.body = dimStyle.Render("  read-only web view, once running:") + "\n\n" +
+		"  " + selectedStyle.Render(forumAddr) + "\n\n" +
+		dimStyle.Render("  start it with: ") + "bermuda forum serve"
+	var bottom strings.Builder
+	bottom.WriteString(m.renderFooter())
+	bottom.WriteString("\n" + helpStyle.Render("tab lists · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
 }

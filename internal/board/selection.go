@@ -72,6 +72,9 @@ func (m *Model) clampCursor() {
 		// The thread has no selectable rows; it is scrolled, not stepped
 		// through.
 		n = 0
+	case m.focus == focusForum:
+		// The forum tab shows a fixed line, nothing to select.
+		n = 0
 	}
 	if m.cursor >= n {
 		m.cursor = n - 1

@@ -285,14 +285,15 @@ func TestThreadsIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 	tabs := m.renderTabs("")
 	iThreads, iJobs := strings.Index(tabs, "THREADS"), strings.Index(tabs, "JOBS")
 	iRuns, iFlows := strings.Index(tabs, "RUNS"), strings.Index(tabs, "FLOWS")
-	if !(iThreads < iJobs && iJobs < iRuns && iRuns < iFlows) {
-		t.Fatalf("tabs read %q, want THREADS then JOBS then RUNS then FLOWS", tabs)
+	iForum := strings.Index(tabs, "FORUM")
+	if !(iThreads < iJobs && iJobs < iRuns && iRuns < iFlows && iFlows < iForum) {
+		t.Fatalf("tabs read %q, want THREADS then JOBS then RUNS then FLOWS then FORUM", tabs)
 	}
 
 	for _, c := range []struct {
 		key  string
 		want focus
-	}{{"1", focusThread}, {"2", focusJobs}, {"3", focusRuns}, {"4", focusFlows}} {
+	}{{"1", focusThread}, {"2", focusJobs}, {"3", focusRuns}, {"4", focusFlows}, {"5", focusForum}} {
 		m.press(t, c.key)
 		if m.focus != c.want {
 			t.Errorf("%s opened focus %d, want %d — the keys must count the tabs left to right",
@@ -302,7 +303,7 @@ func TestThreadsIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 
 	// Tab walks the same way round, and comes back to where it started.
 	m.focus = focusThread
-	for _, want := range []focus{focusJobs, focusRuns, focusFlows, focusThread} {
+	for _, want := range []focus{focusJobs, focusRuns, focusFlows, focusForum, focusThread} {
 		m.pressSpecial(t, tea.KeyTab)
 		if m.focus != want {
 			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)
