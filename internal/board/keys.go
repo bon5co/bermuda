@@ -91,7 +91,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// delivered as a Tab press, and the board is meant to be drivable
 	// remotely, not only by hand. They count the tabs as drawn, so 1 is the
 	// leftmost one.
-	case "1", "2", "3", "4":
+	case "1", "2", "3", "4", "5":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "l", "right":

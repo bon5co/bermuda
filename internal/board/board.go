@@ -178,6 +178,7 @@ const (
 	focusRuns
 	focusThread
 	focusFlows
+	focusForum
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
