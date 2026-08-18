@@ -47,6 +47,18 @@ type FlowSpace struct {
 	WorkspaceID string
 	Label       string
 	Thread      string
+	// RootTabID is the tab herdr insists on making when it creates a workspace.
+	// Nothing ever runs in it — every step opens a tab of its own — so it sits in
+	// the room as an empty shell that an operator has to look past to find the
+	// one that matters. Carrying its id is what lets the run reap it once the
+	// space holds a tab somebody actually wants.
+	//
+	// Deliberately not written to the run record. A resume finds the space
+	// already there, which means the attempt that created it has already reaped
+	// its root tab: there is nothing left to close and nothing worth remembering
+	// across processes. Persisting it would add a schema column whose only
+	// possible value on read is "already handled".
+	RootTabID string
 }
 
 // Usable reports whether steps can be pointed at this space.
