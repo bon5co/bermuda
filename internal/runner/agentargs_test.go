@@ -86,7 +86,7 @@ func TestTheBypassReplacesThePermissionModeRatherThanJoiningIt(t *testing.T) {
 }
 
 // A field nobody filled in must produce no flag at all. A flag emitted with an
-// empty value is worse than a missing one — "--allowedTools ''" is a policy
+// empty value is worse than a missing one — `--allowedTools ""` is a policy
 // that allows nothing, and the run dies on its first tool call.
 func TestUnsetAndBlankFieldsEmitNoFlag(t *testing.T) {
 	blank := []string{
@@ -217,7 +217,7 @@ func TestStepEffortAndSubagentReachTheCommandLine(t *testing.T) {
 }
 
 // A step that names neither must not emit the flags with empty values, for the
-// same reason as the job's own blank fields: "--effort ''" is not a default.
+// same reason as the job's own blank fields: `--effort ""` is not a default.
 func TestAStepThatNamesNoEffortOrSubagentEmitsNeitherFlag(t *testing.T) {
 	args := BuildStepArgs(
 		store.Job{Kind: "claude", Model: "sonnet"},
