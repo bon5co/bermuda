@@ -25,10 +25,16 @@ import (
 type fakeKeeper struct {
 	panes   []herdrcli.Pane
 	renamed []string
+	closed  []string
 	tabs    []struct {
 		label, cwd string
 		env        map[string]string
 	}
+}
+
+func (f *fakeKeeper) TabClose(_ context.Context, tabID string) error {
+	f.closed = append(f.closed, tabID)
+	return nil
 }
 
 func (f *fakeKeeper) WorkspaceRename(_ context.Context, workspaceID, label string) error {
@@ -255,4 +261,76 @@ func TestAStepsOwnTabDoesNotStandInForTheEvidenceTab(t *testing.T) {
 
 func (f *fakeKeeper) PaneList(_ context.Context, _ string) ([]herdrcli.Pane, error) {
 	return f.panes, nil
+}
+
+// herdr makes a tab along with the workspace and nothing ever runs in it, so
+// every parked flow room used to show a dead tab "1" next to the one worth
+// reading. Park is where the room becomes a screen for an operator, so that is
+// where the empty shell goes.
+func TestAParkClosesTheEmptyTabTheSpaceWasOpenedWith(t *testing.T) {
+	s := flowStore(t)
+	k := withKeeper(t)
+	ctx := context.Background()
+	space, def, rec := parkedRun(t, s)
+	space.RootTabID = "t-root"
+	// The evidence tab is already in the room, so the park has no reason to open
+	// another one and the root tab is demonstrably not the only thing left.
+	k.panes = append(k.panes,
+		herdrcli.Pane{PaneID: "p-root", TabID: "t-root"},
+		herdrcli.Pane{PaneID: "p9", TabID: "t9", CWD: rec.RunDir})
+
+	parkFlowSpace(ctx, s, space, def, rec, &runner.FlowRun{RunID: rec.ID,
+		Outcome: runner.OutcomeParked, ParkReason: runner.ParkStepFailed, StoppedAt: "verify"})
+
+	if len(k.closed) != 1 || k.closed[0] != "t-root" {
+		t.Errorf("closed %v, want the workspace's own empty tab", k.closed)
+	}
+	// Reaped once. A second park must not ask herdr to close a tab that is gone.
+	if space.RootTabID != "" {
+		t.Errorf("the space still claims a root tab %q after reaping it", space.RootTabID)
+	}
+	parkFlowSpace(ctx, s, space, def, rec, &runner.FlowRun{RunID: rec.ID,
+		Outcome: runner.OutcomeParked, ParkReason: runner.ParkStepFailed, StoppedAt: "verify"})
+	if len(k.closed) != 1 {
+		t.Errorf("parking twice closed %d tabs, want the one reap", len(k.closed))
+	}
+}
+
+// The room must never be left with nothing in it. herdr would refuse the close
+// anyway, but relying on the refusal would turn the ordinary case — a `run:`
+// step that parked before anything else opened a tab — into an error line.
+func TestAParkKeepsTheRootTabWhenItIsTheOnlyOne(t *testing.T) {
+	s := flowStore(t)
+	k := withKeeper(t)
+	ctx := context.Background()
+	space, def, rec := parkedRun(t, s)
+	space.RootTabID = "t-root"
+	k.panes = append(k.panes, herdrcli.Pane{PaneID: "p-root", TabID: "t-root"})
+
+	parkFlowSpace(ctx, s, space, def, rec, &runner.FlowRun{RunID: rec.ID,
+		Outcome: runner.OutcomeParked, ParkReason: runner.ParkStepFailed, StoppedAt: "verify"})
+
+	if len(k.closed) != 0 {
+		t.Errorf("closed %v and would have emptied the room", k.closed)
+	}
+}
+
+// A resumed run did not create its space, so it has no root tab id — the attempt
+// that opened the room already reaped it. Nothing to close, and nothing to
+// guess at.
+func TestAResumedParkClosesNoTabs(t *testing.T) {
+	s := flowStore(t)
+	k := withKeeper(t)
+	ctx := context.Background()
+	space, def, rec := parkedRun(t, s)
+	k.panes = append(k.panes,
+		herdrcli.Pane{PaneID: "p1", TabID: "t1"},
+		herdrcli.Pane{PaneID: "p9", TabID: "t9", CWD: rec.RunDir})
+
+	parkFlowSpace(ctx, s, space, def, rec, &runner.FlowRun{RunID: rec.ID,
+		Outcome: runner.OutcomeParked, ParkReason: runner.ParkStepFailed, StoppedAt: "verify"})
+
+	if len(k.closed) != 0 {
+		t.Errorf("a resumed park closed %v; it knows of no root tab to reap", k.closed)
+	}
 }

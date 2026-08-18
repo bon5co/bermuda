@@ -80,13 +80,20 @@ func openFlowSpace(ctx context.Context, s *store.Store, def flow.Flow, rec *stor
 	}
 
 	label := runner.SpaceLabel(def.ID)
-	ws, _, err := h.WorkspaceCreate(ctx, label, cwd, nil)
+	ws, root, err := h.WorkspaceCreate(ctx, label, cwd, nil)
 	if err != nil || ws == nil {
 		fmt.Fprintln(os.Stderr, "bermuda: could not open a space for this flow, so its steps "+
 			"share no thread:", err)
 		return nil
 	}
+	// The root tab comes with the workspace whether anybody wants it or not, and
+	// nobody does: every step opens its own tab and the park path opens one more.
+	// Keeping its id is the whole cost of being able to close it later, and the
+	// alternative — leaving it — is a dead shell in every flow room forever.
 	space := &runner.FlowSpace{WorkspaceID: ws.WorkspaceID, Label: firstNonEmpty(ws.Label, label)}
+	if root != nil {
+		space.RootTabID = strings.TrimSpace(root.TabID)
+	}
 	space.Thread = ensureSpaceThread(ctx, s, space.WorkspaceID, space.Label)
 	rec.Space, rec.Thread = space.WorkspaceID, space.Thread
 	return space
@@ -172,6 +179,7 @@ func closeFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace
 type spaceKeeper interface {
 	PaneList(ctx context.Context, workspaceID string) ([]herdrcli.Pane, error)
 	TabCreate(ctx context.Context, workspaceID, label, cwd string, env map[string]string) (*herdrcli.Pane, error)
+	TabClose(ctx context.Context, tabID string) error
 	WorkspaceRename(ctx context.Context, workspaceID, label string) error
 }
 
@@ -250,11 +258,61 @@ func parkFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace,
 			fmt.Fprintln(os.Stderr, "bermuda: no tab for this run's evidence:", err)
 		}
 	}
+	reapRootTab(ctx, h, space)
 	fmt.Fprintf(os.Stderr, "bermuda: this run parked and its space is still open — "+
 		"close the space to acknowledge it.\n  bermuda flow status %s\n", rec.ID)
 	if space.HasThread() {
 		fmt.Fprintf(os.Stderr, "  bermuda thread log --thread %s\n", space.Thread)
 	}
+}
+
+// reapRootTab closes the empty tab herdr made along with the workspace, now that
+// the room holds one somebody will actually read.
+//
+// It runs at park because that is the moment the room stops being a workspace a
+// run is using and becomes a screen an operator opens: the label carries the
+// verdict, one tab sits on the artifacts, and the shell that has been empty
+// since the space was created is the only thing left that means nothing. A run
+// that finishes never gets here — closeFlowSpace takes the whole workspace.
+//
+// The check that some other tab exists is explicit rather than delegated to
+// herdr's own refusal to close the last tab in a workspace. Both end with the
+// room intact, but leaning on the refusal turns the ordinary case — a `run:`
+// step that parked before anything opened a second tab — into an error line
+// about a failed close, which trains a reader to ignore the one line that would
+// matter if the close failed for a real reason.
+//
+// A herdr that cannot list panes is treated as "do not touch it": the cost of
+// that guess is the spare tab we already have, and the cost of the other guess
+// is an empty room.
+func reapRootTab(ctx context.Context, h spaceKeeper, space *runner.FlowSpace) {
+	root := strings.TrimSpace(space.RootTabID)
+	if root == "" {
+		// Either herdr never told us which tab it made, or this is a resumed run
+		// whose root tab the first attempt already reaped.
+		return
+	}
+	panes, err := h.PaneList(ctx, space.WorkspaceID)
+	if err != nil {
+		return
+	}
+	occupied := false
+	for _, p := range panes {
+		if strings.TrimSpace(p.TabID) != root {
+			occupied = true
+			break
+		}
+	}
+	if !occupied {
+		return
+	}
+	if err := h.TabClose(ctx, root); err != nil {
+		fmt.Fprintln(os.Stderr, "bermuda: this space keeps the empty tab it was opened with:", err)
+		return
+	}
+	// One reap per space: saying it is gone stops a second park from asking herdr
+	// to close a tab that no longer exists.
+	space.RootTabID = ""
 }
 
 // hasPaneIn reports whether the space already holds a shell sitting in this
