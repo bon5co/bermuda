@@ -230,7 +230,7 @@ place instead of duplicating it.
 
 ## Status, and what to trust
 
-**v2.7.0**, one maintainer, in daily use on the machine it was written for.
+**v2.8.0**, one maintainer, in daily use on the machine it was written for.
 Few stars and a single author is a fair thing to hesitate over in software that
 runs agents unattended, so here is the posture stated outright rather than
 papered over.
