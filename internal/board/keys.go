@@ -91,7 +91,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// delivered as a Tab press, and the board is meant to be drivable
 	// remotely, not only by hand. They count the tabs as drawn, so 1 is the
 	// leftmost one.
-	case "1", "2", "3", "4", "5":
+	case "1", "2", "3", "4", "5", "6":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "l", "right":
@@ -168,6 +168,11 @@ func (m *Model) descend() tea.Cmd {
 		// Nothing lives under a flow: it is a file, and its runs are the RUNS
 		// tab. `l` deliberately does not launch it either — a horizontal key
 		// that started agents would spend money on a mistyped navigation.
+		return nil
+	case focusForum, focusMemory:
+		// Neither tab has rows. Without these cases both fall through to the
+		// run detail below and open whatever a stale cursor happens to point
+		// at, which is a different tab's run.
 		return nil
 	}
 	return m.openRunDetail()
