@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // WorkspaceLabel is the dedicated workspace bermuda owns. Runs only ever
@@ -224,7 +225,7 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 		}
 	}()
 
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
+	if err := os.MkdirAll(runDir, statefs.Dir); err != nil {
 		return run, fmt.Errorf("create run dir: %w", err)
 	}
 	run.RunDir = runDir
@@ -332,7 +333,7 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 	promptPath := filepath.Join(runDir, "prompt.md")
 	resultPath := filepath.Join(runDir, "result.json")
 	body := job.Prompt + "\n" + fmt.Sprintf(resultContract, resultPath) + "\n"
-	if err := os.WriteFile(promptPath, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(promptPath, []byte(body), statefs.File); err != nil {
 		return run, fmt.Errorf("write prompt: %w", err)
 	}
 	pointer := fmt.Sprintf("Read the file %s and do exactly what it says.", promptPath)
@@ -358,7 +359,7 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 
 	// Archive the transcript for humans regardless of outcome. Never parsed.
 	if transcript, err := r.Herdr.AgentRead(ctx, run.AgentName); err == nil {
-		_ = os.WriteFile(filepath.Join(runDir, "transcript.txt"), []byte(transcript), 0o644)
+		_ = os.WriteFile(filepath.Join(runDir, "transcript.txt"), []byte(transcript), statefs.File)
 	}
 
 	r.classify(run, status, promptErr)

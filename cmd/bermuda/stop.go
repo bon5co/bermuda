@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bon5co/bermuda/v2/internal/lockfile"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // Stopping bermuda used to mean killing two processes inside the same five
@@ -32,12 +33,12 @@ func stopped() bool {
 
 // stopCmd stops the scheduler and keeps it stopped.
 func stopCmd(argv []string) error {
-	if err := os.MkdirAll(stateDir(), 0o755); err != nil {
+	if err := os.MkdirAll(stateDir(), statefs.Dir); err != nil {
 		return err
 	}
 	// Written first: whatever is signalled below must find it already there,
 	// or a peer noticing the death mid-shutdown would revive it.
-	if err := os.WriteFile(stopFile(), []byte(time.Now().Format(time.RFC3339)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(stopFile(), []byte(time.Now().Format(time.RFC3339)+"\n"), statefs.File); err != nil {
 		return err
 	}
 

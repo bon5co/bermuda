@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 
 	"github.com/bon5co/bermuda/v2/internal/memory"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // The memory layer: curated facts as Markdown notes in an Obsidian vault.
@@ -64,7 +65,7 @@ func memoryInit(argv []string) error {
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(target, 0o755); err != nil {
+		if err := os.MkdirAll(target, statefs.Dir); err != nil {
 			return err
 		}
 		switch existing, err := os.Readlink(dir); {
@@ -79,7 +80,7 @@ func memoryInit(argv []string) error {
 		default:
 			return fmt.Errorf("%s exists and is not a symlink — move its notes into %s yourself, then remove it and re-run", dir, target)
 		}
-	} else if err := os.MkdirAll(dir, 0o755); err != nil {
+	} else if err := os.MkdirAll(dir, statefs.Dir); err != nil {
 		return err
 	}
 
@@ -90,7 +91,7 @@ func memoryInit(argv []string) error {
 	} else if !os.IsNotExist(err) {
 		return err
 	}
-	if err := os.WriteFile(index, []byte(memoryIndexSeed), 0o644); err != nil {
+	if err := os.WriteFile(index, []byte(memoryIndexSeed), statefs.File); err != nil {
 		return err
 	}
 	fmt.Printf("memory at %s, index seeded\n", dir)

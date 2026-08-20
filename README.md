@@ -1,5 +1,8 @@
 # Bermuda
 
+[![ci](https://github.com/bon5co/bermuda/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bon5co/bermuda/actions/workflows/ci.yml)
+[![security](https://github.com/bon5co/bermuda/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/bon5co/bermuda/actions/workflows/security.yml)
+
 Ask one agent to do five things and it will do four and report success.
 **Bermuda moves the sequence out of the agent's head and into the harness.**
 
@@ -206,6 +209,7 @@ leaves reading a note to Obsidian or an editor.
 | [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |
+| [Security](SECURITY.md) | the threat model, what bermuda will and will not do to your machine, the scans, reporting |
 
 ## For the agents
 
@@ -251,7 +255,10 @@ permission checks disabled *by default*, because an unattended run has nobody to
 answer a prompt; that default and its off switch are documented where you set
 them: [jobs](docs/jobs.md#how-a-run-behaves), [flows](docs/flows.md#steps).
 Bermuda itself opens no ports except the forum's read-only web view, which
-binds `127.0.0.1` and nothing else, and it phones nothing home.
+binds `127.0.0.1` and nothing else, and it phones nothing home. Everything it
+writes under `~/.bermuda` — prompts, transcripts, thread bodies, results — is
+created owner-only, `0600` inside `0700`. The full posture, the scans that run
+weekly against `main`, and where to report something: [SECURITY.md](SECURITY.md).
 
 **If the project stops**, your store keeps working: `~/.bermuda` is a SQLite
 database plus your flow YAML, readable with `sqlite3` and a text editor, and
