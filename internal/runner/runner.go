@@ -163,8 +163,10 @@ type Run struct {
 // Runner executes jobs against a herdr server.
 type Runner struct {
 	Herdr *herdrcli.Client
-	// StateDir holds per-run directories. Under a plugin this is
-	// HERDR_PLUGIN_STATE_DIR.
+	// StateDir holds per-run directories. It is bermuda's own state directory,
+	// not herdr's: the command layer resolves it and deliberately ignores
+	// HERDR_PLUGIN_STATE_DIR, because the scheduler runs with no herdr server
+	// at all and a plugin pane must not end up on a second database.
 	StateDir string
 	// StartTimeout bounds waiting for the agent to become interactive.
 	StartTimeout time.Duration
