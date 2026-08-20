@@ -281,9 +281,13 @@ func TestUsageTotalsOnlyRunsInsideTheSinceWindow(t *testing.T) {
 		ID: "recent", JobID: "brief", Outcome: "done",
 		StartedAt: now.Add(-time.Hour), InputTokens: 100, OutputTokens: 10,
 	})
+	// Comfortably outside the 24h window and comfortably inside the 720h one.
+	// Sitting it exactly 720h back put it on the boundary of the second query,
+	// where whichever side the cutoff rounded to — plus however long the test
+	// took to get there — decided the result.
 	putRun(t, s, store.Run{
 		ID: "ancient", JobID: "brief", Outcome: "done",
-		StartedAt: now.Add(-30 * 24 * time.Hour), InputTokens: 999, OutputTokens: 999,
+		StartedAt: now.Add(-20 * 24 * time.Hour), InputTokens: 999, OutputTokens: 999,
 	})
 
 	out, err := captureStdout(t, func() error {
