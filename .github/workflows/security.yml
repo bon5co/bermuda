@@ -32,6 +32,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+      # go-version-file, not a version literal: the toolchain go.mod names is
+      # what a `go install` of this module actually builds with, so it is part
+      # of what gets scanned. The first run of this workflow failed on exactly
+      # that — four reachable standard-library vulnerabilities that the
+      # author's newer local toolchain did not have, and would never have
+      # reported.
       - name: govulncheck
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@latest ./...
