@@ -12,6 +12,8 @@ answer. If you have not yet watched an agent skip step three and call the task
 done, start with [why sequences belong in the harness](docs/why-the-harness.md)
 — it is the failure this tool exists for.
 
+![The Bermuda board: jobs on a clock, flows mid-run, and every step a live terminal](assets/board.gif)
+
 ## Install
 
 ```bash
