@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bon5co/bermuda/v2/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
@@ -484,10 +485,10 @@ func writeLoopLedger(runDir string, l *loopLedger) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(runDir, 0o755); err != nil {
+	if err := os.MkdirAll(runDir, statefs.Dir); err != nil {
 		return err
 	}
-	return os.WriteFile(loopLedgerPath(runDir), b, 0o644)
+	return os.WriteFile(loopLedgerPath(runDir), b, statefs.File)
 }
 
 // retry is the rejection a backward edge carries to the step it jumped to.
@@ -543,7 +544,7 @@ func (w *Flow) report(sr StepRun) {
 // without writing one would otherwise inherit the last attempt's file and be
 // classified by a result it never produced.
 func (w *Flow) prepare(dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, statefs.Dir); err != nil {
 		return err
 	}
 	if err := os.Remove(filepath.Join(dir, "result.json")); err != nil && !os.IsNotExist(err) {
@@ -649,7 +650,7 @@ func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Ste
 	out, err := shell(ctx, step.Run, job.CWD, env)
 	// Kept for a human, never parsed: the exit status is the verdict.
 	if len(out) > 0 {
-		_ = os.WriteFile(filepath.Join(sr.Dir, "output.txt"), out, 0o644)
+		_ = os.WriteFile(filepath.Join(sr.Dir, "output.txt"), out, statefs.File)
 	}
 
 	res := Result{Status: "ok", Note: lastLine(out)}
@@ -686,7 +687,7 @@ func writeResult(dir string, res Result) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(dir, "result.json"), b, 0o644)
+	return os.WriteFile(filepath.Join(dir, "result.json"), b, statefs.File)
 }
 
 // lastLine is the most useful single line of a command's output: the last

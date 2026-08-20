@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 	_ "modernc.org/sqlite" // pure-Go driver: no cgo, so nix builds stay simple
 )
 
@@ -314,7 +315,7 @@ var addColumns = []struct{ table, column, ddl string }{
 
 // Open opens (and migrates) the store at dir/bermuda.db.
 func Open(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, statefs.Dir); err != nil {
 		return nil, err
 	}
 	path := filepath.Join(dir, "bermuda.db")
@@ -355,6 +356,13 @@ func Open(dir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("backfill tags: %w", err)
 	}
+	// Last, because sql.Open is lazy: SQLite creates the database and its WAL
+	// sidecars on first use, under the process umask, so the constant above
+	// never reaches them — and what they hold is every thread body and forum
+	// post there is. Tightening on each open rather than only on create is
+	// also what carries a store made by an older bermuda, which wrote all of
+	// this world-readable.
+	tighten(dir, path)
 	return &Store{db: db, TagsNormalized: normalized, forumFTS: forumFTS}, nil
 }
 
@@ -817,4 +825,17 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// tighten re-applies the owner-only modes to the store directory and the files
+// SQLite creates beside the database. Best effort on purpose: a store on a
+// filesystem that does not carry Unix modes at all — a mounted share, most
+// often — is a store bermuda should still open rather than refuse.
+func tighten(dir, path string) {
+	_ = os.Chmod(dir, statefs.Dir)
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		if _, err := os.Stat(p); err == nil {
+			_ = os.Chmod(p, statefs.File)
+		}
+	}
 }

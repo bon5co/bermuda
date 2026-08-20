@@ -33,7 +33,7 @@ else
 LDFLAGS := -ldflags "-X $(VERSION_PKG).Tag=$(VERSION)"
 endif
 
-.PHONY: build check test vet fmt version clean install-plugin
+.PHONY: build check sec test vet fmt version clean install-plugin
 
 ## build: compile the binary with its version stamped in
 build:
@@ -47,6 +47,15 @@ test:
 
 vet:
 	go vet ./...
+
+## sec: the two security scans CI runs, with the same rules and exclusions
+##      (see .github/workflows/security.yml for why each rule is left out)
+sec:
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+	go run github.com/securego/gosec/v2/cmd/gosec@latest \
+		-exclude=G104,G202,G203,G204,G304,G702,G703 \
+		-severity=medium -confidence=medium \
+		-exclude-generated -quiet ./...
 
 fmt:
 	gofmt -w .

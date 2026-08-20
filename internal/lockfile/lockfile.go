@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // Lock is a held single-instance lock.
@@ -37,10 +39,10 @@ func (e *ErrHeld) Error() string {
 // process holds it. The caller's PID is written for diagnostics only; the lock
 // itself is what enforces exclusivity.
 func Acquire(path string) (*Lock, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), statefs.Dir); err != nil {
 		return nil, err
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, statefs.File)
 	if err != nil {
 		return nil, err
 	}
@@ -143,10 +145,10 @@ func Held(path string) bool {
 	// Held has to as well, or the first probe on a fresh state directory fails
 	// to open anything, reports "held", and the daemon it was asked about is
 	// never started.
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), statefs.Dir); err != nil {
 		return true
 	}
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, statefs.File)
 	if err != nil {
 		// Nothing can be said about a lock that cannot be opened; claiming it
 		// is free would start a second daemon.

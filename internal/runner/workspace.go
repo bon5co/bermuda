@@ -11,6 +11,7 @@ import (
 
 	"github.com/bon5co/bermuda/v2/internal/herdrcli"
 	"github.com/bon5co/bermuda/v2/internal/lockfile"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // Owning a space rather than moving into one.
@@ -126,13 +127,13 @@ func writeWorkspaceRecord(stateDir string, rec workspaceRecord) error {
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+	if err := os.MkdirAll(stateDir, statefs.Dir); err != nil {
 		return err
 	}
 	// Written whole and renamed into place: a half-written record read by the
 	// next process would look like no record at all, and make a second space.
 	tmp := workspaceFile(stateDir) + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
+	if err := os.WriteFile(tmp, b, statefs.File); err != nil {
 		return err
 	}
 	return os.Rename(tmp, workspaceFile(stateDir))

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/bon5co/bermuda/v2/internal/lockfile"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 )
 
 // Bermuda keeps two processes alive that watch each other: the scheduler,
@@ -95,7 +96,7 @@ func spawnRole(role string, args ...string) error {
 		return err
 	}
 	logFile, err := os.OpenFile(filepath.Join(stateDir(), "bermuda.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, statefs.File)
 	if err != nil {
 		return err
 	}

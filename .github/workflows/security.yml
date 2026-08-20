@@ -1,0 +1,73 @@
+# The two scans worth running on a tool that launches agents with your
+# credentials, on a clock rather than only on a diff.
+#
+# The schedule is the point of a separate workflow. `ci` answers "did this
+# change break something"; a vulnerability report lands in the Go database
+# without anyone touching this repo, so the answer to "is what is on main
+# exploitable today" goes stale on its own. Weekly is the resolution the badge
+# claims, and no more.
+name: security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Mondays, 06:00 UTC — early enough that a weekend advisory is read before
+    # the week's work is built on top of it.
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    # The authoritative one: the Go vulnerability database, and — unlike a
+    # dependency-manifest scanner — reachability analysis, so a CVE in a
+    # package bermuda links but never calls is not reported as an exposure.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  gosec:
+    # Static analysis, narrowed to the rules that can actually catch a
+    # regression here. Each exclusion below is a rule whose every hit in this
+    # repo is a false positive by construction, and leaving them on would have
+    # meant a permanently red gate that nobody reads:
+    #
+    #   G104  unhandled errors — every hit is Close() or Flush() on a path that
+    #         is already returning the error that matters.
+    #   G202  SQL string concatenation — the concatenated parts are static
+    #         clause fragments; every value goes through a ? placeholder.
+    #   G203  unescaped template.HTML — the one producer escapes its input with
+    #         HTMLEscapeString before it marks up the FTS5 match delimiters.
+    #   G204  subprocess with a variable — running the command you typed is
+    #         what a task runner is. The variable is the user's own argv.
+    #   G304  file inclusion via a variable — the variable is a path under the
+    #         state directory or one the user passed on their own command line.
+    #   G702  command injection via taint, G703 path traversal via taint — the
+    #         taint source in every hit is this process's own argv or the
+    #         binary's own path on a self-restart.
+    #
+    # What stays on is the family that found something real: G301/G302/G306,
+    # the permission bits on what bermuda writes. See internal/statefs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: gosec
+        run: |
+          go run github.com/securego/gosec/v2/cmd/gosec@latest \
+            -exclude=G104,G202,G203,G204,G304,G702,G703 \
+            -severity=medium -confidence=medium \
+            -exclude-generated -quiet ./...

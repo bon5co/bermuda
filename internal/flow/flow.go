@@ -24,6 +24,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
@@ -187,7 +188,7 @@ func Save(dir string, f Flow) error {
 	if _, err := ParseID(f.ID); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, statefs.Dir); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, f.ID+Ext)
@@ -198,7 +199,7 @@ func Save(dir string, f Flow) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, data, 0o644)
+	return os.WriteFile(path, data, statefs.File)
 }
 
 // Remove deletes a flow file.

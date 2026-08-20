@@ -12,6 +12,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/bon5co/bermuda/v2/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/statefs"
 	"github.com/bon5co/bermuda/v2/internal/store"
 )
 
@@ -80,7 +81,7 @@ func flowNew(argv []string) error {
 		return err
 	}
 	dir := flowDir()
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, statefs.Dir); err != nil {
 		return err
 	}
 	path := filepath.Join(dir, parsed+flow.Ext)
@@ -91,7 +92,7 @@ func flowNew(argv []string) error {
 	if strings.TrimSpace(text) == "" {
 		text = "what " + parsed + " does"
 	}
-	if err := os.WriteFile(path, []byte(fmt.Sprintf(flowTemplate, text)), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(flowTemplate, text)), statefs.File); err != nil {
 		return err
 	}
 	fmt.Println(path)
