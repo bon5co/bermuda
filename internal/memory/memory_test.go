@@ -125,3 +125,89 @@ func TestReadFollowsAVaultSymlinkAndReportsTheTarget(t *testing.T) {
 		t.Errorf("linkedTo = %q, want %q", st.LinkedTo, vault)
 	}
 }
+
+// A memory directory is normally a whole vault, and a vault files its notes in
+// folders. Counting only the top level reported eight notes for a vault holding
+// five hundred, which reads as an empty harness rather than a full one.
+func TestReadCountsNotesInSubdirectories(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, IndexName), "index\n")
+	write(t, filepath.Join(dir, "loose.md"), "at the root\n")
+	write(t, filepath.Join(dir, "memory", "a-fact.md"), "see [[loose]]\n")
+	write(t, filepath.Join(dir, "projects", "deep", "b-fact.md"), "nested two down\n")
+	write(t, filepath.Join(dir, "projects", "diagram.png"), "not a note")
+
+	st := Read(dir)
+
+	if st.Notes != 3 {
+		t.Errorf("notes = %d, want 3: the whole tree counts, the attachment does not", st.Notes)
+	}
+	if st.Links != 1 {
+		t.Errorf("links = %d, want 1 from the nested note", st.Links)
+	}
+}
+
+// An index is an index at any depth: a vault wired as the memory directory has
+// its own MEMORY.md at the root and another inside memory/, and neither is a
+// fact somebody wrote down.
+func TestReadNeverCountsAnIndexAsANote(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, IndexName), "root index\n")
+	write(t, filepath.Join(dir, "memory", IndexName), "inner index\n")
+	write(t, filepath.Join(dir, "memory", "fact.md"), "the only fact\n")
+
+	if got := Read(dir).Notes; got != 1 {
+		t.Errorf("notes = %d, want 1", got)
+	}
+}
+
+// Archives live per section rather than once at the root, so the split between
+// live and resolved has to hold at any depth.
+func TestReadCountsNestedArchivesAsArchived(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "live.md"), "current\n")
+	write(t, filepath.Join(dir, "memory", "archive", "old.md"), "resolved\n")
+	write(t, filepath.Join(dir, "tasks", "archive", "done.md"), "resolved\n")
+
+	st := Read(dir)
+
+	if st.Notes != 1 {
+		t.Errorf("notes = %d, want 1: archived notes are not live", st.Notes)
+	}
+	if st.Archived != 2 {
+		t.Errorf("archived = %d, want 2 across both archive folders", st.Archived)
+	}
+}
+
+// A vault's dot directories are its own machinery — .obsidian holds plugin
+// data, .trash holds deletions — and counting either would inflate the number
+// the tab exists to report.
+func TestReadSkipsTheVaultsOwnDotDirectories(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "fact.md"), "real\n")
+	write(t, filepath.Join(dir, ".obsidian", "plugins", "notes.md"), "plugin data\n")
+	write(t, filepath.Join(dir, ".trash", "deleted.md"), "thrown away\n")
+
+	if got := Read(dir).Notes; got != 1 {
+		t.Errorf("notes = %d, want 1: dot directories are not memory", got)
+	}
+}
+
+// Newest names a note so a reader can go open it, which for a nested note
+// means the path they would type and not just the basename.
+func TestReadNamesTheNewestNoteByItsPath(t *testing.T) {
+	dir := t.TempDir()
+	write(t, filepath.Join(dir, "old.md"), "older\n")
+	write(t, filepath.Join(dir, "projects", "fresh.md"), "newer\n")
+
+	if err := os.Chtimes(filepath.Join(dir, "old.md"), time.Unix(1_000_000, 0), time.Unix(1_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(filepath.Join(dir, "projects", "fresh.md"), time.Unix(2_000_000, 0), time.Unix(2_000_000, 0)); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := Read(dir).Newest, filepath.Join("projects", "fresh"); got != want {
+		t.Errorf("newest = %q, want %q", got, want)
+	}
+}
