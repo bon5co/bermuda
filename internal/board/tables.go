@@ -231,6 +231,11 @@ func (m *Model) tableWidth() int {
 		// as its own message — so the rule runs to the width the widest of them
 		// is allowed to reach.
 		return min(m.contentWidth(), threadBubbleMax+4)
+	case focusForum, focusMemory:
+		// Neither draws a table, so sizing the rule by the jobs columns — the
+		// default this switch would otherwise fall to — would run it to the
+		// width of a table that is not on screen.
+		return min(m.contentWidth(), summaryWidth)
 	}
 	total := len(cols) - 1 // separators
 	for _, w := range layout(cols, m.contentWidth()) {

@@ -124,7 +124,7 @@ func TestTabCyclesEveryListAndResetsCursor(t *testing.T) {
 	if m.cursor != 0 {
 		t.Errorf("cursor is %d after switching lists, want 0: the old index means nothing in the new list", m.cursor)
 	}
-	for _, want := range []focus{focusFlows, focusForum, focusThread, focusJobs} {
+	for _, want := range []focus{focusFlows, focusForum, focusMemory, focusThread, focusJobs} {
 		m.pressSpecial(t, tea.KeyTab)
 		if m.focus != want {
 			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)
@@ -132,7 +132,7 @@ func TestTabCyclesEveryListAndResetsCursor(t *testing.T) {
 	}
 
 	// Backwards too, or a reader who overshoots has to walk all the way round.
-	for _, want := range []focus{focusThread, focusForum, focusFlows, focusRuns, focusJobs} {
+	for _, want := range []focus{focusThread, focusMemory, focusForum, focusFlows, focusRuns, focusJobs} {
 		m.pressSpecial(t, tea.KeyShiftTab)
 		if m.focus != want {
 			t.Fatalf("shift+tab moved to focus %d, want %d", m.focus, want)

@@ -185,6 +185,12 @@ bermuda memory init --vault ~/vault/agent-memory # the notes live where the huma
 `init` seeds the index and never replaces notes already there. Memory is
 curated where the other two records are accumulated: a wrong fact is corrected
 in place, a resolved one moves to `archive/`.
+
+![The board's memory tab: where the notes live, and how many there are](assets/board-memory.png)
+
+The board's MEMORY tab is a summary rather than a list, deliberately: it says
+where the notes are wired and whether anything is accumulating in them, and
+leaves reading a note to Obsidian or an editor.
 → [memory](docs/memory.md)
 
 ## Documentation

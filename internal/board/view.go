@@ -1,8 +1,12 @@
 package board
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/bon5co/bermuda/v2/internal/memory"
 )
 
 // Composing the screen: which view is showing, and how the list, inspector, and
@@ -59,6 +63,9 @@ func (m *Model) listPane() pane {
 	}
 	if m.focus == focusForum {
 		return m.forumPane(p)
+	}
+	if m.focus == focusMemory {
+		return m.memoryPane(p)
 	}
 
 	// One list at a time. Showing both halved the space for each and made the
@@ -186,6 +193,90 @@ func (m *Model) forumPane(p pane) pane {
 	bottom.WriteString("\n" + helpStyle.Render("tab lists · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
+}
+
+// summaryWidth is how wide the tab rule runs over a pane that has no table
+// under it. Wide enough for the longest line these panes draw, narrow enough
+// that the rule does not stretch across an empty pane pretending a table ended
+// there.
+const summaryWidth = 64
+
+// memoryPane is the list pane for the MEMORY tab: a summary, not a list.
+//
+// Nothing here is selectable on purpose. The notes are Obsidian Markdown and
+// the place to read one is Obsidian, or an editor — a second, worse reader
+// built into the board would be a promise it cannot keep. What the board can
+// usefully answer is the pair of questions a human actually has about the
+// memory layer: where is it wired, and is anything accumulating in it.
+func (m *Model) memoryPane(p pane) pane {
+	st := m.memory
+	var b strings.Builder
+
+	where := st.Dir
+	if where == "" {
+		where = "not configured"
+	}
+	b.WriteString(dimStyle.Render("  notes live in") + "\n")
+	b.WriteString("  " + selectedStyle.Render(where) + "\n")
+	if st.LinkedTo != "" {
+		// The symlink is the normal wiring, not an oddity: `memory init
+		// --vault` makes it, and a reader who sees only the link path would
+		// not know which vault their agents are actually writing into.
+		b.WriteString(dimStyle.Render("  → "+st.LinkedTo) + "\n")
+	}
+	b.WriteString("\n")
+
+	switch {
+	case !st.Present:
+		b.WriteString(dimStyle.Render("  nothing here yet — wire it up with: ") +
+			"bermuda memory init")
+	case st.Notes == 0 && !st.HasIndex:
+		b.WriteString(dimStyle.Render("  initialised, no notes and no index yet"))
+	default:
+		b.WriteString(summaryLine("notes", strconv.Itoa(st.Notes)))
+		b.WriteString(summaryLine("archived", strconv.Itoa(st.Archived)))
+		b.WriteString(summaryLine("links", strconv.Itoa(st.Links)))
+		b.WriteString(summaryLine("size", humanBytes(st.Bytes)))
+		if st.HasIndex {
+			b.WriteString(summaryLine("index", fmt.Sprintf("%s, %d lines",
+				memory.IndexName, st.Entries)))
+		} else {
+			// An index-less memory still works for a human and is useless to
+			// an agent, which loads the index and nothing else. Worth naming.
+			b.WriteString(summaryLine("index", "missing — agents load "+
+				memory.IndexName+" and will find nothing"))
+		}
+		if st.Newest != "" {
+			b.WriteString(summaryLine("newest", st.Newest+
+				dimStyle.Render("  "+ago(st.Written))))
+		}
+	}
+	p.body = strings.TrimSuffix(b.String(), "\n")
+
+	var bottom strings.Builder
+	bottom.WriteString(m.renderFooter())
+	bottom.WriteString("\n" + helpStyle.Render("tab lists · r refresh · M mouse · q quit"))
+	p.bottom = bottom.String()
+	return p
+}
+
+// summaryLine is one label-and-value row, labels aligned so the values read as
+// a column rather than as prose.
+func summaryLine(label, value string) string {
+	return "  " + dimStyle.Render(fmt.Sprintf("%-9s", label)) + value + "\n"
+}
+
+// humanBytes keeps the size to three characters and a unit. Memory is measured
+// in kilobytes for a long time and the exact byte count answers nothing.
+func humanBytes(n int64) string {
+	switch {
+	case n >= 1<<20:
+		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	case n >= 1<<10:
+		return fmt.Sprintf("%.1f kB", float64(n)/(1<<10))
+	default:
+		return fmt.Sprintf("%d B", n)
+	}
 }
 
 // renderFooter is the part every list view ends with: what went wrong, what

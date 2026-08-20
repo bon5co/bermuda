@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/bon5co/bermuda/v2/internal/memory"
 )
 
 // The memory layer: curated facts as Markdown notes in an Obsidian vault.
@@ -39,10 +41,7 @@ func memoryCmd(argv []string) error {
 // whole of Bermuda findable by looking in one place; the override exists
 // because a vault often already has a home.
 func memoryDir() string {
-	if d := os.Getenv("BERMUDA_MEMORY_DIR"); d != "" {
-		return d
-	}
-	return filepath.Join(stateDir(), "memory")
+	return memory.Dir(stateDir())
 }
 
 // memoryInit creates the memory directory and seeds its index.
@@ -84,7 +83,7 @@ func memoryInit(argv []string) error {
 		return err
 	}
 
-	index := filepath.Join(dir, "MEMORY.md")
+	index := filepath.Join(dir, memory.IndexName)
 	if _, err := os.Stat(index); err == nil {
 		fmt.Printf("memory at %s, index already present\n", dir)
 		return nil

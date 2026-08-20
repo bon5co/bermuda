@@ -75,6 +75,9 @@ func (m *Model) clampCursor() {
 	case m.focus == focusForum:
 		// The forum tab shows a fixed line, nothing to select.
 		n = 0
+	case m.focus == focusMemory:
+		// Memory is a summary, not a list.
+		n = 0
 	}
 	if m.cursor >= n {
 		m.cursor = n - 1

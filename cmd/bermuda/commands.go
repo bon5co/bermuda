@@ -97,7 +97,10 @@ func boardCmd(argv []string) error {
 		// The one directory this installation keeps flows in, resolved once
 		// here: a board that worked it out for itself could end up listing a
 		// flow the command layer would not find.
-		FlowDir:       flowDir(),
+		FlowDir: flowDir(),
+		// Same rule for the notes: resolved here, so the tab reports on the
+		// directory `bermuda memory path` prints rather than one of its own.
+		MemoryDir:     memoryDir(),
 		DaemonRunning: Running,
 		EnsureDaemon:  EnsureRunning,
 	})

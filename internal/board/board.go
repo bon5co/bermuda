@@ -14,6 +14,7 @@ import (
 
 	"github.com/bon5co/bermuda/v2/internal/flow"
 	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/memory"
 	"github.com/bon5co/bermuda/v2/internal/mention"
 	"github.com/bon5co/bermuda/v2/internal/store"
 )
@@ -55,7 +56,10 @@ type Model struct {
 
 	jobs []store.Job
 	runs []store.Run
-	last map[string]store.Run // job id -> most recent run
+	// memory is the MEMORY tab's summary of the notes directory: a filesystem
+	// read like the flows one, refreshed on the same tick.
+	memory memory.Stats
+	last   map[string]store.Run // job id -> most recent run
 	// steps is the per-step record of the flow runs on screen, keyed by run
 	// id. Ordinary runs have no entry, which is what makes a run a flow as
 	// far as this view is concerned.
@@ -179,6 +183,7 @@ const (
 	focusThread
 	focusFlows
 	focusForum
+	focusMemory
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
@@ -213,6 +218,11 @@ type Deps struct {
 	// is how the board comes to list flows from a directory the command layer
 	// does not run them from — a flow on screen that enter cannot find.
 	FlowDir string
+	// MemoryDir is where this installation keeps its memory notes, handed in
+	// for the same reason as FlowDir: the command layer already resolves it,
+	// and a board that worked it out again could report on a directory the
+	// agents do not write to.
+	MemoryDir string
 	// DaemonRunning reports whether a scheduler is alive. The board shows it,
 	// because a stopped scheduler means nothing on screen will ever fire.
 	DaemonRunning func() bool
@@ -267,7 +277,11 @@ type dataMsg struct {
 	// read: one unparseable flow must not empty the tab.
 	flows    []flow.Flow
 	flowErrs []error
-	err      error
+	// memory is the notes directory as it looked on this read. It carries no
+	// error of its own: an absent or unreadable memory directory is a state
+	// the tab renders, not a failure that should blank the rest of the board.
+	memory memory.Stats
+	err    error
 }
 
 type actionMsg struct {
@@ -358,9 +372,13 @@ func (m *Model) load() tea.Cmd {
 		// block. A directory read on the event loop would stall every keystroke
 		// behind it.
 		flows, flowErrs := m.readFlows()
+		// Memory is counted on this goroutine for the same reason: it is a
+		// directory walk, and walking a vault on the event loop would stall
+		// every keystroke behind somebody else's file tree.
+		mem := memory.Read(m.deps.MemoryDir)
 		return dataMsg{jobs: jobs, runs: runs, lastRuns: lastRuns, steps: steps,
 			thread: log, threadID: thread, claims: claims, threads: threads,
-			flows: flows, flowErrs: flowErrs}
+			flows: flows, flowErrs: flowErrs, memory: mem}
 	}
 }
 
@@ -436,6 +454,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		m.jobs, m.runs, m.steps = msg.jobs, msg.runs, msg.steps
 		m.flows, m.flowErrs = msg.flows, msg.flowErrs
+		m.memory = msg.memory
 		// Claims and the thread list are the same whichever conversation is on
 		// screen, so they are taken from every read.
 		m.claims, m.threads = msg.claims, msg.threads

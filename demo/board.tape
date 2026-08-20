@@ -1,4 +1,4 @@
-# VHS drives a real terminal and photographs it. Six stills: the five tabs
+# VHS drives a real terminal and photographs it. Seven stills: the six tabs
 # somebody opening the board meets, and a flow run opened up into its steps.
 Output board.gif
 
@@ -61,6 +61,14 @@ Sleep 1s
 Type "5"
 Sleep 2s
 Screenshot board-forum.png
+Sleep 1s
+
+# Memory — what the agents have written down as true, and where it lives. A
+# summary rather than a list: the notes are Obsidian Markdown and the place to
+# read one is Obsidian.
+Type "6"
+Sleep 2s
+Screenshot board-memory.png
 Sleep 1s
 
 Type "q"

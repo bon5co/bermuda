@@ -56,8 +56,13 @@ WORKDIR /src
 COPY . /src
 # The version is passed in rather than derived: the build context has no .git,
 # so `git describe` inside here would stamp every screenshot "dev".
+#
+# The path carries /v2. Without it the -X flag names a symbol in a package that
+# does not exist, which Go accepts in silence — the build succeeds, the stamp
+# lands nowhere, and every screenshot says "dev" anyway, which is the failure
+# this ARG exists to prevent.
 ARG VERSION=dev
-RUN go build -ldflags "-X github.com/bon5co/bermuda/internal/version.Tag=${VERSION}" \
+RUN go build -ldflags "-X github.com/bon5co/bermuda/v2/internal/version.Tag=${VERSION}" \
       -o /usr/local/bin/bermuda ./cmd/bermuda
 
 # The demo store is built at run time, not baked in: it carries timestamps, and

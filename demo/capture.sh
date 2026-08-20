@@ -99,6 +99,48 @@ bermuda thread claim browser --ttl 20m --why 'screenshotting the board' --as ada
 # is worth a screenshot of its own.
 bermuda thread claim browser --ttl 5m --why 'checking a login' --as scout || true
 
+say "memory"
+# The notes are written as files because that is how memory works: agents read
+# and write them with their own file tools, and bermuda only anchors where they
+# live. Seeding them through the CLI is not an option and would not be more
+# honest if it were — these are the same Markdown notes an agent would leave.
+bermuda memory init
+MEM="$(bermuda memory path)"
+mkdir -p "$MEM/archive"
+
+cat > "$MEM/MEMORY.md" <<'MD'
+Index of memory notes. One line per note — a name and a hook, never the
+content. Load this file each session; open a note only when its line is
+relevant. One fact per note; resolved notes move to archive/.
+
+- [Toolchain](toolchain.md) — go 1.26.5 on this box, pinned
+- [Release gate](release-gate.md) — what has to be green before a tag
+- [The browser is exclusive](browser-is-exclusive.md) — claim it, never share it
+MD
+
+cat > "$MEM/toolchain.md" <<'MD'
+Go 1.26.5 is the toolchain on this box, pinned in go.mod. Anything older
+fails the build rather than warning, so a run that reports a toolchain
+error is a machine problem, not a code one. See [[release-gate]].
+MD
+
+cat > "$MEM/release-gate.md" <<'MD'
+Nothing is tagged until the release-check flow is green end to end. The
+version step is the one that catches a stale binary, and it has caught it
+twice. Related: [[toolchain]].
+MD
+
+cat > "$MEM/browser-is-exclusive.md" <<'MD'
+Only one agent may drive the browser. Take it with a claim and a TTL, never
+by asking in the thread — an agent that waits for an answer holds nothing
+and blocks anyway.
+MD
+
+cat > "$MEM/archive/old-state-dir.md" <<'MD'
+Resolved: state used to live under ~/.local/state/bermuda. It moved to
+~/.bermuda because run directories get read by hand.
+MD
+
 say "screenshots"
 cd "$OUT"
 vhs /src/demo/board.tape

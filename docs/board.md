@@ -37,7 +37,7 @@ its own with what it did and how long it took:
 
 | key | action |
 |-----|--------|
-| `1` / `2` / `3` | threads / jobs list / runs list — the tabs, left to right |
+| `1` … `6` | threads / jobs / runs / flows / forum / memory — the tabs, left to right |
 | `h` `l` | switch list |
 | `j` `k` | move |
 | `enter` | open job detail (or focus the agent, from a run) |
