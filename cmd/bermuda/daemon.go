@@ -87,7 +87,7 @@ func daemonCmd(argv []string) error {
 
 	// The scheduler watches the sentinel just as the sentinel watches it, so
 	// killing either one leaves a survivor that restores the pair.
-	go watchPeer(ctx, roleDaemon)
+	go watchPeer(ctx, roleDaemon, stop)
 
 	d := &daemon{store: s, tick: *tick, slots: make(chan struct{}, *concurrency)}
 	fmt.Printf("bermuda: daemon started (tick %s, concurrency %d, pid %d)\n",
