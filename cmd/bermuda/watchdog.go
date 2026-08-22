@@ -86,8 +86,28 @@ func peerOf(role string) string {
 // quit cancels this process's own work — the daemon's run loop, or the
 // sentinel's watch — so an abandoned pair leaves rather than being killed.
 func watchPeer(ctx context.Context, role string, quit context.CancelFunc) {
+	newPeerWatch(role).run(ctx, quit)
+}
+
+// peerWatch is one role's view of the pair: who it revives, and whether it has
+// ever seen the store they serve.
+//
+// Constructing it is separate from running it so that the first reading of the
+// store is taken at a known moment rather than whenever a goroutine happens to
+// be scheduled — which a test deleting the directory would otherwise race.
+type peerWatch struct {
+	role      string
+	seenStore bool
+}
+
+func newPeerWatch(role string) *peerWatch {
+	return &peerWatch{role: role, seenStore: stateDirPresent()}
+}
+
+func (w *peerWatch) run(ctx context.Context, quit context.CancelFunc) {
+	role := w.role
 	peer := peerOf(role)
-	seenStore := stateDirPresent()
+	seenStore := w.seenStore
 	t := time.NewTicker(watchInterval)
 	defer t.Stop()
 	for {

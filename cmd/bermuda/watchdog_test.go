@@ -104,15 +104,16 @@ func TestWatchPeerExitsOnceItsStateDirIsGone(t *testing.T) {
 	defer cancel()
 	quit := make(chan struct{})
 
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		watchPeer(ctx, roleSentinel, func() { close(quit) })
-	}()
-
+	watch := newPeerWatch(roleSentinel)
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatalf("remove the state dir: %v", err)
 	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watch.run(ctx, func() { close(quit) })
+	}()
 
 	select {
 	case <-done:
@@ -138,10 +139,11 @@ func TestWatchPeerStaysUpWhenTheStateDirWasNeverThere(t *testing.T) {
 	defer cancel()
 	quit := make(chan struct{})
 
+	watch := newPeerWatch(roleSentinel)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		watchPeer(ctx, roleSentinel, func() { close(quit) })
+		watch.run(ctx, func() { close(quit) })
 	}()
 
 	select {
