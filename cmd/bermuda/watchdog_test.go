@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
+	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/bon5co/bermuda/v2/internal/lockfile"
 )
@@ -75,4 +78,109 @@ func TestRunningReportsTheDaemonNotTheSentinel(t *testing.T) {
 	if !Running() {
 		t.Error("the daemon lock is held and the scheduler still reads as down")
 	}
+}
+
+// A pair whose state directory has been deleted has no off switch: `bermuda
+// stop` writes its flag into the store the *caller* names, so the flag for a
+// deleted store cannot be written, and each half revives the other every tick
+// regardless. The only thing that can end such a pair is the pair itself.
+func TestWatchPeerExitsOnceItsStateDirIsGone(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "store")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create the state dir: %v", err)
+	}
+	t.Setenv("BERMUDA_STATE_DIR", dir)
+	shortenWatchInterval(t)
+
+	// Hold the peer's lock so the watch has no reason to spawn anything: this
+	// test is about the exit, not about revival.
+	peerLock, err := lockfile.Acquire(lockPath(roleDaemon))
+	if err != nil {
+		t.Fatalf("take the daemon lock: %v", err)
+	}
+	defer peerLock.Release()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	quit := make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watchPeer(ctx, roleSentinel, func() { close(quit) })
+	}()
+
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("remove the state dir: %v", err)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the watch kept running after its state directory was deleted: nothing could ever stop this pair")
+	}
+	select {
+	case <-quit:
+	default:
+		t.Error("the watch returned without cancelling its own process, so the daemon's run loop would carry on")
+	}
+}
+
+// The exit must not fire on a store that has never existed. Bermuda's first
+// start races whatever creates the directory, and a process that read its own
+// head start as abandonment would refuse to run on a fresh machine.
+func TestWatchPeerStaysUpWhenTheStateDirWasNeverThere(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "not-created-yet")
+	t.Setenv("BERMUDA_STATE_DIR", missing)
+	shortenWatchInterval(t)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	quit := make(chan struct{})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		watchPeer(ctx, roleSentinel, func() { close(quit) })
+	}()
+
+	select {
+	case <-done:
+		t.Fatal("the watch gave up on a state dir that had never been created; a fresh install would never start")
+	case <-time.After(200 * time.Millisecond):
+	}
+	select {
+	case <-quit:
+		t.Error("the watch cancelled its process over a directory that was never there")
+	default:
+	}
+	cancel()
+	<-done
+}
+
+// abandoned() is the whole rule in one place: gone only counts once seen.
+func TestAbandonedOnlyCountsAStoreThatWasSeen(t *testing.T) {
+	cases := []struct {
+		name                string
+		seen, present, want bool
+	}{
+		{"store still there", true, true, false},
+		{"store seen, then deleted", true, false, true},
+		{"never seen, still absent", false, false, false},
+		{"never seen, now created", false, true, false},
+	}
+	for _, tc := range cases {
+		if got := abandoned(tc.seen, tc.present); got != tc.want {
+			t.Errorf("%s: abandoned(%v, %v) = %v, want %v", tc.name, tc.seen, tc.present, got, tc.want)
+		}
+	}
+}
+
+// shortenWatchInterval makes the pair tick fast enough to observe in a test,
+// and restores the production interval afterwards.
+func shortenWatchInterval(t *testing.T) {
+	t.Helper()
+	previous := watchInterval
+	watchInterval = 10 * time.Millisecond
+	t.Cleanup(func() { watchInterval = previous })
 }

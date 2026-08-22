@@ -31,17 +31,40 @@ import (
 // the process whose job is to restart it.
 
 const (
-	// watchInterval is how often each process checks on the other. This is a
-	// liveness check against a lock file, not real work, so it stays cheap.
-	watchInterval = 5 * time.Second
-
 	roleDaemon   = "daemon"
 	roleSentinel = "sentinel"
 )
 
+// watchInterval is how often each process checks on the other. This is a
+// liveness check against a lock file, not real work, so it stays cheap. It is
+// a variable rather than a constant so the tests can watch the pair behave
+// without waiting five seconds for every tick.
+var watchInterval = 5 * time.Second
+
 func lockPath(role string) string {
 	return filepath.Join(stateDir(), role+".lock")
 }
+
+// stateDirPresent reports whether the store this process was started against
+// still exists.
+//
+// A pair whose state directory has been removed is unreachable: `bermuda stop`
+// writes its flag into the store named by the *caller's* environment, so the
+// off switch for a deleted store cannot be written at all, and the pair revives
+// itself every watchInterval forever. That is not a hypothetical — a scratch
+// BERMUDA_STATE_DIR left behind by a test run kept a scheduler launching real
+// agent runs for days, and nothing on the machine could stop it.
+func stateDirPresent() bool {
+	st, err := os.Stat(stateDir())
+	return err == nil && st.IsDir()
+}
+
+// abandoned decides whether a running role should give up.
+//
+// The check is deliberately one-way: only a store that this process has
+// actually seen counts as gone. A daemon started a moment before anything
+// created the directory must not read its own head start as abandonment.
+func abandoned(seenPresent, presentNow bool) bool { return seenPresent && !presentNow }
 
 // peerOf returns the role each process is responsible for reviving.
 func peerOf(role string) string {
@@ -51,12 +74,20 @@ func peerOf(role string) string {
 	return roleDaemon
 }
 
-// watchPeer revives this process's counterpart whenever it goes missing.
+// watchPeer revives this process's counterpart whenever it goes missing, and
+// shuts this one down once the store they both serve is gone.
 //
 // Both sides run this, which is what makes the pair mutually recovering: kill
-// either one and the survivor brings it back.
-func watchPeer(ctx context.Context, role string) {
+// either one and the survivor brings it back. The same mutual revival is what
+// makes an abandoned store dangerous, so the exit is checked before the
+// revival: whichever half notices first stops reviving the other, and the other
+// notices within a tick.
+//
+// quit cancels this process's own work — the daemon's run loop, or the
+// sentinel's watch — so an abandoned pair leaves rather than being killed.
+func watchPeer(ctx context.Context, role string, quit context.CancelFunc) {
 	peer := peerOf(role)
+	seenStore := stateDirPresent()
 	t := time.NewTicker(watchInterval)
 	defer t.Stop()
 	for {
@@ -64,6 +95,16 @@ func watchPeer(ctx context.Context, role string) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
+			present := stateDirPresent()
+			if abandoned(seenStore, present) {
+				fmt.Fprintf(os.Stderr,
+					"bermuda: %s: state directory %s is gone; stopping rather than running unreachable\n",
+					role, stateDir())
+				quit()
+				return
+			}
+			seenStore = seenStore || present
+
 			if lockfile.Held(lockPath(peer)) {
 				continue
 			}
@@ -161,7 +202,7 @@ func sentinelCmd(argv []string) error {
 	defer stop()
 
 	fmt.Printf("bermuda: sentinel started (pid %d, watching %s)\n", os.Getpid(), roleDaemon)
-	watchPeer(ctx, roleSentinel)
+	watchPeer(ctx, roleSentinel, stop)
 	fmt.Println("bermuda: sentinel stopped")
 	return nil
 }
