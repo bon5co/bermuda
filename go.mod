@@ -1,20 +1,27 @@
+// Deprecated: Bermuda v2 is retired and every v2 version is retracted.
+// Use github.com/bon5co/bermuda/v3.
 module github.com/bon5co/bermuda/v2
 
 go 1.26.6
 
-// v2.9.0 and v2.9.1 were published with identifiers belonging to a private
-// repository in a documentation example and its test fixtures. They are
-// withdrawn. proxy.golang.org caches published versions permanently and says
-// so, so the tags being gone is not enough on its own -- this is the directive
-// that makes the go command refuse them.
+// The whole v2 line is withdrawn, this tag included. v2.9.0 and v2.9.1 were
+// already retracted for publishing identifiers belonging to a private repository
+// in a documentation example and its fixtures; the rest are withdrawn because v3
+// replaced them, and an unretracted v2 left standing is one `go get
+// github.com/bon5co/bermuda/v2` away from installing a version nobody maintains.
 //
-// This is the final v2. Development continues at
-// github.com/bon5co/bermuda/v3, which shares no version history with this line.
+// proxy.golang.org caches published versions permanently and says so, so deleting
+// tags does nothing -- this directive is the only thing that makes the go command
+// refuse them. Retracting the line down to its own last tag means there is no
+// unretracted v2 to fall back to, so a v2 request fails instead of quietly
+// succeeding with the wrong binary. Retraction alone does not forward anyone to
+// v3 -- an all-retracted major answers `@latest` with "no matching versions" --
+// so the deprecation notice above the module directive carries the redirect, and
+// each rationale below names v3 for the reader who only sees one line.
 retract (
-	v2.9.0
-	v2.9.1
+	[v2.0.0, v2.9.2] // Retired. Use github.com/bon5co/bermuda/v3.
+	v2.9.3 // Retraction notice only, not a release. Use github.com/bon5co/bermuda/v3.
 )
-
 
 require (
 	github.com/charmbracelet/bubbles v1.0.0
