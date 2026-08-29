@@ -17,6 +17,7 @@ import (
 	"hash/fnv"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -158,6 +159,10 @@ type Run struct {
 	// MetaErr records a failure to label the pane. It is cosmetic and never
 	// changes the run's outcome.
 	MetaErr error
+	// transcript is the archived screen text, kept only long enough for
+	// recordPark to look for a usage-limit refusal in it. It never reaches the
+	// outcome: see usageLimitLine.
+	transcript string
 }
 
 // fail records an error bermuda itself observed and returns it unchanged.
@@ -229,6 +234,44 @@ func parkNote(reason ParkReason) string {
 	return ""
 }
 
+// usageLimitBanner matches the agent's refusal when the account is out of
+// quota, in the whitespace-collapsed transcript. The banner is rendered inside
+// the TUI at whatever width the pane happened to be, so it wraps in a different
+// place every time and can only be matched after normalising.
+// The reset time is bounded by the "/upgrade" that always follows it rather
+// than by "not a slash": the time carries a zone and "resets 2pm (Asia/Tokyo)"
+// has a slash of its own.
+var usageLimitBanner = regexp.MustCompile(`hit your (\w+) limit(?:\s*·\s*resets\s+(.{0,40}?)\s*/upgrade)?`)
+
+// collapseSpace rewrites every run of whitespace as one space, so a banner
+// broken across four wrapped lines reads as the one sentence it is.
+func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
+
+// usageLimitLine reports the account quota an agent refused on, or "".
+//
+// This is the one thing the transcript is read for, and it deliberately feeds
+// the harness's own note and nothing else. The outcome stays where it belongs:
+// result.json is the sole authority, and a run that hit a limit really did end
+// without writing one, so it is really a `no_result` park. What was missing is
+// only that the reason existed nowhere a reader could find it.
+//
+// The incident: on 2026-08-29 the weekly limit was exhausted and every
+// scheduled run between 00:00 and 13:34 JST parked with an empty note — eight
+// runs across seven jobs, four of which the self-heal job then listed as broken
+// jobs to diagnose. Nothing was wrong with any of them, and the only copy of
+// that fact was one line of screen text inside each run directory.
+func usageLimitLine(transcript string) string {
+	m := usageLimitBanner.FindStringSubmatch(collapseSpace(transcript))
+	if m == nil {
+		return ""
+	}
+	line := m[1] + " limit"
+	if m[2] != "" {
+		line += ", resets " + strings.TrimSpace(m[2])
+	}
+	return line
+}
+
 // recordPark leaves an observed park's reason where the instruments read.
 //
 // The run row has a ParkReason column and needs no prose; a run *directory* has
@@ -249,6 +292,13 @@ func (r *Run) recordPark() {
 		return
 	}
 	note := parkNote(r.ParkReason)
+	if limit := r.quotaRefusal(); limit != "" {
+		// An agent that refused on quota attempted no work at all, which is a
+		// different fact about the job than "it ran and wrote nothing" — and
+		// the one every reader of this park wants first.
+		note = "the agent refused the prompt on a Claude " + limit +
+			"; no work was attempted and the job itself is not implicated"
+	}
 	if note == "" {
 		return
 	}
@@ -275,7 +325,31 @@ func (r *Run) Note() string {
 	if r.Err != nil {
 		return "bermuda: " + r.Err.Error()
 	}
+	if limit := r.quotaRefusal(); limit != "" {
+		// The exception to the silence below, and the reason it is one: this is
+		// not a restatement of the ParkReason but a different fact — the agent
+		// never got as far as the job. Without it the row reads exactly like a
+		// job that ran and failed, and anything reading rows (the board, the
+		// self-heal scan) sends a reader to diagnose a job that is fine.
+		return "bermuda: agent refused on a Claude " + limit + "; no work attempted"
+	}
 	return ""
+}
+
+// quotaRefusal reports the account limit this run refused on, or "".
+//
+// Only a `no_result` park qualifies, however loudly the screen shows a banner.
+// "No work was attempted" is a claim, and it is only true for the park whose
+// whole content is that the agent ended and wrote nothing. A run that blocked,
+// timed out, or was lost did something bermuda watched, and a transcript
+// scrolled back to an earlier refusal — the quota cleared, the agent ran on,
+// the run timed out an hour later — would have that claim contradict the very
+// ParkReason beside it.
+func (r *Run) quotaRefusal() string {
+	if r.Outcome != OutcomeParked || r.ParkReason != ParkNoResult {
+		return ""
+	}
+	return usageLimitLine(r.transcript)
 }
 
 // Runner executes jobs against a herdr server.
@@ -478,9 +552,13 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 		r.awaitResult(ctx, runDir, deadline)
 	}
 
-	// Archive the transcript for humans regardless of outcome. Never parsed.
+	// Archive the transcript for humans regardless of outcome. It is never read
+	// for the outcome — result.json remains the sole authority — and the one
+	// thing it is read for is the quota banner in usageLimitLine, which only
+	// ever changes the words in the park note.
 	if transcript, err := r.Herdr.AgentRead(ctx, run.AgentName); err == nil {
 		_ = os.WriteFile(filepath.Join(runDir, "transcript.txt"), []byte(transcript), statefs.File)
+		run.transcript = transcript
 	}
 
 	r.classify(run, status, promptErr)

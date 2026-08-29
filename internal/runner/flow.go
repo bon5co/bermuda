@@ -118,8 +118,14 @@ type StepRun struct {
 	Outcome    Outcome
 	ParkReason ParkReason
 	Note       string
-	Dir        string
-	AgentName  string
+	// Observed marks a Note that is bermuda's account of the step rather than
+	// the agent's — the step wrote no result.json and the harness said what it
+	// saw instead. It is recorded rather than inferred from the note's wording:
+	// an agent quoting a bermuda error back into its own note is a claim about
+	// the work, and reading the two the same way is how one becomes the other.
+	Observed  bool
+	Dir       string
+	AgentName string
 	// Reused marks a step this attempt did not run because a previous attempt
 	// already completed it.
 	Reused bool
@@ -206,7 +212,35 @@ func (w *FlowRun) Note() string {
 	if reason == "" {
 		reason = "stopped"
 	}
-	return fmt.Sprintf("%d/%d steps%s, parked at %s (%s)", done, total, retried, w.StoppedAt, reason)
+	line := fmt.Sprintf("%d/%d steps%s, parked at %s (%s)", done, total, retried, w.StoppedAt, reason)
+	if why := w.stoppedStepNote(); why != "" {
+		line += " — " + why
+	}
+	return line
+}
+
+// stoppedStepNote is what bermuda observed about the step that stopped the
+// flow, when it observed anything.
+//
+// Only bermuda's own notes travel up. The step's ParkReason is already in the
+// line above, so repeating an agent's account of its work would add nothing;
+// what is worth carrying is the harness's account of a step that never got as
+// far as the work — a quota refusal, an agent that would not start. Without it
+// a flow row says only "parked at draft (no_result)", and the fact that the
+// step never ran at all lives one directory deeper than anyone looks.
+func (w *FlowRun) stoppedStepNote() string {
+	for i := len(w.Steps) - 1; i >= 0; i-- {
+		if w.Steps[i].ID != w.StoppedAt {
+			continue
+		}
+		if !w.Steps[i].Observed {
+			return ""
+		}
+		// The prefix is how a bermuda note is marked wherever it travels; the
+		// flow line already says whose voice it is, so it is dropped here.
+		return strings.TrimPrefix(w.Steps[i].Note, "bermuda: ")
+	}
+	return ""
 }
 
 // flowParkNote is what bermuda observed about a flow's park, in its own words.
@@ -780,6 +814,9 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 		// instead of leaving the flow's record blank at exactly the point it
 		// stopped.
 		sr.Note = run.Note()
+		// Run.Note falls back to bermuda's own account exactly when the agent
+		// wrote no result, so that is the condition, not the shape of the text.
+		sr.Observed = run.Result == nil
 		if run.Err != nil {
 			sr.Err = run.Err
 		}

@@ -1011,3 +1011,51 @@ func TestAFinishedFlowLeavesNoErrorNote(t *testing.T) {
 		t.Errorf("a finished flow wrote %q", got)
 	}
 }
+
+// A flow whose step never got as far as the work must say so on its own row.
+// The 2026-08-29 quota exhaustion parked jp-answers-daily as "1/3 steps, parked
+// at draft (no_result)" — a line that reads exactly like a broken job.
+func TestFlowNoteCarriesTheStoppedStepsObservedNote(t *testing.T) {
+	wr := &FlowRun{
+		Outcome: OutcomeParked, StoppedAt: "draft", ParkReason: ParkNoResult, Total: 3,
+		Steps: []StepRun{
+			{ID: "collect", Outcome: OutcomeDone},
+			{ID: "draft", Outcome: OutcomeParked, ParkReason: ParkNoResult, Observed: true,
+				Note: "bermuda: agent refused on a Claude weekly limit, resets 2pm (Asia/Tokyo); no work attempted"},
+		},
+	}
+	want := "1/3 steps, parked at draft (no_result) — agent refused on a Claude weekly limit, resets 2pm (Asia/Tokyo); no work attempted"
+	if got := wr.Note(); got != want {
+		t.Errorf("flow note = %q, want %q", got, want)
+	}
+}
+
+// An agent's own account of its work stays in its step. Only what bermuda
+// observed travels up, so a step that ran and failed still reads as one line.
+func TestFlowNoteDoesNotAdoptTheAgentsOwnNote(t *testing.T) {
+	wr := &FlowRun{
+		Outcome: OutcomeParked, StoppedAt: "verify", ParkReason: ParkStepFailed, Total: 2,
+		Steps: []StepRun{
+			{ID: "build", Outcome: OutcomeDone},
+			{ID: "verify", Outcome: OutcomeFailed, Note: "three assertions failed on the arm64 shim"},
+		},
+	}
+	if got, want := wr.Note(), "1/2 steps, parked at verify (step_failed)"; got != want {
+		t.Errorf("flow note = %q, want %q", got, want)
+	}
+}
+
+// An agent that quotes a bermuda error into its own note is still speaking for
+// itself. Provenance is recorded when the step runs, not read off the wording.
+func TestFlowNoteDoesNotAdoptANoteThatMerelyLooksLikeBermudas(t *testing.T) {
+	wr := &FlowRun{
+		Outcome: OutcomeParked, StoppedAt: "deploy", ParkReason: ParkStepFailed, Total: 2,
+		Steps: []StepRun{
+			{ID: "build", Outcome: OutcomeDone},
+			{ID: "deploy", Outcome: OutcomeFailed, Note: "bermuda: create tab: herdr unreachable — quoted from the last run"},
+		},
+	}
+	if got, want := wr.Note(), "1/2 steps, parked at deploy (step_failed)"; got != want {
+		t.Errorf("flow note = %q, want %q", got, want)
+	}
+}
