@@ -1,0 +1,461 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"text/tabwriter"
+	"time"
+
+	"github.com/bon5co/bermuda/v2/internal/checklist"
+	"github.com/bon5co/bermuda/v2/internal/flow"
+	"github.com/bon5co/bermuda/v2/internal/herdrcli"
+	"github.com/bon5co/bermuda/v2/internal/runner"
+	"github.com/bon5co/bermuda/v2/internal/store"
+)
+
+// The flow verbs. A flow is a job with steps instead of a prompt, so it
+// is run, inspected, and resumed by run id like any other run — these commands
+// exist because a parked flow needs one thing an ordinary run does not: a
+// way to start again at the step that stopped it, without redoing the ones that
+// already cost money.
+
+func flowCmd(argv []string) error {
+	if len(argv) == 0 {
+		return errors.New("usage: bermuda flow <new|list|show|edit|rm|run|status|resume>")
+	}
+	switch argv[0] {
+	case "new":
+		return flowNew(argv[1:])
+	case "list":
+		return flowList(argv[1:])
+	case "show", "cat":
+		return flowShow(argv[1:])
+	case "edit":
+		return flowEdit(argv[1:])
+	case "rm":
+		return flowRemove(argv[1:])
+	case "run":
+		return flowRun(argv[1:])
+	case "status":
+		return flowStatus(argv[1:])
+	case "resume":
+		return flowResume(argv[1:])
+	default:
+		return fmt.Errorf("unknown flow subcommand %q", argv[0])
+	}
+}
+
+// workflowCmd is the old name for `bermuda flow`, kept working and kept out of
+// the usage text, the same way `room` is kept for `thread`.
+//
+// Stored jobs, cron entries and launcher scripts hold `bermuda workflow ...`,
+// and none of them get re-read when a feature is renamed. A scheduled flow that
+// stops running because its verb moved fails silently at 04:00, which is the
+// hour this feature exists for. The notice goes to stderr so `workflow status
+// --json` still pipes into a parser unchanged.
+func workflowCmd(argv []string) error {
+	fmt.Fprintln(os.Stderr, "bermuda: `workflow` was renamed to `flow`; the old name still works")
+	return flowCmd(argv)
+}
+
+// flowRun calls a flow with an input.
+//
+// This is the whole point of a flow being its own thing: one command, called
+// the same way by a person typing it and by an agent shelling out. There is no
+// agent-only path and no human-only path, so anything an agent can start, a
+// human can start identically, and both land in the same run list.
+func flowRun(argv []string) error {
+	fs := flag.NewFlagSet("flow run", flag.ExitOnError)
+	input := fs.String("input", "", "the x this flow is called with")
+	cwd := fs.String("cwd", "", "working directory for every step (default: here)")
+	model := fs.String("model", "", "model for agent steps that do not name one")
+	kind := fs.String("kind", "", "herdr agent kind")
+	check := fs.String("check", "", "checklist this run ticks its steps off on")
+	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
+		return errors.New("usage: bermuda flow run <flow> [--input ...] [--cwd ...] [--model ...] [--check ...]")
+	}
+	id := argv[0]
+	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
+
+	def, err := flow.Load(flowDir(), id)
+	if err != nil {
+		return err
+	}
+	// A flow that declares an input and is called without one is refused rather
+	// than run with a blank. Every prompt saying {{input}} would otherwise get a
+	// hole where its subject should be, and an agent handed that will invent
+	// something to fill it.
+	if def.TakesInput() && strings.TrimSpace(*input) == "" {
+		return fmt.Errorf("flow %s needs an input: %s\n  bermuda flow run %s --input '...'",
+			def.ID, def.Input, def.ID)
+	}
+	if !def.TakesInput() && strings.TrimSpace(*input) != "" {
+		// Accepted, not refused — but said out loud, because a flow whose steps
+		// never mention {{input}} will silently ignore it.
+		fmt.Fprintf(os.Stderr, "bermuda: flow %s declares no input, so --input is only "+
+			"visible to run steps as $BERMUDA_INPUT\n", def.ID)
+	}
+
+	dir := *cwd
+	if strings.TrimSpace(dir) == "" {
+		if here, err := os.Getwd(); err == nil {
+			dir = here
+		}
+	}
+
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	j := flowJob(def, dir, *model, *kind)
+	rec := store.Run{
+		ID: newRunID(def.ID), JobID: def.ID, Trigger: "manual",
+		Outcome: "running", StartedAt: time.Now(),
+		Flow: def.ID, Input: *input,
+	}
+	// Resolved before the run starts, so a --check naming a page that does not
+	// exist is a refusal now rather than an hour of steps whose ticks land
+	// nowhere.
+	if strings.TrimSpace(*check) != "" {
+		l, err := checklist.Resolve(checkDir(), *check)
+		if err != nil {
+			return err
+		}
+		rec.CheckList = l.Path
+	}
+	run, execErr := runFlow(ctx, s, j, rec, flowOpts{})
+	if run != nil {
+		printRun(run)
+	}
+	if execErr != nil {
+		return execErr
+	}
+	exitUnlessDone(run)
+	return nil
+}
+
+// exitUnlessDone makes a flow that did not finish visible to whatever ran
+// it. A parked flow is not an error — it is the harness doing its job — but
+// a script that treats it as success is back to proceeding on an unfinished
+// sequence.
+func exitUnlessDone(run *runner.Run) {
+	if run != nil && run.Outcome != runner.OutcomeDone {
+		os.Exit(1)
+	}
+}
+
+func flowResume(argv []string) error {
+	fs := flag.NewFlagSet("flow resume", flag.ExitOnError)
+	// A resume continues the run, including what its backward edges have already
+	// spent — that is what makes max_loops a bound rather than a bound per
+	// attempt. This is for the human who fixed the thing the loop kept failing
+	// on and wants the allowance back, said out loud rather than granted
+	// silently to anything that calls resume on a schedule.
+	resetLoops := fs.Bool("reset-loops", false,
+		"give this run's on_fail edges their full max_loops again")
+	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
+		return errors.New("usage: bermuda flow resume <run> [--reset-loops]")
+	}
+	runID := argv[0]
+	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	rec, err := s.Run(ctx, runID)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(rec.Flow) == "" {
+		return fmt.Errorf("run %s is not a flow run; there is nothing to resume", rec.ID)
+	}
+	// The job is optional. A flow called directly has no job at all, and one
+	// called by a job may outlive it — but the run itself records which flow ran
+	// and what it was called with, so neither case needs the job to still exist.
+	//
+	// Built through flowJob rather than by hand, so the defaults an unattended
+	// run needs live in exactly one place. The hand-rolled job this replaced set
+	// the model and the kind and forgot SkipPermissions, which meant a resumed
+	// flow ran its agent steps with permission prompts enabled and parked at
+	// `blocked` eight seconds in — the same failure as the one directly-called
+	// flows had, reintroduced by the sibling path written to fix it.
+	j := flowJob(flow.Flow{ID: rec.Flow}, "", "", "")
+	j.ID = rec.JobID
+	if stored, err := s.Job(ctx, rec.JobID); err == nil {
+		j = *stored
+	}
+	run, execErr := runFlow(ctx, s, j, *rec, flowOpts{ResetLoops: *resetLoops})
+	if run != nil {
+		printRun(run)
+	}
+	if execErr != nil {
+		return execErr
+	}
+	exitUnlessDone(run)
+	return nil
+}
+
+// flowStatus prints one run step by step: what each was, how it went, and
+// how long it took.
+func flowStatus(argv []string) error {
+	if len(argv) == 0 {
+		return errors.New("usage: bermuda flow status <run>")
+	}
+	s, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer s.Close()
+
+	ctx := context.Background()
+	rec, err := s.Run(ctx, argv[0])
+	if err != nil {
+		return err
+	}
+	steps, err := s.RunSteps(ctx, rec.ID)
+	if err != nil {
+		return err
+	}
+	if len(steps) == 0 {
+		return fmt.Errorf("run %s has no steps; it is not a flow run", rec.ID)
+	}
+
+	done := 0
+	for _, st := range steps {
+		if st.Outcome == store.StepDone {
+			done++
+		}
+	}
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintf(w, "run\t%s\njob\t%s\noutcome\t%s\n", rec.ID, rec.JobID, rec.Outcome)
+	if rec.ParkReason != "" {
+		fmt.Fprintf(w, "park reason\t%s\n", rec.ParkReason)
+	}
+	fmt.Fprintf(w, "progress\t%d/%d steps\nstarted\t%s\n", done, len(steps),
+		rec.StartedAt.Format(time.RFC3339))
+	// Where the steps compared notes. The per-step notes below are the one line
+	// each step published; the thread is everything else they found, and without
+	// this line nothing on screen says it exists.
+	if t := strings.TrimSpace(rec.Thread); t != "" {
+		fmt.Fprintf(w, "thread\t%s\n", t)
+	}
+	// The page this run was ticking off, for a human who came to the run from
+	// the board and wants the enclosing piece of work rather than this one
+	// sequence of it.
+	if c := strings.TrimSpace(rec.CheckList); c != "" {
+		fmt.Fprintf(w, "checklist\t%s\n", strings.TrimSuffix(filepath.Base(c), ".md"))
+	}
+	// The room, for a run that left one open. A parked flow keeps its space so a
+	// human can look at it, and closing that space is how they say they have —
+	// which is impossible to act on if nothing names the space.
+	if sp := strings.TrimSpace(rec.Space); sp != "" && rec.Outcome == "parked" {
+		fmt.Fprintf(w, "space\t%s (close it to acknowledge this run)\n", sp)
+	}
+	if err := w.Flush(); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	sw := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(sw, "STEP\tKIND\tOUTCOME\tREASON\tDURATION\tNOTE")
+	for _, st := range steps {
+		dur := ""
+		if st.EndedAt != nil {
+			// Blank means "has not run": a step that finished shows a duration
+			// even when it was under a second.
+			dur = st.Duration().Round(time.Second).String()
+		}
+		fmt.Fprintf(sw, "%s\t%s\t%s\t%s\t%s\t%s\n", st.StepID, st.Kind,
+			st.Outcome, st.ParkReason, dur, st.Note)
+	}
+	if err := sw.Flush(); err != nil {
+		return err
+	}
+	if rec.Outcome == "parked" || rec.Outcome == "failed" {
+		fmt.Printf("\nresume with: bermuda flow resume %s\n", rec.ID)
+	}
+	if t := strings.TrimSpace(rec.Thread); t != "" {
+		fmt.Printf("what the steps found: bermuda thread log --thread %s\n", t)
+	}
+	return nil
+}
+
+// runFlow executes a job's steps into an existing run row.
+//
+// The same call serves a first run and a resume: the run row and the run
+// directory are reused, so completed steps are found where the earlier attempt
+// left them and are not run again.
+// flowOpts are the knobs a caller turns that are not part of the run itself.
+// A struct rather than a bare boolean at five call sites, where `false` would
+// say nothing about what is being declined.
+type flowOpts struct {
+	// ResetLoops hands a run's backward edges their full max_loops again.
+	ResetLoops bool
+}
+
+func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run, opts flowOpts) (*runner.Run, error) {
+	if rec.RunDir == "" {
+		rec.RunDir = runDirFor(rec.ID)
+	}
+	// Read at the moment it runs, never earlier. The file is edited by people and
+	// by agents between one run and the next, so the only definition worth acting
+	// on is the one on disk right now.
+	def, err := flow.Load(flowDir(), firstNonEmpty(rec.Flow, j.Flow))
+	if err != nil {
+		return nil, err
+	}
+	// Declare every step before any of them runs, so a flow that dies at
+	// step one still says it had four.
+	if err := s.SeedRunSteps(ctx, rec.ID, def.Steps); err != nil {
+		return nil, fmt.Errorf("record steps: %w", err)
+	}
+	// And on the checklist too, for the same reason: a page that only grows an
+	// item once its step has succeeded shows a flow as finished at every point
+	// during it, which is the one thing a checklist must never do.
+	seedChecklist(def, rec.CheckList)
+	// One space for the whole run, opened before the first step so every step's
+	// tab lands in it and all of them share the thread that space owns. A resume
+	// reuses the one it recorded, which is how the second half of a run ends up in
+	// the same conversation as the first.
+	resumed := strings.TrimSpace(rec.Space) != ""
+	space := openFlowSpace(ctx, s, def, &rec, j.CWD)
+	rec.Outcome, rec.ParkReason, rec.EndedAt = "running", "", nil
+	if err := s.PutRun(ctx, rec); err != nil {
+		return nil, fmt.Errorf("record run start: %w", err)
+	}
+	briefFlowSpace(ctx, s, space, def, rec, resumed)
+
+	r := &runner.Runner{Herdr: herdrcli.New(), StateDir: stateDir()}
+	w := &runner.Flow{
+		Launch: r.ExecuteIn,
+		Space:  space,
+		Check:  rec.CheckList,
+		// Persisted as each step starts and settles, so a flow that is
+		// three hours into its second step says so on the board rather than
+		// looking untouched until the end.
+		Report: func(sr runner.StepRun) {
+			persistStep(ctx, s, rec.ID, sr)
+			tickStep(def, rec.CheckList, sr)
+		},
+		ResetLoops: opts.ResetLoops,
+	}
+	wr, execErr := w.Execute(ctx, j, def, rec.Input, rec.ID, rec.RunDir)
+
+	rec.Outcome, rec.ParkReason, rec.Note = string(wr.Outcome), string(wr.ParkReason), wr.Note()
+	ended := wr.EndedAt
+	rec.EndedAt = &ended
+	if err := s.PutRun(ctx, rec); err != nil {
+		fmt.Fprintln(os.Stderr, "bermuda: persist flow run:", err)
+	}
+	// A finished flow gives its space back, the way a finished run gives its tab
+	// back; a parked one leaves both open, because a human has to look at it.
+	closeFlowSpace(ctx, s, space, def, rec, wr)
+
+	// A flow is reported as a run, because that is what every caller — the
+	// daemon, the board, `run list` — already knows how to read.
+	status := "ok"
+	if wr.Outcome != runner.OutcomeDone {
+		status = "error"
+	}
+	return &runner.Run{
+		JobID: j.ID, RunID: rec.ID, RunDir: rec.RunDir,
+		Outcome: wr.Outcome, ParkReason: wr.ParkReason,
+		Result:    &runner.Result{Status: status, Note: wr.Note()},
+		StartedAt: wr.StartedAt, EndedAt: wr.EndedAt, Err: wr.Err,
+	}, execErr
+}
+
+// seedChecklist puts an item on the page for every step that declares one,
+// before the first step runs.
+//
+// Ensure rather than Add, so a resume finds the items its first attempt wrote
+// and ticks those instead of writing a second copy of the same five lines.
+//
+// Failures here are reported and not fatal. The checklist is the human's view
+// of the run, not the run: a vault that is momentarily unwritable — syncing, on
+// a network share — must not stop a flow that was going to work.
+func seedChecklist(def flow.Flow, path string) {
+	if strings.TrimSpace(path) == "" {
+		return
+	}
+	added := 0
+	for _, st := range def.Steps {
+		item := strings.TrimSpace(st.Check)
+		if item == "" {
+			continue
+		}
+		if _, fresh, err := checklist.Ensure(path, checklist.Entry{Text: item}); err != nil {
+			fmt.Fprintln(os.Stderr, "bermuda: checklist:", err)
+		} else if fresh {
+			added++
+		}
+	}
+	if added > 0 {
+		fmt.Fprintf(os.Stderr, "bermuda: added %d step(s) to %s\n", added, filepath.Base(path))
+	}
+}
+
+// tickStep ticks the item a step declared, once that step reports ok.
+//
+// This is what keeps the declared sequence and the operator's view one object
+// rather than two that drift: nothing has to remember to tick, and a step that
+// parked leaves its item open, which is exactly what the page should say.
+func tickStep(def flow.Flow, path string, sr runner.StepRun) {
+	if strings.TrimSpace(path) == "" || sr.Outcome != runner.OutcomeDone {
+		return
+	}
+	for _, st := range def.Steps {
+		if st.ID != sr.ID || strings.TrimSpace(st.Check) == "" {
+			continue
+		}
+		if _, _, err := checklist.Set(path, st.Check, true); err != nil {
+			fmt.Fprintln(os.Stderr, "bermuda: tick:", err)
+		}
+		return
+	}
+}
+
+// persistStep mirrors one step's progress into the store.
+func persistStep(ctx context.Context, s *store.Store, runID string, sr runner.StepRun) {
+	rec := store.RunStep{
+		RunID: runID, Index: sr.Index, StepID: sr.ID, Kind: sr.Kind,
+		Outcome: string(sr.Outcome), ParkReason: string(sr.ParkReason),
+		Note: sr.Note, StepDir: sr.Dir, AgentName: sr.AgentName,
+		StartedAt: sr.StartedAt,
+	}
+	if rec.Note == "" && sr.Err != nil {
+		rec.Note = sr.Err.Error()
+	}
+	if sr.Attempt > 1 {
+		// One row per step, so a step a backward edge ran three times overwrites
+		// itself twice. Without this the status table shows the last attempt as
+		// though it were the only one, and a flow that spent forty minutes
+		// healing reads as one that worked first time.
+		rec.Note = fmt.Sprintf("attempt %d: %s", sr.Attempt, rec.Note)
+	}
+	if !sr.EndedAt.IsZero() {
+		t := sr.EndedAt
+		rec.EndedAt = &t
+	}
+	if err := s.PutRunStep(ctx, rec); err != nil {
+		// Bookkeeping: the step itself already happened, and result.json on
+		// disk is what resume reads, so a failed write here must not stop the
+		// flow.
+		fmt.Fprintln(os.Stderr, "bermuda: persist step:", err)
+	}
+}

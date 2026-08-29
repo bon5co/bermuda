@@ -1,0 +1,75 @@
+# VHS drives a real terminal and photographs it. Seven stills: the six tabs
+# somebody opening the board meets, and a flow run opened up into its steps.
+Output board.gif
+
+Set Shell bash
+Set FontFamily "JetBrainsMono Nerd Font"
+Set FontSize 15
+Set Width 1400
+Set Height 520
+Set Padding 20
+Set Theme "Catppuccin Mocha"
+
+Hide
+Type "bermuda board" Enter
+Sleep 3s
+Show
+
+# Jobs — what is scheduled, on which model, and what it last did.
+Type "2"
+Sleep 2s
+Screenshot board-jobs.png
+
+# Runs — what happened, including the one that failed and parked there.
+Type "3"
+Sleep 2s
+Screenshot board-runs.png
+
+# A two-step run opened up: a flow is one row, its steps sit underneath it.
+Type "jjj"
+Sleep 1s
+Type " "
+Sleep 2s
+Screenshot board-steps.png
+Type " "
+Sleep 1s
+
+# Threads — the record agents leave for each other, and who holds what.
+Type "1"
+Sleep 2s
+Screenshot board-threads.png
+
+# Flows — what is callable, what each takes, and when it last ran. This is the
+# launcher: enter runs one and asks for its input first.
+#
+# The sleep before the keystroke is not padding. Late in a tape VHS will take
+# the screenshot before the terminal has caught up with the key, and the result
+# is a still of the shell rather than the board — silently, with no error and a
+# file that still gets written.
+Sleep 1s
+Type "4"
+Sleep 1s
+# Onto the flow that actually has a sequence worth inspecting: the panel is
+# where a flow's steps live, and parking the cursor on a one-step flow shows
+# the panel without showing what it is for.
+Type "jjjj"
+Sleep 2s
+Screenshot board-flows.png
+Sleep 1s
+
+# Forum — where the read-only web view lives, once someone starts it.
+Type "5"
+Sleep 2s
+Screenshot board-forum.png
+Sleep 1s
+
+# Memory — what the agents have written down as true, and where it lives. A
+# summary rather than a list: the notes are Obsidian Markdown and the place to
+# read one is Obsidian.
+Type "6"
+Sleep 2s
+Screenshot board-memory.png
+Sleep 1s
+
+Type "q"
+Sleep 2s

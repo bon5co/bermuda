@@ -1,0 +1,64 @@
+id = "bon5co.bermuda"
+name = "Bermuda"
+version = "2.9.2"
+min_herdr_version = "0.7.0"
+description = "Agent harness: schedules work and runs each job as an interactive Herdr agent"
+platforms = ["linux", "macos"]
+
+# Plain `go build`, deliberately: the Go toolchain is the only thing anyone needs
+# to install this plugin. Requiring make would make the plugin uninstallable on a
+# machine without it, for no gain — Herdr clones with git, so Go stamps the
+# commit revision into the binary by itself. The Makefile is a convenience for
+# development, never a dependency.
+[[build]]
+command = ["go", "build", "-o", "./bin/bermuda", "./cmd/bermuda"]
+
+# One-shot reconciliation. A server restart or live handoff can leave run tabs
+# whose runs the store still believes are active; this adopts or parks them.
+# It must exit, not supervise: the scheduler is started detached by the hook
+# below and kept alive by the sentinel, so jobs still fire once this returns.
+[[startup]]
+command = ["./bin/bermuda", "ensure"]
+
+# The scheduler. --detach spawns it and exits, because a startup hook is
+# reaped rather than supervised. It fires again on live handoff, so the daemon
+# holds a lock file: every start after the first is a no-op.
+[[startup]]
+command = ["./bin/bermuda", "daemon", "--detach", "--tick", "5s"]
+
+# The board, opened in bermuda's own workspace and left unfocused. Herdr's
+# sidebar can only be reached through its agents list, and the board's pane is
+# what bermuda reports itself as, so this is what makes bermuda a row above
+# Spaces instead of a plugin somebody has to remember a keybinding for. It is a
+# no-op when a board is already open, which is the case on every live handoff.
+[[startup]]
+command = ["./bin/bermuda", "board", "--pin"]
+
+[[panes]]
+id = "board"
+title = "Bermuda"
+placement = "split"
+command = ["./bin/bermuda", "board"]
+
+# Was `job run --pick`, a flag that never existed: `job run` reads argv[0] as a
+# job id, so the action failed every time it was invoked. Picking a job is what
+# the board is for — this opens it, and `R` runs whatever is selected.
+[[actions]]
+id = "run-now"
+title = "Bermuda: pick a job and run it"
+contexts = ["workspace"]
+command = ["./bin/bermuda", "board-wide"]
+
+[[actions]]
+id = "parked"
+title = "Bermuda: show parked runs"
+contexts = ["workspace"]
+command = ["./bin/bermuda", "run", "list", "--state", "parked"]
+
+# Opens the board as a full-width horizontal split. Bind a key to
+# `bon5co.bermuda.board-wide` to get it in one keystroke.
+[[actions]]
+id = "board-wide"
+title = "Bermuda: open board (wide)"
+contexts = ["workspace"]
+command = ["./bin/bermuda", "board-wide"]
