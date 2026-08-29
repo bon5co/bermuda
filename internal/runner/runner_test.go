@@ -461,3 +461,25 @@ func TestPlainNoResultStaysSilent(t *testing.T) {
 		t.Errorf("%s written for a plain no_result park (err=%v)", ErrFile, err)
 	}
 }
+
+// A park bermuda watched happen is not a quota refusal, whatever the screen
+// scrolled back to. "No work was attempted" would contradict the ParkReason
+// sitting beside it.
+func TestQuotaNoteOnlyAppliesToNoResultParks(t *testing.T) {
+	banner := "  ⎿  You've hit your weekly limit · resets 2pm (Asia/Tokyo)\n     /upgrade\n"
+	for _, reason := range []ParkReason{ParkBlocked, ParkTimeout, ParkAgentLost, ParkBadResult} {
+		dir := t.TempDir()
+		run := &Run{RunDir: dir, Outcome: OutcomeParked, ParkReason: reason, transcript: banner}
+		if note := run.Note(); note != "" {
+			t.Errorf("%s: row note %q, want empty", reason, note)
+		}
+		run.recordPark()
+		got, err := os.ReadFile(filepath.Join(dir, ErrFile))
+		if err != nil {
+			continue // reasons with no parkNote of their own write nothing
+		}
+		if strings.Contains(string(got), "refused") {
+			t.Errorf("%s: %s = %q, want its own park note", reason, ErrFile, got)
+		}
+	}
+}

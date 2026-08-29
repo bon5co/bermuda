@@ -1020,7 +1020,7 @@ func TestFlowNoteCarriesTheStoppedStepsObservedNote(t *testing.T) {
 		Outcome: OutcomeParked, StoppedAt: "draft", ParkReason: ParkNoResult, Total: 3,
 		Steps: []StepRun{
 			{ID: "collect", Outcome: OutcomeDone},
-			{ID: "draft", Outcome: OutcomeParked, ParkReason: ParkNoResult,
+			{ID: "draft", Outcome: OutcomeParked, ParkReason: ParkNoResult, Observed: true,
 				Note: "bermuda: agent refused on a Claude weekly limit, resets 2pm (Asia/Tokyo); no work attempted"},
 		},
 	}
@@ -1041,6 +1041,21 @@ func TestFlowNoteDoesNotAdoptTheAgentsOwnNote(t *testing.T) {
 		},
 	}
 	if got, want := wr.Note(), "1/2 steps, parked at verify (step_failed)"; got != want {
+		t.Errorf("flow note = %q, want %q", got, want)
+	}
+}
+
+// An agent that quotes a bermuda error into its own note is still speaking for
+// itself. Provenance is recorded when the step runs, not read off the wording.
+func TestFlowNoteDoesNotAdoptANoteThatMerelyLooksLikeBermudas(t *testing.T) {
+	wr := &FlowRun{
+		Outcome: OutcomeParked, StoppedAt: "deploy", ParkReason: ParkStepFailed, Total: 2,
+		Steps: []StepRun{
+			{ID: "build", Outcome: OutcomeDone},
+			{ID: "deploy", Outcome: OutcomeFailed, Note: "bermuda: create tab: herdr unreachable — quoted from the last run"},
+		},
+	}
+	if got, want := wr.Note(), "1/2 steps, parked at deploy (step_failed)"; got != want {
 		t.Errorf("flow note = %q, want %q", got, want)
 	}
 }

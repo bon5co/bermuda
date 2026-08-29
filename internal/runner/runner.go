@@ -292,7 +292,7 @@ func (r *Run) recordPark() {
 		return
 	}
 	note := parkNote(r.ParkReason)
-	if limit := usageLimitLine(r.transcript); limit != "" {
+	if limit := r.quotaRefusal(); limit != "" {
 		// An agent that refused on quota attempted no work at all, which is a
 		// different fact about the job than "it ran and wrote nothing" — and
 		// the one every reader of this park wants first.
@@ -325,7 +325,7 @@ func (r *Run) Note() string {
 	if r.Err != nil {
 		return "bermuda: " + r.Err.Error()
 	}
-	if limit := usageLimitLine(r.transcript); limit != "" {
+	if limit := r.quotaRefusal(); limit != "" {
 		// The exception to the silence below, and the reason it is one: this is
 		// not a restatement of the ParkReason but a different fact — the agent
 		// never got as far as the job. Without it the row reads exactly like a
@@ -334,6 +334,22 @@ func (r *Run) Note() string {
 		return "bermuda: agent refused on a Claude " + limit + "; no work attempted"
 	}
 	return ""
+}
+
+// quotaRefusal reports the account limit this run refused on, or "".
+//
+// Only a `no_result` park qualifies, however loudly the screen shows a banner.
+// "No work was attempted" is a claim, and it is only true for the park whose
+// whole content is that the agent ended and wrote nothing. A run that blocked,
+// timed out, or was lost did something bermuda watched, and a transcript
+// scrolled back to an earlier refusal — the quota cleared, the agent ran on,
+// the run timed out an hour later — would have that claim contradict the very
+// ParkReason beside it.
+func (r *Run) quotaRefusal() string {
+	if r.Outcome != OutcomeParked || r.ParkReason != ParkNoResult {
+		return ""
+	}
+	return usageLimitLine(r.transcript)
 }
 
 // Runner executes jobs against a herdr server.
