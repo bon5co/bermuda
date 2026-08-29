@@ -391,3 +391,73 @@ func TestClassifyWritesNothingWhenTheAgentReported(t *testing.T) {
 		t.Errorf("wrote %s beside the agent's own result", ErrFile)
 	}
 }
+
+// A quota refusal is not a broken job, and the only copy of that fact is the
+// screen text. Both transcript widths below are verbatim from the 2026-08-29
+// runs: the banner wraps wherever the pane was narrow, so the detector has to
+// survive the wrapping.
+func TestUsageLimitLineReadsBothWrappings(t *testing.T) {
+	wide := "  ⎿  You've hit your weekly limit · resets 2pm (Asia/Tokyo)\n" +
+		"     /upgrade to increase your usage limit.\n"
+	narrow := "  ⎿  You've hit your weekly limit ·\n     resets 2pm (Asia/Tokyo)\n" +
+		"     /upgrade to increase your usage\n     limit.\n"
+	for name, transcript := range map[string]string{"wide": wide, "narrow": narrow} {
+		if got, want := usageLimitLine(transcript), "weekly limit, resets 2pm (Asia/Tokyo)"; got != want {
+			t.Errorf("%s: usageLimitLine = %q, want %q", name, got, want)
+		}
+	}
+	session := "  ⎿  You've hit your session limit · resets 3am (Asia/Tokyo)\n     /upgrade\n"
+	if got, want := usageLimitLine(session), "session limit, resets 3am (Asia/Tokyo)"; got != want {
+		t.Errorf("session: usageLimitLine = %q, want %q", got, want)
+	}
+}
+
+// An ordinary transcript must not be read as a quota refusal — a false positive
+// here would tell a reader a genuinely broken job was fine.
+func TestUsageLimitLineIgnoresOrdinaryTranscripts(t *testing.T) {
+	for _, transcript := range []string{
+		"",
+		"❯ Read the file /tmp/prompt.md and do exactly what it says.\n✻ Brewed for 4s\n",
+		"the rate limit on the API is 50 requests per minute\n",
+	} {
+		if got := usageLimitLine(transcript); got != "" {
+			t.Errorf("usageLimitLine(%q) = %q, want empty", transcript, got)
+		}
+	}
+}
+
+// The park a quota refusal produces is still no_result — result.json remains
+// the only authority on the outcome — but it must stop being a silent one, in
+// the row and in the run directory alike.
+func TestQuotaRefusalSaysSoInRowAndRunDir(t *testing.T) {
+	dir := t.TempDir()
+	run := &Run{RunDir: dir, transcript: "  ⎿  You've hit your weekly limit · resets 2pm (Asia/Tokyo)\n     /upgrade\n"}
+	(&Runner{}).classify(run, herdrcli.StatusIdle, nil)
+	if run.Outcome != OutcomeParked || run.ParkReason != ParkNoResult {
+		t.Fatalf("got %q/%q, want parked/no_result", run.Outcome, run.ParkReason)
+	}
+	if note := run.Note(); !strings.Contains(note, "weekly limit") || !strings.Contains(note, "no work attempted") {
+		t.Errorf("row note %q says nothing about the quota", note)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, ErrFile))
+	if err != nil {
+		t.Fatalf("no %s written for a quota refusal: %v", ErrFile, err)
+	}
+	if !strings.Contains(string(got), "weekly limit, resets 2pm (Asia/Tokyo)") {
+		t.Errorf("%s = %q, want the quota and its reset time", ErrFile, got)
+	}
+}
+
+// A no_result park with nothing on screen keeps its documented silence: the
+// note exists to carry a fact bermuda observed, not to restate the ParkReason.
+func TestPlainNoResultStaysSilent(t *testing.T) {
+	dir := t.TempDir()
+	run := &Run{RunDir: dir}
+	(&Runner{}).classify(run, herdrcli.StatusIdle, nil)
+	if note := run.Note(); note != "" {
+		t.Errorf("row note %q, want empty", note)
+	}
+	if _, err := os.Stat(filepath.Join(dir, ErrFile)); !os.IsNotExist(err) {
+		t.Errorf("%s written for a plain no_result park (err=%v)", ErrFile, err)
+	}
+}

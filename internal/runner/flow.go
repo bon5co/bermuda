@@ -206,7 +206,34 @@ func (w *FlowRun) Note() string {
 	if reason == "" {
 		reason = "stopped"
 	}
-	return fmt.Sprintf("%d/%d steps%s, parked at %s (%s)", done, total, retried, w.StoppedAt, reason)
+	line := fmt.Sprintf("%d/%d steps%s, parked at %s (%s)", done, total, retried, w.StoppedAt, reason)
+	if why := w.stoppedStepNote(); why != "" {
+		line += " — " + why
+	}
+	return line
+}
+
+// stoppedStepNote is what bermuda observed about the step that stopped the
+// flow, when it observed anything.
+//
+// Only bermuda's own notes travel up. The step's ParkReason is already in the
+// line above, so repeating an agent's account of its work would add nothing;
+// what is worth carrying is the harness's account of a step that never got as
+// far as the work — a quota refusal, an agent that would not start. Without it
+// a flow row says only "parked at draft (no_result)", and the fact that the
+// step never ran at all lives one directory deeper than anyone looks.
+func (w *FlowRun) stoppedStepNote() string {
+	const observed = "bermuda: "
+	for i := len(w.Steps) - 1; i >= 0; i-- {
+		if w.Steps[i].ID != w.StoppedAt {
+			continue
+		}
+		if strings.HasPrefix(w.Steps[i].Note, observed) {
+			return strings.TrimPrefix(w.Steps[i].Note, observed)
+		}
+		return ""
+	}
+	return ""
 }
 
 // flowParkNote is what bermuda observed about a flow's park, in its own words.
