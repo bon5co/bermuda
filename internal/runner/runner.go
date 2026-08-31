@@ -243,11 +243,23 @@ func parkNote(reason ParkReason) string {
 // has a slash of its own.
 var usageLimitBanner = regexp.MustCompile(`hit your (\w+) limit(?:\s*·\s*resets\s+(.{0,40}?)\s*/upgrade)?`)
 
+// loginExpiredBanner matches the other refusal that is about the account and
+// not the job: the agent starts, finds no valid credential, and prints
+// "Login expired · Please run /login" instead of reading its prompt. Same
+// normalisation as above, because it wraps the same way.
+//
+// On 2026-09-01 rt-template-daily parked on this with an empty note and the
+// self-heal scan listed it as a broken job to diagnose, which is exactly the
+// waste the quota banner above was added to stop. A refusal is a refusal
+// whichever wall it hit.
+var loginExpiredBanner = regexp.MustCompile(`Login expired\s*·?\s*Please run /login`)
+
 // collapseSpace rewrites every run of whitespace as one space, so a banner
 // broken across four wrapped lines reads as the one sentence it is.
 func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " ") }
 
-// usageLimitLine reports the account quota an agent refused on, or "".
+// usageLimitLine reports the account wall an agent refused on, or "" -- the
+// exhausted quota, or a login that had expired before the prompt was read.
 //
 // This is the one thing the transcript is read for, and it deliberately feeds
 // the harness's own note and nothing else. The outcome stays where it belongs:
@@ -261,8 +273,15 @@ func collapseSpace(s string) string { return strings.Join(strings.Fields(s), " "
 // jobs to diagnose. Nothing was wrong with any of them, and the only copy of
 // that fact was one line of screen text inside each run directory.
 func usageLimitLine(transcript string) string {
-	m := usageLimitBanner.FindStringSubmatch(collapseSpace(transcript))
+	flat := collapseSpace(transcript)
+	m := usageLimitBanner.FindStringSubmatch(flat)
 	if m == nil {
+		// The other account wall. Named as a thing the account has rather than
+		// a limit it hit, so the sentences built from this read the same way:
+		// "refused on a Claude login that had expired".
+		if loginExpiredBanner.MatchString(flat) {
+			return "login that had expired"
+		}
 		return ""
 	}
 	line := m[1] + " limit"

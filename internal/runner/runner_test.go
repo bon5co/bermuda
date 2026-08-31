@@ -483,3 +483,27 @@ func TestQuotaNoteOnlyAppliesToNoResultParks(t *testing.T) {
 		}
 	}
 }
+
+// The second account wall. rt-template-daily parked on this on 2026-09-01
+// with an empty note, and the self-heal run that followed spent a diagnosis
+// on a job that was never broken. Transcript text is verbatim from that run.
+func TestUsageLimitLineReadsAnExpiredLogin(t *testing.T) {
+	transcript := "❯ Read the file /tmp/prompt.md and do exactly what it says.\n\n" +
+		"● Login expired · Please run /login\n\n✻ Worked for 0s · done 12:00 AM\n"
+	if got, want := usageLimitLine(transcript), "login that had expired"; got != want {
+		t.Errorf("usageLimitLine = %q, want %q", got, want)
+	}
+	wrapped := "● Login expired ·\n  Please run /login\n"
+	if got, want := usageLimitLine(wrapped), "login that had expired"; got != want {
+		t.Errorf("wrapped: usageLimitLine = %q, want %q", got, want)
+	}
+	// A run that merely mentions logging in is not a refusal.
+	for _, ordinary := range []string{
+		"❯ run /login when you get a chance\n",
+		"● the session expired mid-request and was retried\n",
+	} {
+		if got := usageLimitLine(ordinary); got != "" {
+			t.Errorf("usageLimitLine(%q) = %q, want \"\"", ordinary, got)
+		}
+	}
+}
