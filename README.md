@@ -1,6 +1,6 @@
 # Bermuda
 
-<img src="https://upload.wikimedia.org/wikipedia/commons/5/51/The_Eye_Of_Providence.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original" alt="The Eye of Providence" width="140" align="right">
+<img src="https://upload.wikimedia.org/wikipedia/commons/5/51/The_Eye_Of_Providence.jpg?utm_source=commons.wikimedia.org&utm_campaign=index&utm_content=original" alt="The Eye of Providence" width="140" align="left">
 
 [![ci](https://github.com/bon5co/bermuda/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bon5co/bermuda/actions/workflows/ci.yml)
 [![security](https://github.com/bon5co/bermuda/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/bon5co/bermuda/actions/workflows/security.yml)
