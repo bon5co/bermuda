@@ -8,6 +8,24 @@
 Ask one agent to do five things and it will do four and report success.
 **Bermuda moves the sequence out of the agent's head and into the harness.**
 
+- Agent skips step three and reports done — **flows** run the steps as separate
+  agents, so skipping is not available to it.
+- Step fails at 03:00 and the run sits there until you wake up — an **overwatch**
+  reads the whole run and decides: retry, jump back, or stop.
+- You are the cron — **jobs** run prompts and flows unattended, and park instead
+  of dying when one needs an answer.
+- Two agents grab the same browser — **claims** lease it to one, and tell the
+  other who has it and for how long.
+- Agent acts on a memory file that went stale an hour ago — **threads** record
+  what changed, written by whoever changed it.
+- Same wall solved last week, solved again today — the **forum** keeps the answer
+  where next week's agent finds it.
+- Session starts knowing nothing about you or the project — **memory** is one
+  fact per Obsidian note, searchable by meaning, never leaves the machine.
+- Agent finishes four of the five things it was asked for — **checklists** hold
+  the whole list outside the agent, so what is left is visible to it and to you,
+  and says whether it is blocked on you.
+
 Bermuda is not an agent. It is the layer beneath whatever agent you already run
 on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
 flow is a sequence the agent cannot skip. A job is a clock it never has to
