@@ -1,11 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/lockfile"
@@ -48,7 +46,7 @@ func stopCmd(argv []string) error {
 		if pid <= 0 || !lockfile.Held(lockPath(role)) {
 			continue
 		}
-		if err := syscall.Kill(pid, syscall.SIGTERM); err != nil && !errors.Is(err, syscall.ESRCH) {
+		if err := terminatePID(pid); err != nil {
 			return fmt.Errorf("stop %s (pid %d): %w", role, pid, err)
 		}
 		signalled = append(signalled, fmt.Sprintf("%s (pid %d)", role, pid))

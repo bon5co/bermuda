@@ -2,7 +2,6 @@ package board
 
 import (
 	"os"
-	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,11 +46,9 @@ func (w *binaryWatcher) changed() bool {
 	return !fi.ModTime().Equal(w.modTime) || fi.Size() != w.size
 }
 
-// restart execs the new binary in place, preserving arguments and environment.
-// It only returns if the exec fails.
-func (w *binaryWatcher) restart() error {
-	return syscall.Exec(w.path, os.Args, os.Environ())
-}
+// restart hands control to the rebuilt binary on disk, preserving arguments and
+// environment. Its implementation is platform-specific; on success it does not
+// return.
 
 // checkReload is the periodic binary check, emitted as a bubbletea command.
 func (m *Model) checkReload() tea.Cmd {

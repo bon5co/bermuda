@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"syscall"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/lockfile"
@@ -255,7 +254,7 @@ func restartStaleRoles(ctx context.Context, s *store.Store, w *os.File) error {
 		if sr.pid <= 0 {
 			continue
 		}
-		if err := syscall.Kill(sr.pid, syscall.SIGTERM); err != nil {
+		if err := terminatePID(sr.pid); err != nil {
 			fmt.Fprintf(w, "bermuda: stop %s (pid %d): %v\n", sr.role, sr.pid, err)
 		}
 	}

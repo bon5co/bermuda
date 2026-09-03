@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 
-	"golang.org/x/sys/unix"
-
 	"github.com/bon5co/bermuda/v3/internal/store"
 )
 
@@ -56,8 +54,10 @@ func resolvePID() (pid, source string) {
 	// The session leader is a weaker answer than an agent's own pid — a shell
 	// that starts its own session gets a fresh one — but it is stable for the
 	// common case of several commands run from one login session, and it is
-	// still better than a pid that is guaranteed to differ.
-	if sid, err := unix.Getsid(0); err == nil && sid > 0 {
+	// still better than a pid that is guaranteed to differ. Windows has no
+	// sessions, so there sessionLeaderPID reports nothing and the pid fallback
+	// answers.
+	if sid, ok := sessionLeaderPID(); ok {
 		return strconv.Itoa(sid), "session leader"
 	}
 	return strconv.Itoa(os.Getpid()), "os.Getpid()"

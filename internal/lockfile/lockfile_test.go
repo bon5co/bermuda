@@ -5,9 +5,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestAcquireCreatesMissingDirectories(t *testing.T) {
@@ -221,9 +223,16 @@ func TestHelperHoldLock(t *testing.T) {
 	if path == "" {
 		t.Skip("helper process only")
 	}
-	if _, err := Acquire(path); err != nil {
+	lock, err := Acquire(path)
+	if err != nil {
 		t.Fatalf("helper Acquire: %v", err)
 	}
 	os.Stdout.WriteString("locked\n")
-	select {}
+	// Block on a timer, not `select {}`: a process whose only goroutine is
+	// parked on a bare channel trips Go's all-goroutines-asleep deadlock
+	// detector and exits — on Windows that killed the holder before the parent
+	// could probe, releasing the very lock this test needs held. The parent
+	// kills this process; the sleep only has to outlast that.
+	time.Sleep(time.Hour)
+	runtime.KeepAlive(lock)
 }

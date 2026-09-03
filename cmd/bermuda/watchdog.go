@@ -8,7 +8,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/lockfile"
@@ -171,10 +170,10 @@ func spawnRole(role string, args ...string) error {
 
 	cmd := exec.Command(exe, append([]string{role}, args...)...)
 	cmd.Stdout, cmd.Stderr = logFile, logFile
-	// A new session, so the child outlives whatever spawned it: a startup hook
-	// that Herdr reaps, a board pane that closes, or a peer that is itself
-	// about to die.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	// Detached from whatever spawned it, so the child outlives it: a startup
+	// hook that Herdr reaps, a board pane that closes, or a peer that is itself
+	// about to die. A new session on Unix, a detached process group on Windows.
+	cmd.SysProcAttr = detachSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		return err
 	}

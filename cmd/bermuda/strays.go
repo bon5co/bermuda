@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/statefs"
@@ -141,16 +140,11 @@ func readStrays(r io.Reader) []strayRecord {
 
 // alive reports whether a pid still exists.
 //
-// Signal 0 asks the kernel that question without delivering anything. It
-// cannot tell a recycled pid from the original process, which is why the
+// It cannot tell a recycled pid from the original process, which is why the
 // report below prints the store and the binary alongside: the pid is the
-// handle, the store is the evidence.
-var alive = func(pid int) bool {
-	if pid <= 0 {
-		return false
-	}
-	return syscall.Kill(pid, 0) == nil
-}
+// handle, the store is the evidence. It is a var so a test can substitute a
+// fixed set of live pids; the real check is platform-specific (pidAlive).
+var alive = pidAlive
 
 // liveStrays keeps the records whose process is still running.
 func liveStrays(recs []strayRecord) []strayRecord {
