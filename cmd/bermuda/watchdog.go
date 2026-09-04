@@ -227,6 +227,8 @@ func sentinelCmd(argv []string) error {
 	}
 	defer lock.Release()
 
+	recordBuildStamp(roleSentinel)
+
 	ctx, stop := signalContext()
 	defer stop()
 
