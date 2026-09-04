@@ -159,7 +159,7 @@ func staleRoles() []staleRole {
 	return out
 }
 
-// runsInFlight counts the runs the store believes are still going.
+// runsInFlight counts the runs that could still be stranded by a restart.
 //
 // The idle check, and the reason this is not simply a kill: a scheduler
 // stopped mid-run leaves its agent unwatched and the row stuck at "running"
@@ -167,12 +167,57 @@ func staleRoles() []staleRole {
 // stranding a live run costs the run. So the restart waits, and the two-minute
 // ensure timer means waiting is cheap — the next idle moment is minutes away,
 // not days.
+//
+// The count is not simply every row that says "running", because some of them
+// say it forever. A run's outcome is written by the process that launched it,
+// so a row whose launcher died leaves no result and names no agent, and
+// reconcile has nothing left to judge it by: two such rows on this machine had
+// been "running" since 2026-07-31 and 2026-08-04. Counting those would make the
+// fleet permanently busy, and a restart that waits for an idle moment that can
+// never arrive is a restart that never happens — the exact fault this file was
+// written to cure, reintroduced one level up.
+//
+// So a row only counts while it could still be true. A run cannot outlive its
+// job's own timeout, and past that it is not a run any more, only a row: a
+// restart can strand nothing that already ended.
 func runsInFlight(ctx context.Context, s *store.Store) (int, error) {
 	runs, err := s.Runs(ctx, string(store.StepRunning), 200)
 	if err != nil {
 		return 0, err
 	}
-	return len(runs), nil
+	now := time.Now()
+	n := 0
+	for _, r := range runs {
+		timeout := jobTimeout(ctx, s, r.JobID)
+		if r.StartedAt.IsZero() || now.Sub(r.StartedAt) < timeout+inFlightGrace {
+			n++
+		}
+	}
+	return n, nil
+}
+
+// inFlightGrace is how long past its timeout a run is still given the benefit
+// of the doubt. A job is killed at its timeout, but the row settles a moment
+// later and clocks differ; an hour is far beyond that and still far short of
+// the days a genuinely stranded row sits there.
+const inFlightGrace = time.Hour
+
+// defaultJobTimeout bounds a run belonging to a job that declares no timeout of
+// its own, or to a job that no longer exists. Generous on purpose: this decides
+// whether the fleet counts as busy, and the cost of guessing too long is one
+// more ensure tick, while the cost of guessing too short is a stranded run.
+const defaultJobTimeout = 6 * time.Hour
+
+// jobTimeout is how long the job behind a run was allowed to take.
+func jobTimeout(ctx context.Context, s *store.Store, jobID string) time.Duration {
+	if jobID == "" {
+		return defaultJobTimeout
+	}
+	j, err := s.Job(ctx, jobID)
+	if err != nil || j == nil || j.Timeout <= 0 {
+		return defaultJobTimeout
+	}
+	return j.Timeout
 }
 
 // restartTimeout bounds waiting for a signalled role to drop its lock. The
