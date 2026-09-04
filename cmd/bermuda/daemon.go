@@ -72,6 +72,10 @@ func daemonCmd(argv []string) error {
 	}
 	defer lock.Release()
 
+	// Record which build is serving this role, so a later `bermuda ensure`
+	// can tell a running scheduler from a current one.
+	recordBuildStamp(roleDaemon)
+
 	s, err := openStore()
 	if err != nil {
 		return err
