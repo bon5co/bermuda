@@ -265,13 +265,6 @@ func ensureCmd(argv []string) error {
 
 	ctx := context.Background()
 
-	// A pair left over from an older build is evicted before anything else,
-	// because the lock below cannot tell one from a current one: it answers
-	// "is something running", and a stale scheduler is something running.
-	if err := restartStaleRoles(ctx, s, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "bermuda: restart stale scheduler:", err)
-	}
-
 	// Make sure a scheduler exists before anything else: the lock makes this a
 	// no-op when one is already running, and without it a crashed daemon would
 	// stay dead until the next Herdr restart.
@@ -284,6 +277,14 @@ func ensureCmd(argv []string) error {
 		return err
 	}
 	fmt.Printf("bermuda: reconciled %d run(s)\n", n)
+
+	// Last, because the lock above cannot tell a current scheduler from an
+	// obsolete one — it answers "is something running", and a stale scheduler
+	// is something running — and because the decision turns on which runs are
+	// in flight, which is what the reconcile just settled.
+	if err := restartStaleRoles(ctx, s, os.Stdout); err != nil {
+		fmt.Fprintln(os.Stderr, "bermuda: restart stale scheduler:", err)
+	}
 	return nil
 }
 

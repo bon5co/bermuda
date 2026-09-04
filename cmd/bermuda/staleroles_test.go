@@ -213,3 +213,92 @@ func capture(t *testing.T) (func() string, *os.File) {
 		return string(bytes.TrimSpace(b))
 	}, f
 }
+
+// Two rows on this machine had said "running" since 2026-07-31 and 2026-08-04:
+// their launcher died, so no result was ever written and no agent name was ever
+// recorded, and reconcile has nothing left to judge them by. Counting those as
+// in flight would make the fleet permanently busy and the restart would never
+// happen — the fault this file cures, one level up.
+func TestARowStuckRunningPastItsTimeoutIsNotInFlight(t *testing.T) {
+	homeAt(t)
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if err := s.PutJob(ctx, store.Job{ID: "shorts", Prompt: "x", Timeout: 30 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutRun(ctx, store.Run{
+		ID: "old", JobID: "shorts", Outcome: "running",
+		StartedAt: time.Now().Add(-32 * 24 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutRun(ctx, store.Run{
+		ID: "live", JobID: "shorts", Outcome: "running", StartedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := runsInFlight(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("runsInFlight = %d, want 1: only the run that started just now can still be running", n)
+	}
+}
+
+// The grace is what keeps the check from calling a run dead the second its
+// timeout passes: the row settles a moment after the kill, and clocks differ.
+func TestARunJustPastItsTimeoutIsStillInFlight(t *testing.T) {
+	homeAt(t)
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if err := s.PutJob(ctx, store.Job{ID: "j", Prompt: "x", Timeout: 10 * time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutRun(ctx, store.Run{
+		ID: "r", JobID: "j", Outcome: "running",
+		StartedAt: time.Now().Add(-11 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := runsInFlight(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("runsInFlight = %d, want 1 within the grace after a timeout", n)
+	}
+}
+
+// A job that has since been removed leaves runs behind. They are bounded by the
+// generous default rather than counted forever, for the same reason as above.
+func TestARunWhoseJobIsGoneUsesTheDefaultBound(t *testing.T) {
+	homeAt(t)
+	s := openTestStore(t)
+	ctx := context.Background()
+
+	if err := s.PutRun(ctx, store.Run{
+		ID: "orphan", JobID: "deleted", Outcome: "running",
+		StartedAt: time.Now().Add(-defaultJobTimeout - 2*inFlightGrace),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.PutRun(ctx, store.Run{
+		ID: "recent", JobID: "deleted", Outcome: "running",
+		StartedAt: time.Now().Add(-time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := runsInFlight(ctx, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("runsInFlight = %d, want 1: only the recent run is still plausibly running", n)
+	}
+}
