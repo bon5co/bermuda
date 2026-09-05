@@ -134,6 +134,9 @@ func TestApplySetsNamedFields(t *testing.T) {
 		{"persistent", []string{"-persistent=false"}, func(j store.Job) error {
 			return eq("persistent", j.Persistent, false)
 		}},
+		{"keep-context", []string{"-keep-context=true"}, func(j store.Job) error {
+			return eq("keep-context", j.KeepContext, true)
+		}},
 		{"timeout", []string{"-timeout", "90s"}, func(j store.Job) error {
 			return eq("timeout", j.Timeout, 90*time.Second)
 		}},
@@ -432,4 +435,31 @@ func eqList(what string, got, want []string) error {
 
 func errf(format string, args ...any) error {
 	return fmt.Errorf(format, args...)
+}
+
+// Keeping context needs an agent to keep it in. Implying --persistent instead
+// of refusing would leave a job that was told to remember and does not: it
+// reads as a continuous conversation and starts from nothing every run, which
+// is the failure this flag exists to remove.
+func TestKeepContextWithoutPersistentIsRefused(t *testing.T) {
+	j := storedJob()
+	j.Persistent = false
+
+	err := applyArgs(t, &j, "-keep-context=true")
+
+	if err == nil {
+		t.Fatal("keep-context without persistent was accepted")
+	}
+	if !strings.Contains(err.Error(), "--persistent") {
+		t.Errorf("error = %q, want it to name the flag that is missing", err)
+	}
+}
+
+// The pair together is the supported shape and must pass.
+func TestKeepContextWithPersistentIsAccepted(t *testing.T) {
+	j := storedJob()
+
+	if err := applyArgs(t, &j, "-persistent=true", "-keep-context=true"); err != nil {
+		t.Fatalf("persistent + keep-context refused: %v", err)
+	}
 }

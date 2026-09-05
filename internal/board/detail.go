@@ -42,6 +42,9 @@ func (m *Model) renderDetail() string {
 	if j.Persistent {
 		state += ", persistent agent"
 	}
+	if j.KeepContext {
+		state += ", keeps context"
+	}
 	row("tags", strings.Join(j.Tags, ", "))
 	row("schedule", j.ScheduleLabel())
 	row("catchup", j.Catchup)
