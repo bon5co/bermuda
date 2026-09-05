@@ -274,6 +274,12 @@ func jobFields() []field {
 			get:  func(j *store.Job) string { return boolStr(j.Persistent) },
 			set:  func(j *store.Job, v string) error { j.Persistent = v == "true"; return nil },
 		},
+		{
+			key: "keep-context", label: "Keep context", kind: fieldBool,
+			help: "with a persistent agent, carry the conversation across runs",
+			get:  func(j *store.Job) string { return boolStr(j.KeepContext) },
+			set:  func(j *store.Job, v string) error { j.KeepContext = v == "true"; return nil },
+		},
 	}
 }
 

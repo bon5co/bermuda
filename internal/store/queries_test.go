@@ -121,7 +121,7 @@ func TestJobsRoundTripsFields(t *testing.T) {
 		SkipPermissions: true, MaxBudgetUSD: "5.00",
 		Schedule: ScheduleOnce, IntervalSeconds: 90, CronExpr: "0 9 * * *",
 		RunAt: &at, Catchup: CatchupAll, Timeout: 30 * time.Minute,
-		Enabled: true, Favorite: true, Persistent: true,
+		Enabled: true, Favorite: true, Persistent: true, KeepContext: true,
 		Flow: "nightly", Input: "x",
 		CreatedAt: time.Unix(1_700_000_000, 0),
 	})
@@ -158,6 +158,7 @@ func TestJobsRoundTripsFields(t *testing.T) {
 		{"Enabled", g.Enabled, true},
 		{"Favorite", g.Favorite, true},
 		{"Persistent", g.Persistent, true},
+		{"KeepContext", g.KeepContext, true},
 		{"Flow", g.Flow, "nightly"},
 		{"Input", g.Input, "x"},
 	}
