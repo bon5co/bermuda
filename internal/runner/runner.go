@@ -110,6 +110,15 @@ type Job struct {
 	// before each run, so runs stay independent: reuse is about avoiding
 	// startup cost, not about carrying a conversation forward.
 	Persistent bool
+	// KeepContext leaves a reused agent's conversation in place instead of
+	// clearing it, so consecutive runs of one job are one continuous
+	// conversation. Only meaningful with Persistent, which is what supplies
+	// the agent to reuse.
+	//
+	// The cost is that the conversation grows every run and is replayed every
+	// run. Auto-compact is the bound; a job that keeps context without one
+	// ends up spending its window on its own history.
+	KeepContext bool
 }
 
 // persistentAgentName is the stable agent name for a persistent job. It does
@@ -458,8 +467,12 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 				return run, nil
 			default:
 				run.TabID, run.PaneID = ag.TabID, ag.PaneID
-				if err := r.clearAgent(ctx, run.AgentName); err != nil {
-					return run, run.fail(fmt.Errorf("clear agent: %w", err))
+				// A job that keeps context is deliberately not cleared: its
+				// whole point is that this run can see what the last one did.
+				if !job.KeepContext {
+					if err := r.clearAgent(ctx, run.AgentName); err != nil {
+						return run, run.fail(fmt.Errorf("clear agent: %w", err))
+					}
 				}
 				return r.promptAndClassify(ctx, run, job, runDir)
 			}

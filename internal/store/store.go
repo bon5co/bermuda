@@ -132,6 +132,13 @@ type Job struct {
 	// of resuming a conversation: Herdr exposes no agent session id, but it
 	// can keep the agent itself.
 	Persistent bool
+	// KeepContext stops the reused agent being cleared between runs, so one
+	// job's conversation carries forward instead of restarting. It only means
+	// anything with Persistent: without a reused agent there is no context to
+	// keep. Auto-compact is what stops that conversation growing without
+	// bound, so a job that keeps context and sets no compaction window will
+	// eventually spend its whole run replaying itself.
+	KeepContext bool
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -304,6 +311,7 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"jobs", "enabled", "INTEGER NOT NULL DEFAULT 1"},
 	{"jobs", "favorite", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "persistent", "INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "keep_context", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "updated_at", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
@@ -430,7 +438,7 @@ func (s *Store) Close() error { return s.db.Close() }
 const jobColumns = `id, name, description, tags, prompt, cwd, kind, model, permission_mode,
 	allowed_tools, disallowed_tools, add_dirs, extra_args, skip_permissions, max_budget_usd,
 	autocompact, schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
-	enabled, favorite, persistent, created_at, updated_at, flow_id, flow_input`
+	enabled, favorite, persistent, keep_context, created_at, updated_at, flow_id, flow_input`
 
 // PutJob inserts or replaces a job.
 func (s *Store) PutJob(ctx context.Context, j Job) error {
@@ -466,7 +474,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	// also stop anyone writing the job first and the flow second.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO jobs (`+jobColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  name=excluded.name, description=excluded.description, tags=excluded.tags,
 		  prompt=excluded.prompt,
@@ -479,7 +487,8 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		  interval_seconds=excluded.interval_seconds, cron_expr=excluded.cron_expr,
 		  run_at=excluded.run_at, catchup=excluded.catchup, timeout_ms=excluded.timeout_ms,
 		  enabled=excluded.enabled, favorite=excluded.favorite,
-		  persistent=excluded.persistent, updated_at=excluded.updated_at,
+		  persistent=excluded.persistent, keep_context=excluded.keep_context,
+		  updated_at=excluded.updated_at,
 		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
 		j.ID, j.Name, j.Description, strings.Join(j.Tags, ","),
 		j.Prompt, j.CWD, j.Kind, j.Model, j.PermissionMode,
@@ -487,7 +496,8 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		boolToInt(j.SkipPermissions), j.MaxBudgetUSD, j.AutoCompact,
 		string(j.Schedule), j.IntervalSeconds, j.CronExpr, runAt, j.Catchup,
 		j.Timeout.Milliseconds(), boolToInt(j.Enabled), boolToInt(j.Favorite),
-		boolToInt(j.Persistent), j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
+		boolToInt(j.Persistent), boolToInt(j.KeepContext),
+		j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
 	return err
 }
 
@@ -496,12 +506,12 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 	var addDirs, schedule, tags string
 	var runAt sql.NullInt64
 	var timeoutMS, created, updated int64
-	var skip, enabled, favorite, persistent int
+	var skip, enabled, favorite, persistent, keepContext int
 	err := rows.Scan(&j.ID, &j.Name, &j.Description, &tags, &j.Prompt, &j.CWD, &j.Kind,
 		&j.Model, &j.PermissionMode, &j.AllowedTools, &j.DisallowedTools, &addDirs,
 		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &j.AutoCompact, &schedule, &j.IntervalSeconds,
 		&j.CronExpr, &runAt, &j.Catchup, &timeoutMS, &enabled, &favorite,
-		&persistent, &created, &updated, &j.Flow, &j.Input)
+		&persistent, &keepContext, &created, &updated, &j.Flow, &j.Input)
 	if err != nil {
 		return j, err
 	}
@@ -519,6 +529,7 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 	j.Enabled = enabled != 0
 	j.Favorite = favorite != 0
 	j.Persistent = persistent != 0
+	j.KeepContext = keepContext != 0
 	j.CreatedAt = time.Unix(created, 0)
 	j.UpdatedAt = time.Unix(updated, 0)
 	return j, nil

@@ -47,9 +47,10 @@ type jobFlags struct {
 	catchup  *string
 	timeout  *time.Duration
 
-	enabled    *bool
-	favorite   *bool
-	persistent *bool
+	enabled     *bool
+	favorite    *bool
+	persistent  *bool
+	keepContext *bool
 }
 
 func registerJobFlags(fs *flag.FlagSet) *jobFlags {
@@ -83,6 +84,8 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		enabled:    fs.Bool("enabled", true, "whether the job may run"),
 		favorite:   fs.Bool("favorite", false, "pin to the top of the board"),
 		persistent: fs.Bool("persistent", false, "reuse one agent across runs (context cleared each run)"),
+		keepContext: fs.Bool("keep-context", false,
+			"with --persistent, carry the conversation across runs instead of clearing it"),
 	}
 }
 
@@ -133,6 +136,14 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	assign("enabled", func() { j.Enabled = *f.enabled })
 	assign("favorite", func() { j.Favorite = *f.favorite })
 	assign("persistent", func() { j.Persistent = *f.persistent })
+	assign("keep-context", func() { j.KeepContext = *f.keepContext })
+	// Refused rather than quietly implied. Keeping context without an agent to
+	// keep it in does nothing, and a job that was told to remember and does
+	// not is worse than one that was refused: it looks like it is carrying the
+	// conversation forward and is starting from nothing every run.
+	if j.KeepContext && !j.Persistent {
+		return errors.New("--keep-context needs --persistent: there is no reused agent to keep a conversation in")
+	}
 
 	// Scheduling: the schedule type is inferred from whichever trigger was
 	// given, so callers do not have to state it twice and cannot state it
@@ -331,6 +342,7 @@ func jobShow(argv []string) error {
 	line("enabled", j.Enabled)
 	line("favorite", j.Favorite)
 	line("persistent", j.Persistent)
+	line("keep-context", j.KeepContext)
 	line("cwd", j.CWD)
 	line("kind", j.Kind)
 	line("timeout", j.Timeout)

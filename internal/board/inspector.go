@@ -101,6 +101,9 @@ func (m *Model) renderInspector(width int) string {
 	if j.Persistent {
 		state += dimStyle.Render(" · persistent")
 	}
+	if j.KeepContext {
+		state += dimStyle.Render(" · keeps context")
+	}
 
 	field("state", state)
 	field("schedule", j.ScheduleLabel())

@@ -13,13 +13,14 @@ import (
 // caller hand-assembling argv.
 func FromStore(j store.Job) Job {
 	return Job{
-		ID:         j.ID,
-		Prompt:     j.Prompt,
-		CWD:        j.CWD,
-		Kind:       j.Kind,
-		Timeout:    j.Timeout,
-		AgentArgs:  BuildAgentArgs(j),
-		Persistent: j.Persistent,
+		ID:          j.ID,
+		Prompt:      j.Prompt,
+		CWD:         j.CWD,
+		Kind:        j.Kind,
+		Timeout:     j.Timeout,
+		AgentArgs:   BuildAgentArgs(j),
+		Persistent:  j.Persistent,
+		KeepContext: j.KeepContext,
 	}
 }
 
@@ -32,13 +33,14 @@ func FromStore(j store.Job) Job {
 // under a different charter.
 func StepJob(j store.Job, s store.Step) Job {
 	return Job{
-		ID:         j.ID + "-" + s.ID,
-		Prompt:     s.Agent,
-		CWD:        j.CWD,
-		Kind:       firstNonEmpty(s.Kind, j.Kind),
-		Timeout:    j.Timeout,
-		AgentArgs:  BuildStepArgs(j, s),
-		Persistent: false,
+		ID:          j.ID + "-" + s.ID,
+		Prompt:      s.Agent,
+		CWD:         j.CWD,
+		Kind:        firstNonEmpty(s.Kind, j.Kind),
+		Timeout:     j.Timeout,
+		AgentArgs:   BuildStepArgs(j, s),
+		Persistent:  false,
+		KeepContext: false,
 	}
 }
 
