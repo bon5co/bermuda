@@ -285,10 +285,13 @@ func (d *daemon) sweep(ctx context.Context) {
 		if len(fires) == 0 {
 			continue
 		}
-		if !d.claim(j.ID) {
+		if d.stillRunning(ctx, j) {
 			// Still running from a previous fire. Skipping is the safe
 			// default: a job whose runs outlast its interval would otherwise
 			// stack up agents without bound.
+			continue
+		}
+		if !d.claim(j.ID) {
 			continue
 		}
 		// One claim for the whole backlog, and the runs go in series inside
@@ -345,6 +348,51 @@ func (d *daemon) retireClosedWorkspaces(ctx context.Context) {
 			"--thread %s` still reads it\n", id, id)
 	}
 }
+
+// stillRunning reports whether a previous fire of this job is still going.
+//
+// The in-memory claim below is the fast path and covers the common case, but it
+// is rebuilt empty every time the daemon starts. A scheduler that restarts
+// while a run is in flight — which the stale-build eviction does on purpose —
+// therefore forgets what it was running and launches a second agent on the next
+// sweep. For an ordinary job that is a wasted run; for a `--keep-context` job it
+// is two agents writing into one conversation, which is the failure that record
+// exists to prevent.
+//
+// So the store is asked as well. A row that says "running" is trusted only
+// while it could still be true: a run cannot outlive its job's own timeout, and
+// past that it is not a run any more, only a row. Two rows on this machine sat
+// at "running" for over a month, and a guard that believed them would disable
+// their jobs forever — the same reasoning, and the same bound, as runsInFlight.
+func (d *daemon) stillRunning(ctx context.Context, j store.Job) bool {
+	runs, err := d.store.JobRuns(ctx, j.ID, inFlightLookback)
+	if err != nil {
+		// The claim below still guards the common case. Refusing to fire
+		// because the store could not be read would turn a transient error
+		// into a silently skipped schedule.
+		fmt.Fprintln(os.Stderr, "bermuda: check running runs:", err)
+		return false
+	}
+	timeout := j.Timeout
+	if timeout <= 0 {
+		timeout = defaultJobTimeout
+	}
+	now := time.Now()
+	for _, r := range runs {
+		if r.Outcome != store.StepRunning {
+			continue
+		}
+		if r.StartedAt.IsZero() || now.Sub(r.StartedAt) < timeout+inFlightGrace {
+			return true
+		}
+	}
+	return false
+}
+
+// inFlightLookback bounds how far back stillRunning reads. A job's own recent
+// rows are all that can describe a fire still in flight, and the newest rows
+// come first.
+const inFlightLookback = 5
 
 // claim marks a job as running, reporting false when it already is.
 func (d *daemon) claim(id string) bool {
