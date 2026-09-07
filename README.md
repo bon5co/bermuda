@@ -65,7 +65,18 @@ go install github.com/bon5co/bermuda/v3/cmd/bermuda@latest
 or the shell will not find `bermuda`. If it is not already, add it:
 
 ```bash
-export PATH="$PATH:$(go env GOPATH)/bin"   # add to ~/.bashrc, ~/.zshrc, or your shell profile
+# Linux / macOS (bash, zsh) — add to ~/.bashrc, ~/.zshrc, or your shell profile
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+```powershell
+# Windows (PowerShell) — persist it for your user, then reload the shell
+[Environment]::SetEnvironmentVariable('Path', "$env:Path;$(go env GOPATH)\bin", 'User')
+```
+
+```bat
+:: Windows (cmd.exe) — persist it for your user, then open a new prompt
+setx PATH "%PATH%;%USERPROFILE%\go\bin"
 ```
 
 **3. Add the skill.** So your agents know how to drive Bermuda without being

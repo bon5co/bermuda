@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"syscall"
 
@@ -50,7 +51,12 @@ func pidAlive(pid int) bool {
 	}
 	h, err := windows.OpenProcess(windows.SYNCHRONIZE, false, uint32(pid))
 	if err != nil {
-		return false
+		// ERROR_INVALID_PARAMETER is the "no such pid" answer. Any other
+		// failure — ERROR_ACCESS_DENIED for a process we may not open (a
+		// higher-integrity peer), say — means the process exists, so report it
+		// alive rather than silently treating it as gone. That keeps
+		// terminatePID from reporting success without signalling anything.
+		return !errors.Is(err, windows.ERROR_INVALID_PARAMETER)
 	}
 	defer windows.CloseHandle(h)
 	s, err := windows.WaitForSingleObject(h, 0)
