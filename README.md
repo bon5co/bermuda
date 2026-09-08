@@ -39,23 +39,48 @@ done, start with [why sequences belong in the harness](docs/why-the-harness.md)
 
 ## Install
 
+**Prerequisite: a Go toolchain — and nothing else.** Every step below is a
+plain `go build` under the hood: no make, no C compiler, no system packages. If
+`go version` answers, you have everything Bermuda needs. Linux, macOS, and
+Windows are all supported.
+
+Three steps, each independent of the others:
+
+**1. Register the plugin.** This compiles Bermuda, starts the scheduler, and
+puts the board [one keystroke away](docs/board.md#in-herdrs-sidebar):
+
 ```bash
 herdr plugin install bon5co/bermuda
 ```
 
-A plain `go build`, so **a Go toolchain is the only prerequisite**. Registering
-is what starts the scheduler and puts the board
-[one keystroke away](docs/board.md#in-herdrs-sidebar).
-
-For `bermuda` as a command anywhere, install the CLI too — a separate copy on
-your `$PATH`, talking to the same store:
+**2. Install the `bermuda` command.** A separate copy on your `PATH`, talking to
+the same store, so you can drive it from any shell:
 
 ```bash
 go install github.com/bon5co/bermuda/v3/cmd/bermuda@latest
 ```
 
-And the skill, so your agents know how to drive it — see
-[for the agents](#for-the-agents):
+`go install` drops the binary in `$(go env GOPATH)/bin` — `~/go/bin` by default,
+`%USERPROFILE%\go\bin` on Windows. **That directory has to be on your `PATH`**
+or the shell will not find `bermuda`. If it is not already, add it:
+
+```bash
+# Linux / macOS (bash, zsh) — add to ~/.bashrc, ~/.zshrc, or your shell profile
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+```powershell
+# Windows (PowerShell) — persist it for your user, then reload the shell
+[Environment]::SetEnvironmentVariable('Path', "$env:Path;$(go env GOPATH)\bin", 'User')
+```
+
+```bat
+:: Windows (cmd.exe) — persist it for your user, then open a new prompt
+setx PATH "%PATH%;%USERPROFILE%\go\bin"
+```
+
+**3. Add the skill.** So your agents know how to drive Bermuda without being
+told each time — see [for the agents](#for-the-agents):
 
 ```bash
 npx skills add bon5co/bermuda

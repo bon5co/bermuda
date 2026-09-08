@@ -11,7 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"syscall"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/statefs"
@@ -49,10 +48,11 @@ func Acquire(path string) (*Lock, error) {
 	if err := flockWithRetry(f); err != nil {
 		pid := readPID(path)
 		f.Close()
-		if !errors.Is(err, syscall.EWOULDBLOCK) {
-			// EWOULDBLOCK is the only errno that means "somebody has it".
-			// Reporting ENOLCK or EINTR as "already running" would silently
-			// leave the machine with no scheduler at all.
+		if !errors.Is(err, errWouldBlock) {
+			// errWouldBlock is the only error that means "somebody has it".
+			// Reporting anything else (a lock-table full, an interrupted call)
+			// as "already running" would silently leave the machine with no
+			// scheduler at all.
 			return nil, fmt.Errorf("lock %s: %w", path, err)
 		}
 		return nil, &ErrHeld{Path: path, PID: pid}
@@ -81,7 +81,7 @@ func (l *Lock) Release() error {
 	if l == nil || l.f == nil {
 		return nil
 	}
-	err := syscall.Flock(int(l.f.Fd()), syscall.LOCK_UN)
+	err := unlockFile(l.f)
 	l.f.Close()
 	l.f = nil
 	return err
@@ -117,8 +117,8 @@ func flockWithRetry(f *os.File) error {
 		if attempt > 0 {
 			time.Sleep(lockRetryDelay)
 		}
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil || !errors.Is(err, syscall.EWOULDBLOCK) {
+		err = lockFileNB(f)
+		if err == nil || !errors.Is(err, errWouldBlock) {
 			return err
 		}
 	}
@@ -155,9 +155,9 @@ func Held(path string) bool {
 		return true
 	}
 	defer f.Close()
-	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		return errors.Is(err, syscall.EWOULDBLOCK)
+	if err := lockFileNB(f); err != nil {
+		return errors.Is(err, errWouldBlock)
 	}
-	_ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	_ = unlockFile(f)
 	return false
 }

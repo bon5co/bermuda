@@ -790,7 +790,7 @@ func runUnderClaim(command []string) int {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 
 	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(sigs, forwardedSignals...)
 	defer signal.Stop(sigs)
 
 	if err := cmd.Start(); err != nil {
