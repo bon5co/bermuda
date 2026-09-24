@@ -15,15 +15,21 @@ import (
 // agree with what actually happened on disk, because that pair is what `bermuda
 // flow status` prints and what the board renders.
 //
-// Every step here is a `run:` step, so nothing in this file starts an agent or
-// touches the herdr socket. BERMUDA_STATE_DIR points the store and the run
-// directories at a temporary directory — BERMUDA_HOME is silently ignored and
-// would write into the real database.
+// Every step here is a `run:` step, so nothing in this file starts an agent.
+// BERMUDA_STATE_DIR points the store and the run directories at a temporary
+// directory — BERMUDA_HOME is silently ignored and would write into the real
+// database.
+//
+// HERDR_BIN_PATH points at nothing for the same reason. A flow run opens a
+// space of its own, and run from inside a herdr pane the real herdr answers:
+// every `go test` left parked FLOWS:wf rooms in the developer's session. A test
+// that wants herdr sets its own fake after this.
 
 func flowStore(t *testing.T) *store.Store {
 	t.Helper()
 	dir := t.TempDir()
 	t.Setenv("BERMUDA_STATE_DIR", dir)
+	t.Setenv("HERDR_BIN_PATH", filepath.Join(dir, "no-herdr"))
 	s, err := store.Open(dir)
 	if err != nil {
 		t.Fatal(err)
