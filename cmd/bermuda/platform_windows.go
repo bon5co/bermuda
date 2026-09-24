@@ -66,15 +66,19 @@ func pidAlive(pid int) bool {
 	return s == waitTimeout
 }
 
-// detachedProcess is DETACHED_PROCESS: the child gets no console of its own.
-// Its stdio is already redirected to the log file, so it needs none.
-const detachedProcess = 0x00000008
+// createNoWindow is CREATE_NO_WINDOW: the child gets a console that is never
+// shown. DETACHED_PROCESS gave it none at all, which looks equivalent until the
+// daemon runs a console program — herdr, every tick — and Windows allocates a
+// fresh visible console for each one, flashing a window every five seconds.
+// A hidden console is inherited by those children instead.
+const createNoWindow = 0x08000000
 
-// detachSysProcAttr puts a spawned child in its own detached process group so
-// it outlives whatever started it — the Windows counterpart of a new session.
+// detachSysProcAttr puts a spawned child in its own process group with a
+// hidden console, so it outlives whatever started it — the Windows counterpart
+// of a new session.
 func detachSysProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | detachedProcess,
+		CreationFlags: syscall.CREATE_NEW_PROCESS_GROUP | createNoWindow,
 	}
 }
 
