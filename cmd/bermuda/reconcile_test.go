@@ -66,6 +66,13 @@ func TestFinishedWorkIsAdoptedFromItsResultFile(t *testing.T) {
 	if runs[0].EndedAt == nil {
 		t.Error("an adopted run needs an end time")
 	}
+	events, err := s.RunEvents(ctx, "r1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].Settlement != 1 {
+		t.Fatalf("reconciled settlement events = %+v", events)
+	}
 }
 
 // A result that reports failure must not be laundered into success.

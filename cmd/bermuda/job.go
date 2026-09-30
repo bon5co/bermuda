@@ -24,6 +24,7 @@ type jobFlags struct {
 	name        *string
 	description *string
 	tags        *string
+	ref         *string
 	prompt      *string
 	flowID      *string
 	flowInput   *string
@@ -58,6 +59,7 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		name:        fs.String("name", "", "human-readable name"),
 		description: fs.String("description", "", "what this job does and why"),
 		tags:        fs.String("tags", "", "comma-delimited tags, e.g. marketing,daily"),
+		ref:         fs.String("ref", "", "external issue, ticket or URL (up to 512 bytes)"),
 		prompt:      fs.String("prompt", "", "instruction for the agent"),
 		flowID:      fs.String("flow", "", "id of a flow this job starts, instead of --prompt"),
 		flowInput:   fs.String("input", "", "the input passed to that flow on every fire"),
@@ -103,6 +105,10 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	assign("name", func() { j.Name = *f.name })
 	assign("description", func() { j.Description = *f.description })
 	assign("tags", func() { j.Tags = store.SplitTags(*f.tags) })
+	assign("ref", func() { j.Ref = *f.ref })
+	if err := store.ValidateRef(j.Ref); err != nil {
+		return err
+	}
 	assign("prompt", func() { j.Prompt = *f.prompt })
 	assign("cwd", func() { j.CWD = *f.cwd })
 	assign("flow", func() { j.Flow = *f.flowID })
@@ -336,6 +342,9 @@ func jobShow(argv []string) error {
 	}
 	if len(j.Tags) > 0 {
 		line("tags", strings.Join(j.Tags, ", "))
+	}
+	if j.Ref != "" {
+		line("ref", j.Ref)
 	}
 	line("schedule", j.ScheduleLabel())
 	line("catchup", j.Catchup)
@@ -710,7 +719,7 @@ func Execute(ctx context.Context, s *store.Store, j store.Job, trigger string) (
 		run, err := runFlow(ctx, s, j, store.Run{
 			ID: runID, JobID: j.ID, Trigger: trigger, RunDir: runDirFor(runID),
 			Outcome: "running", StartedAt: time.Now(),
-			Flow: j.Flow, Input: j.Input,
+			Flow: j.Flow, Input: j.Input, Ref: j.Ref,
 		}, flowOpts{})
 		disableOneShot(ctx, s, j, run)
 		return run, err
@@ -742,7 +751,7 @@ func executePrompt(ctx context.Context, s *store.Store, j store.Job, trigger str
 	// resolved later even if this process never gets to write the outcome.
 	if err := s.PutRun(ctx, store.Run{
 		ID: runID, JobID: j.ID, Trigger: trigger, RunDir: runDirFor(runID),
-		Outcome: "running", StartedAt: time.Now(),
+		Outcome: "running", StartedAt: time.Now(), Ref: j.Ref,
 	}); err != nil {
 		return nil, fmt.Errorf("record run start: %w", err)
 	}

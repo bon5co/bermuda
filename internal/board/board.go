@@ -53,7 +53,8 @@ type Model struct {
 	runJob RunFunc
 	deps   Deps
 	// daemonUp is the last observed scheduler state, refreshed on the tick.
-	daemonUp bool
+	daemonUp  bool
+	deadHooks int
 
 	jobs []store.Job
 	runs []store.Run
@@ -264,8 +265,9 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 type tickMsg time.Time
 
 type dataMsg struct {
-	jobs []store.Job
-	runs []store.Run
+	jobs      []store.Job
+	runs      []store.Run
+	deadHooks int
 	// lastRuns is every job's most recent run, asked of the store directly.
 	// runs above is a window on the newest runs of all jobs together, so a job
 	// that has not run lately is simply not in it — which is every job the
@@ -345,6 +347,10 @@ func (m *Model) load() tea.Cmd {
 		if err != nil {
 			return dataMsg{err: err}
 		}
+		deadHooks, err := m.store.DeadRunEventCount(ctx)
+		if err != nil {
+			return dataMsg{err: err}
+		}
 		// The RUNS tab wants the newest hundred; the JOBS tab wants each job's
 		// own latest, however long ago that was. They are two different
 		// questions and deriving the second from the first answers it wrong.
@@ -398,7 +404,7 @@ func (m *Model) load() tea.Cmd {
 		if m.deps.IndexDir != "" {
 			glance = index.ReadGlance(m.deps.IndexDir)
 		}
-		return dataMsg{jobs: jobs, runs: runs, lastRuns: lastRuns, steps: steps,
+		return dataMsg{jobs: jobs, runs: runs, deadHooks: deadHooks, lastRuns: lastRuns, steps: steps,
 			thread: log, threadID: thread, claims: claims, threads: threads,
 			flows: flows, flowErrs: flowErrs, memory: mem, glance: glance}
 	}
@@ -475,6 +481,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err = nil
 		m.jobs, m.runs, m.steps = msg.jobs, msg.runs, msg.steps
+		m.deadHooks = msg.deadHooks
 		m.flows, m.flowErrs = msg.flows, msg.flowErrs
 		m.memory, m.glance = msg.memory, msg.glance
 		// Claims and the thread list are the same whichever conversation is on

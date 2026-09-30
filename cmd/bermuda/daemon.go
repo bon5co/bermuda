@@ -160,6 +160,9 @@ type daemon struct {
 	// every five minutes forever would be the loudest thing in the log and
 	// would still be the same sentence.
 	indexOff bool
+	// deliver is the daemon-owned hook worker's action. Tests inject a blocked
+	// hook to prove that the scheduler loop keeps moving.
+	deliver func(context.Context, *store.Store) error
 }
 
 // sweepIndex reindexes whatever changed in the vault since the last sweep.
@@ -231,6 +234,28 @@ func (d *daemon) execute(ctx context.Context, j store.Job) (*runner.Run, error) 
 
 func (d *daemon) run(ctx context.Context) {
 	d.inflight = map[string]bool{}
+	hookWake := make(chan struct{}, 1)
+	hookDone := make(chan struct{})
+	go func() {
+		defer close(hookDone)
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-hookWake:
+				fn := d.deliver
+				if fn == nil {
+					fn = func(ctx context.Context, s *store.Store) error {
+						return deliverRunEvents(ctx, s, stateDir(), runSettledHook)
+					}
+				}
+				if err := fn(ctx, d.store); err != nil && ctx.Err() == nil {
+					fmt.Fprintln(os.Stderr, "bermuda: run-settled hook:", err)
+				}
+			}
+		}
+	}()
+	hookWake <- struct{}{} // flush events recorded while the daemon was down
 	t := time.NewTicker(d.tick)
 	defer t.Stop()
 	every := d.reconcileEvery
@@ -251,8 +276,13 @@ func (d *daemon) run(ctx context.Context) {
 			// Let running jobs finish: killing an agent mid-turn would leave a
 			// run that is neither done nor parked.
 			d.wg.Wait()
+			<-hookDone
 			return
 		case <-t.C:
+			select {
+			case hookWake <- struct{}{}:
+			default:
+			}
 			d.sweep(ctx)
 		case <-rt.C:
 			d.reconcileStale(ctx)

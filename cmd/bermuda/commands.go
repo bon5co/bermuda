@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -225,6 +226,9 @@ func runShow(argv []string) error {
 	if r.ParkReason != "" {
 		fmt.Fprintf(w, "park reason\t%s\n", r.ParkReason)
 	}
+	if r.Ref != "" {
+		fmt.Fprintf(w, "ref\t%s\n", r.Ref)
+	}
 	fmt.Fprintf(w, "agent status\t%s\nagent\t%s\ntab\t%s\nstarted\t%s\nduration\t%s\n",
 		r.Status, r.AgentName, r.TabID,
 		r.StartedAt.Format(time.RFC3339), r.Duration().Round(time.Second))
@@ -303,6 +307,11 @@ func persist(ctx context.Context, s *store.Store, run *runner.Run, trigger, cwd 
 		StartedAt:  run.StartedAt,
 	}
 	rec.Note = run.Note()
+	if started, err := s.Run(ctx, run.RunID); err == nil {
+		rec.Ref = started.Ref
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("read started run: %w", err)
+	}
 	if !run.EndedAt.IsZero() {
 		t := run.EndedAt
 		rec.EndedAt = &t

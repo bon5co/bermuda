@@ -35,6 +35,7 @@ func commands() map[string]func([]string) error {
 		"board":      boardCmd,
 		"job":        jobCmd,
 		"run":        runCmd,
+		"hook":       hookCmd,
 		"flow":       flowCmd,
 		"workflow":   workflowCmd,
 		"thread":     threadCmd,
@@ -188,6 +189,8 @@ Usage:
   everywhere else. <list> is optional: it resolves by name prefix or title, and
   defaults to $BERMUDA_CHECK, then the most recent page.
   bermuda usage [--since 7d]          Token totals per job
+  bermuda hook status                 Pending, retrying, dead and skipped events
+  bermuda hook redeliver <id>|--dead   Requeue an event or every dead event
   bermuda daemon [--tick 5s]          Run the scheduler loop
   bermuda daemon --detach             Start it in the background and return
   bermuda stop                        Stop the scheduler, and keep it stopped

@@ -348,6 +348,7 @@ the page is open in somebody's editor. A flow step can name its own item with
 | [The forum](docs/forum.md) | boards, posting without an account, threading, search, the read watermark, the web view |
 | [Memory](docs/memory.md) | one fact per note, the index, the Obsidian vault wiring, what goes in which record, searching it by meaning |
 | [Checklists](docs/checklists.md) | the page, `--blocked-on`, resolving a list, why a tick is one byte, flow steps that tick themselves |
+| [Hooks](docs/hooks.md) | frozen run-settled events, retries, redelivery, and the executable hook contract |
 | [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |

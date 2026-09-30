@@ -93,6 +93,7 @@ func (m *Model) renderRunDetail() string {
 		row("waiting on", outcomeStyles["parked"].Render(r.ParkReason))
 	}
 	row("trigger", r.Trigger)
+	row("ref", r.Ref)
 	row("agent state", r.Status)
 	row("started", r.StartedAt.Format("2006-01-02 15:04:05"))
 	if r.EndedAt != nil {

@@ -55,6 +55,15 @@ const DefaultModel = "sonnet"
 // caught it.
 const DefaultKind = "claude"
 
+// ValidateRef keeps a reference safe to pass through the store, CLI and env.
+// Its bytes are otherwise left exactly as supplied.
+func ValidateRef(ref string) error {
+	if len(ref) > 512 || strings.ContainsAny(ref, "\r\n") || strings.ContainsRune(ref, 0) {
+		return errors.New("ref must be one line of at most 512 bytes")
+	}
+	return nil
+}
+
 // Catchup policies for fires missed while the daemon or Herdr was down.
 const (
 	CatchupLatest = "latest" // run once for the whole missed window
@@ -75,6 +84,7 @@ type Store struct {
 // Job is a unit of work and everything needed to run it.
 type Job struct {
 	ID          string
+	Ref         string // external reference, stored verbatim
 	Name        string
 	Description string
 	Prompt      string
@@ -188,6 +198,7 @@ func (j Job) Finished(last *Run) bool {
 // Run is one execution of a job.
 type Run struct {
 	ID         string
+	Ref        string // reference captured when this run started
 	JobID      string
 	Trigger    string // manual | scheduled
 	Outcome    string // running | done | failed | parked
@@ -268,6 +279,25 @@ CREATE TABLE IF NOT EXISTS runs (
 CREATE INDEX IF NOT EXISTS runs_job_started ON runs(job_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_outcome ON runs(outcome);
 
+-- A settlement and its notification are committed together. Only the daemon
+-- delivers; CLI and board writers leave rows here while it is unavailable.
+CREATE TABLE IF NOT EXISTS run_events (
+  id           INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id       TEXT NOT NULL,
+  kind         TEXT NOT NULL,
+  settlement   INTEGER NOT NULL,
+  prev_outcome TEXT NOT NULL,
+  payload      TEXT NOT NULL,
+  created_at   TEXT NOT NULL,
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  next_at      TEXT NOT NULL,
+  delivered_at TEXT NOT NULL DEFAULT '',
+  last_error   TEXT NOT NULL DEFAULT '',
+  generation   INTEGER NOT NULL DEFAULT 0,
+  UNIQUE(run_id, settlement)
+);
+CREATE INDEX IF NOT EXISTS run_events_due ON run_events(delivered_at, next_at, id);
+
 -- One row per declared step of a flow run, written pending before the
 -- flow starts so the board can say "2 of 4" rather than counting only the
 -- steps that got far enough to report.
@@ -315,6 +345,7 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"jobs", "updated_at", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
+	{"jobs", "ref", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "trigger", "TEXT NOT NULL DEFAULT 'manual'"},
 	{"runs", "input_tokens", "INTEGER NOT NULL DEFAULT 0"},
 	{"runs", "output_tokens", "INTEGER NOT NULL DEFAULT 0"},
@@ -326,6 +357,8 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"runs", "space_id", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "thread_id", "TEXT NOT NULL DEFAULT ''"},
 	{"runs", "check_list", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "ref", "TEXT NOT NULL DEFAULT ''"},
+	{"run_events", "generation", "INTEGER NOT NULL DEFAULT 0"},
 }
 
 // Open opens (and migrates) the store at dir/bermuda.db.
@@ -438,10 +471,13 @@ func (s *Store) Close() error { return s.db.Close() }
 const jobColumns = `id, name, description, tags, prompt, cwd, kind, model, permission_mode,
 	allowed_tools, disallowed_tools, add_dirs, extra_args, skip_permissions, max_budget_usd,
 	autocompact, schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
-	enabled, favorite, persistent, keep_context, created_at, updated_at, flow_id, flow_input`
+	enabled, favorite, persistent, keep_context, created_at, updated_at, flow_id, flow_input, ref`
 
 // PutJob inserts or replaces a job.
 func (s *Store) PutJob(ctx context.Context, j Job) error {
+	if err := ValidateRef(j.Ref); err != nil {
+		return err
+	}
 	now := time.Now()
 	if j.CreatedAt.IsZero() {
 		j.CreatedAt = now
@@ -474,7 +510,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	// also stop anyone writing the job first and the flow second.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO jobs (`+jobColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  name=excluded.name, description=excluded.description, tags=excluded.tags,
 		  prompt=excluded.prompt,
@@ -489,7 +525,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		  enabled=excluded.enabled, favorite=excluded.favorite,
 		  persistent=excluded.persistent, keep_context=excluded.keep_context,
 		  updated_at=excluded.updated_at,
-		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
+		  flow_id=excluded.flow_id, flow_input=excluded.flow_input, ref=excluded.ref`,
 		j.ID, j.Name, j.Description, strings.Join(j.Tags, ","),
 		j.Prompt, j.CWD, j.Kind, j.Model, j.PermissionMode,
 		j.AllowedTools, j.DisallowedTools, strings.Join(j.AddDirs, "\n"), j.ExtraArgs,
@@ -497,7 +533,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		string(j.Schedule), j.IntervalSeconds, j.CronExpr, runAt, j.Catchup,
 		j.Timeout.Milliseconds(), boolToInt(j.Enabled), boolToInt(j.Favorite),
 		boolToInt(j.Persistent), boolToInt(j.KeepContext),
-		j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
+		j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input, j.Ref)
 	return err
 }
 
@@ -511,7 +547,7 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 		&j.Model, &j.PermissionMode, &j.AllowedTools, &j.DisallowedTools, &addDirs,
 		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &j.AutoCompact, &schedule, &j.IntervalSeconds,
 		&j.CronExpr, &runAt, &j.Catchup, &timeoutMS, &enabled, &favorite,
-		&persistent, &keepContext, &created, &updated, &j.Flow, &j.Input)
+		&persistent, &keepContext, &created, &updated, &j.Flow, &j.Input, &j.Ref)
 	if err != nil {
 		return j, err
 	}
@@ -630,10 +666,13 @@ func (s *Store) DeleteJob(ctx context.Context, id string) error {
 const runColumns = `id, job_id, trigger, outcome, park_reason, status, note,
 	run_dir, tab_id, agent_name, started_at, ended_at,
 	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
-	flow_id, flow_input, space_id, thread_id, check_list`
+	flow_id, flow_input, space_id, thread_id, check_list, ref`
 
 // PutRun inserts or updates a run.
 func (s *Store) PutRun(ctx context.Context, r Run) error {
+	if err := ValidateRef(r.Ref); err != nil {
+		return err
+	}
 	var ended any
 	if r.EndedAt != nil {
 		ended = r.EndedAt.Unix()
@@ -641,9 +680,29 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 	if r.Trigger == "" {
 		r.Trigger = "manual"
 	}
-	_, err := s.db.ExecContext(ctx, `
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_, _ = conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+	var previous string
+	var previousEnded sql.NullInt64
+	previousErr := conn.QueryRowContext(ctx, `SELECT outcome, ended_at FROM runs WHERE id=?`, r.ID).Scan(&previous, &previousEnded)
+	if previousErr != nil && !errors.Is(previousErr, sql.ErrNoRows) {
+		return previousErr
+	}
+	_, err = conn.ExecContext(ctx, `
 		INSERT INTO runs (`+runColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  trigger=excluded.trigger, outcome=excluded.outcome,
 		  park_reason=excluded.park_reason, status=excluded.status,
@@ -655,12 +714,24 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 		  model=excluded.model,
 		  flow_id=excluded.flow_id, flow_input=excluded.flow_input,
 		  space_id=excluded.space_id, thread_id=excluded.thread_id,
-		  check_list=excluded.check_list`,
+		  check_list=excluded.check_list, ref=excluded.ref`,
 		r.ID, r.JobID, r.Trigger, r.Outcome, r.ParkReason, r.Status, r.Note,
 		r.RunDir, r.TabID, r.AgentName, r.StartedAt.Unix(), ended,
 		r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheCreationTokens,
-		r.Model, r.Flow, r.Input, r.Space, r.Thread, r.CheckList)
-	return err
+		r.Model, r.Flow, r.Input, r.Space, r.Thread, r.CheckList, r.Ref)
+	if err != nil {
+		return err
+	}
+	if isSettled(r.Outcome) && (errors.Is(previousErr, sql.ErrNoRows) || previous != r.Outcome || previousEnded.Valid != (r.EndedAt != nil)) {
+		if err := enqueueRunSettlement(ctx, conn, r); err != nil {
+			return err
+		}
+	}
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
 func scanRun(rows interface{ Scan(...any) error }) (Run, error) {
@@ -671,7 +742,7 @@ func scanRun(rows interface{ Scan(...any) error }) (Run, error) {
 		&r.Status, &r.Note, &r.RunDir, &r.TabID, &r.AgentName, &started, &ended,
 		&r.InputTokens, &r.OutputTokens, &r.CacheReadTokens,
 		&r.CacheCreationTokens, &r.Model, &r.Flow, &r.Input, &r.Space, &r.Thread,
-		&r.CheckList)
+		&r.CheckList, &r.Ref)
 	if err != nil {
 		return r, err
 	}

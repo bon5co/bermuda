@@ -46,6 +46,7 @@ func (m *Model) renderDetail() string {
 		state += ", keeps context"
 	}
 	row("tags", strings.Join(j.Tags, ", "))
+	row("ref", j.Ref)
 	row("schedule", j.ScheduleLabel())
 	row("catchup", j.Catchup)
 	row("state", state)

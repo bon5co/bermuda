@@ -58,6 +58,18 @@ func jobFields() []field {
 			},
 		},
 		{
+			key: "ref", label: "Ref", kind: fieldText,
+			help: "external issue, ticket or URL",
+			get:  func(j *store.Job) string { return j.Ref },
+			set: func(j *store.Job, v string) error {
+				if err := store.ValidateRef(v); err != nil {
+					return err
+				}
+				j.Ref = v
+				return nil
+			},
+		},
+		{
 			key: "prompt", label: "Prompt", kind: fieldTextArea,
 			help: "what the agent is told to do",
 			get:  func(j *store.Job) string { return j.Prompt },

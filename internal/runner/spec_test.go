@@ -60,6 +60,19 @@ func TestFromStoreDoesNotInventPersistence(t *testing.T) {
 	}
 }
 
+func TestAStoredReferenceReachesAnAgentAndEveryFlowAgentStep(t *testing.T) {
+	j := store.Job{ID: "brief", Ref: "Ticket: Mixed / #42"}
+	if got := FromStore(j).Env["BERMUDA_REF"]; got != j.Ref {
+		t.Fatalf("job agent ref = %q, want %q", got, j.Ref)
+	}
+	if got := StepJob(j, store.Step{ID: "review"}).Env["BERMUDA_REF"]; got != j.Ref {
+		t.Fatalf("flow agent ref = %q, want %q", got, j.Ref)
+	}
+	if got, ok := FromStore(store.Job{ID: "unbound"}).Env["BERMUDA_REF"]; !ok || got != "" {
+		t.Fatalf("unbound agent ref = %q (present %t), want an explicit empty value", got, ok)
+	}
+}
+
 // The flags are typed by hand — in the board's editor as one line, in a flow
 // file as a block — so both spellings have to reach argv. A newline-separated
 // block parsed as a single argument is one unusable flag, and the agent rejects

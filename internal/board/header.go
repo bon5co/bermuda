@@ -1,6 +1,7 @@
 package board
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,6 +25,9 @@ func (m *Model) renderBrand() string {
 	// The dot leads, so health is the first thing read. The version follows the
 	// name: it identifies what is running, which belongs with the name.
 	brand := titleStyle.Render("Bermuda") + " " + dimStyle.Render(version.String())
+	if m.deadHooks > 0 {
+		brand += " " + statusBad.Render(fmt.Sprintf("%d dead hook events", m.deadHooks))
+	}
 	if problem := m.health(); problem != "" {
 		return statusBad.Render("●") + " " + brand + " " + statusBad.Render(problem)
 	}

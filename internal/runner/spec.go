@@ -21,6 +21,7 @@ func FromStore(j store.Job) Job {
 		AgentArgs:   BuildAgentArgs(j),
 		Persistent:  j.Persistent,
 		KeepContext: j.KeepContext,
+		Env:         refEnv(j.Ref),
 	}
 }
 
@@ -41,7 +42,12 @@ func StepJob(j store.Job, s store.Step) Job {
 		AgentArgs:   BuildStepArgs(j, s),
 		Persistent:  false,
 		KeepContext: false,
+		Env:         refEnv(j.Ref),
 	}
+}
+
+func refEnv(ref string) map[string]string {
+	return map[string]string{"BERMUDA_REF": ref}
 }
 
 // BuildStepArgs assembles a step's agent arguments: the job's, with the step's

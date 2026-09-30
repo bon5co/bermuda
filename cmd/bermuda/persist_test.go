@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,6 +15,17 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/runner"
 	"github.com/bon5co/bermuda/v3/internal/store"
 )
+
+func TestPersistReportsAnUnexpectedStartedRunReadError(t *testing.T) {
+	t.Setenv("BERMUDA_STATE_DIR", t.TempDir())
+	s := newStore(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	run := &runner.Run{RunID: "read-error", JobID: "job", StartedAt: time.Now()}
+	if err := persist(ctx, s, run, "manual", t.TempDir()); !errors.Is(err, context.Canceled) || !strings.Contains(err.Error(), "read started run") {
+		t.Fatalf("persist error = %v, want the canceled started-run read error", err)
+	}
+}
 
 // persist is the only thing that turns a finished run into the durable record
 // everything else reads: the board's outcome column, `bermuda run show`, the

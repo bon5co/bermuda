@@ -66,3 +66,46 @@ func TestDaemonReconcileIntervalDefaultsToMinutes(t *testing.T) {
 		t.Fatalf("defaultReconcileEvery is %s, want at least a minute", defaultReconcileEvery)
 	}
 }
+
+func TestABlockedHookWorkerLeavesTheDaemonFreeToReconcileAndStopsOnShutdown(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("BERMUDA_STATE_DIR", dir)
+	s, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	started := make(chan struct{})
+	reconciled := make(chan struct{}, 1)
+	d := &daemon{store: s, tick: time.Hour, slots: make(chan struct{}, 1), reconcileEvery: 5 * time.Millisecond,
+		deliver: func(ctx context.Context, _ *store.Store) error { close(started); <-ctx.Done(); return ctx.Err() },
+		reconcile: func(context.Context, *store.Store) (int, error) {
+			select {
+			case reconciled <- struct{}{}:
+			default:
+			}
+			return 0, nil
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { d.run(ctx); close(done) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("hook worker did not start")
+	}
+	select {
+	case <-reconciled:
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("blocked hook stopped reconciliation")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("daemon did not stop its hook worker")
+	}
+}

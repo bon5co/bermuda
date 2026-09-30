@@ -40,6 +40,21 @@ func TestAgentNameIsHerdrLegal(t *testing.T) {
 	}
 }
 
+func TestAPersistentAgentPromptCarriesTheCurrentReferenceEvenWhenItsShellWasCreatedEarlier(t *testing.T) {
+	job := Job{Prompt: "do the work", Env: map[string]string{"BERMUDA_REF": "Ticket: Original"}}
+	first := promptBody(job, "/tmp/result.json")
+	job.Env["BERMUDA_REF"] = "Ticket: Changed"
+	second := promptBody(job, "/tmp/result.json")
+	if !strings.Contains(first, "Ticket: Original") || !strings.Contains(second, "Ticket: Changed") || strings.Contains(second, "Ticket: Original") {
+		t.Fatalf("prompt did not track the current ref: first=%q second=%q", first, second)
+	}
+	job.Env["BERMUDA_REF"] = ""
+	cleared := promptBody(job, "/tmp/result.json")
+	if strings.Contains(cleared, "Ticket: Changed") || !strings.Contains(cleared, "no external reference") {
+		t.Fatalf("cleared prompt kept a stale ref: %q", cleared)
+	}
+}
+
 // Concurrent runs of the same job must not collide on agent name, since herdr
 // addresses agents by name.
 func TestAgentNameDistinctPerRun(t *testing.T) {
