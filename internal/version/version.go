@@ -132,5 +132,10 @@ func parse(bi *debug.BuildInfo) buildInfo {
 			out.modified = out.modified || s.Value == "true"
 		}
 	}
+	// Versioned go installs omit VCS settings, but pseudo-versions carry the
+	// source revision. Prefer a VCS revision when one is available.
+	if out.revision == "" && pseudoVersion.MatchString(v) {
+		out.revision = v[strings.LastIndexByte(v, '-')+1:]
+	}
 	return out
 }

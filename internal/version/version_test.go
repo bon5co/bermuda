@@ -9,6 +9,79 @@ import (
 	"testing"
 )
 
+func TestPseudoVersionInstallKeepsSourceIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, module, want string
+		settings           []debug.BuildSetting
+	}{
+		{
+			name: "no prior release", module: "v3.0.0-20260930005551-1d938ce7263d",
+			want: "v3.2.0+g1d938ce",
+		},
+		{
+			name: "after release", module: "v3.2.1-0.20260930005551-1d938ce7263d",
+			want: "v3.2.0+g1d938ce",
+		},
+		{
+			name: "after prerelease", module: "v3.2.0-rc.1.0.20260930005551-1d938ce7263d",
+			want: "v3.2.0+g1d938ce",
+		},
+		{
+			name: "dirty no prior release", module: "v3.0.0-20260930005551-1d938ce7263d+dirty",
+			want: "v3.2.0+g1d938ce*",
+		},
+		{
+			name: "dirty after release", module: "v3.2.1-0.20260930005551-1d938ce7263d+dirty",
+			want: "v3.2.0+g1d938ce*",
+		},
+		{
+			name: "dirty after prerelease", module: "v3.2.0-rc.1.0.20260930005551-1d938ce7263d+dirty",
+			want: "v3.2.0+g1d938ce*",
+		},
+		{
+			name: "modified VCS", module: "v3.0.0-20260930005551-1d938ce7263d",
+			settings: []debug.BuildSetting{{Key: "vcs.modified", Value: "true"}},
+			want:     "v3.2.0+g1d938ce*",
+		},
+		{
+			name: "dirty module with clean VCS", module: "v3.0.0-20260930005551-1d938ce7263d+dirty",
+			settings: []debug.BuildSetting{{Key: "vcs.modified", Value: "false"}},
+			want:     "v3.2.0+g1d938ce*",
+		},
+		{
+			name: "empty VCS revision", module: "v3.0.0-20260930005551-1d938ce7263d",
+			settings: []debug.BuildSetting{{Key: "vcs.revision", Value: ""}},
+			want:     "v3.2.0+g1d938ce",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			info := parse(&debug.BuildInfo{Main: debug.Module{Version: tc.module}, Settings: tc.settings})
+			if got := short(info); got != tc.want {
+				t.Fatalf("installed pseudo-version = %q, want %q", got, tc.want)
+			}
+			if info.revision != "1d938ce7263d" {
+				t.Fatalf("revision = %q, want full pseudo-version hash", info.revision)
+			}
+		})
+	}
+}
+
+func TestPseudoVersionPrefersVCSRevision(t *testing.T) {
+	info := &debug.BuildInfo{
+		Main: debug.Module{Version: "v3.0.0-20260930005551-1d938ce7263d"},
+		Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "189e7e2a68693ab97581046808111b6ada332cd8"},
+		},
+	}
+	got := parse(info)
+	if want := "v3.2.0+g189e7e2"; short(got) != want {
+		t.Fatalf("short = %q, want %q", short(got), want)
+	}
+	if got.revision != "189e7e2a68693ab97581046808111b6ada332cd8" {
+		t.Fatalf("revision = %q, want full VCS hash", got.revision)
+	}
+}
+
 func TestPseudoVersionUsesPluginVersionAndRevision(t *testing.T) {
 	for _, tc := range []struct{ module, want string }{
 		{"v3.0.0-20260908092008-189e7e2a6869", "v3.2.0+g189e7e2"},
