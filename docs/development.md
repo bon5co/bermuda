@@ -28,13 +28,22 @@ Go embeds an exact release tag automatically. Builds between releases show the
 short source revision; modified builds remain marked as modified. The identity
 comes from the binary, without a committed `VERSION` or manifest fallback.
 
-Tag the release commit, then install that tag explicitly:
+For a release, bump the manifest version in a reviewed commit, merge it, and
+run the reusable release procedure from a clean checkout at `origin/main`:
 
 ```bash
-git tag v3.3.0
-git push origin v3.3.0
+scripts/release.sh --check-only v3.3.0
+scripts/release.sh --draft v3.3.0 /path/to/release-notes.md "v3.3.0 — fixes and clearer versions"
+scripts/release.sh --publish v3.3.0 /path/to/release-notes.md "v3.3.0 — fixes and clearer versions"
 herdr plugin install bon5co/bermuda --ref v3.3.0 --yes
 ```
+
+The script checks formatting, build, vet, the full test suite and the executable
+version before tagging the exact validated commit. Tests use a temporary home,
+clear any inherited `BERMUDA_STATE_DIR`, and retain the existing Go caches;
+Git and GitHub CLI keep the original home and credentials. It publishes source-only
+releases, refuses to move existing tags, and can resume a draft or a failed
+publication safely. Go, Git and GitHub CLI must be on `PATH`.
 
 Without `--ref`, Herdr installs the repository's default HEAD, which can be newer
 than the latest release. A `go install …@<pseudo-version>` binary likewise reports
