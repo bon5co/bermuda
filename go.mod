@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/muesli/termenv v0.16.0
 	github.com/robfig/cron/v3 v3.0.1
+	golang.org/x/mod v0.37.0
 	golang.org/x/sys v0.46.0
 	modernc.org/sqlite v1.54.0
 )

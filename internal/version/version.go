@@ -6,17 +6,16 @@
 // itself: the board re-execs after a rebuild and scheduled jobs rebuild it too,
 // so any scheme relying on a build flag would silently produce blank versions.
 //
-// One limit worth knowing: Go does not stamp VCS information when building from
-// a git worktree, because the worktree's .git is a file rather than a
-// repository. Such builds report "dev". That is the honest answer — a worktree
-// build is work in progress, not the deployed artifact, which is built in the
-// primary checkout after merge.
+// Checkout builds require Go's VCS metadata. The Makefile can explicitly stamp
+// builds where that metadata is unavailable, including this repo's worktrees.
 package version
 
 import (
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"golang.org/x/mod/module"
 )
 
 // Tag is set at build time for a released version:
@@ -41,6 +40,10 @@ func String() string {
 		return Tag
 	}
 	info := read()
+	return short(info)
+}
+
+func short(info buildInfo) string {
 	if info.tag != "" {
 		return info.tag
 	}
@@ -94,11 +97,21 @@ func read() buildInfo {
 	if !ok {
 		return buildInfo{}
 	}
+	return parse(bi)
+}
+
+func parse(bi *debug.BuildInfo) buildInfo {
 	out := buildInfo{goVersion: bi.GoVersion}
-	// A module built by `go install pkg@v1.2.3` carries a real version here;
-	// a plain `go build` leaves it empty or "(devel)", which says nothing.
-	if v := bi.Main.Version; v != "" && v != "(devel)" && !strings.HasPrefix(v, "v0.0.0-") {
-		out.tag = v
+	// Go 1.24+ also embeds module versions in checkout builds. A pseudo-version
+	// identifies a commit, not a release; preserve its hash even when go install
+	// provides no VCS settings. Go appends +dirty to modified checkout builds.
+	v := strings.TrimSuffix(bi.Main.Version, "+dirty")
+	out.modified = v != bi.Main.Version
+	if module.IsPseudoVersion(v) {
+		out.revision, _ = module.PseudoVersionRev(v)
+		out.built, _ = module.PseudoVersionTime(v)
+	} else if v != "" && v != "(devel)" {
+		out.tag = bi.Main.Version
 	}
 	for _, s := range bi.Settings {
 		switch s.Key {
@@ -109,7 +122,7 @@ func read() buildInfo {
 				out.built = t
 			}
 		case "vcs.modified":
-			out.modified = s.Value == "true"
+			out.modified = out.modified || s.Value == "true"
 		}
 	}
 	return out

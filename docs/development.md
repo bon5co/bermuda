@@ -21,18 +21,24 @@ make check      # vet + tests, what must pass before a merge
 make version    # show what a build would stamp
 ```
 
-`make` is a convenience, never a requirement: the Go toolchain is the only thing
-needed to build or install Bermuda, and the Herdr plugin builds with plain
-`go build`. Go stamps the commit revision itself. `make` exists for the two cases
-it cannot cover — a released tag, which says more than
-a hash, and a build from a git worktree, where Go skips VCS stamping because the
-worktree's `.git` is a file rather than a repository.
+`make` is a convenience. Herdr already requires Git to install from GitHub;
+Bermuda additionally needs Go. Herdr fetches a single commit without local tag
+refs, so the manifest fetches shallow tag refs before running plain `go build`.
+Go embeds an exact release tag automatically. Builds between releases show the
+short source revision; modified builds remain marked as modified. The identity
+comes from the binary, without a committed `VERSION` or manifest fallback.
 
-Tag a release and the version follows automatically:
+Tag the release commit, then install that tag explicitly:
 
 ```bash
-git tag v1.2.3 && make build   # header reads: Bermuda v1.2.3 ●
+git tag v3.3.0
+git push origin v3.3.0
+herdr plugin install bon5co/bermuda --ref v3.3.0 --yes
 ```
+
+Without `--ref`, Herdr installs the repository's default HEAD, which can be newer
+than the latest release. A `go install …@<pseudo-version>` binary likewise reports
+the source revision embedded in that module version.
 
 ## Running your checkout as the plugin
 
