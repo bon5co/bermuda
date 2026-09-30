@@ -106,24 +106,27 @@ func TestSavingWritesTheEditedFieldsToTheStore(t *testing.T) {
 	}
 }
 
-// esc closes the open field without keeping what was typed. The previous value
-// survives, and the form stays open on the same job.
-func TestCancellingAFieldKeepsThePreviousValue(t *testing.T) {
+// One esc abandons the whole form, even with a field open. Neither a schedule
+// changed earlier in the form nor text still being typed may reach the store.
+func TestEscapeFromActiveFieldAbandonsTheWholeJobEdit(t *testing.T) {
 	m := newTestModel(t)
-	e := openEditorOn(t, m, "alpha", "name")
+	e := openEditorOn(t, m, "alpha", "schedule")
+	m.press(t, "l")
+	if e.job.Schedule != store.ScheduleInterval {
+		t.Fatalf("schedule did not change in the form: %q", e.job.Schedule)
+	}
 
+	e.cursor = fieldIndex(t, e, "name")
 	e.beginField()
 	m.typeText(t, " throwaway")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyEsc})
 
-	if e.active >= 0 {
-		t.Error("esc should close the open field")
+	if m.editor != nil {
+		t.Error("one esc left the form open after closing only the active field")
 	}
-	if e.job.Name != "Alpha job" {
-		t.Errorf("cancelled edit kept %q", e.job.Name)
-	}
-	if m.editor == nil {
-		t.Error("esc on an open field closed the whole form, not just the field")
+	got := storedJob(t, m, "alpha")
+	if got.Schedule != store.ScheduleCron || got.Name != "Alpha job" {
+		t.Errorf("esc saved unsaved edits: schedule=%q name=%q", got.Schedule, got.Name)
 	}
 }
 
