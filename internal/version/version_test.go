@@ -1,9 +1,66 @@
 package version
 
 import (
+	"fmt"
+	"os"
+	"regexp"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
+
+func TestPseudoVersionUsesPluginVersionAndRevision(t *testing.T) {
+	for _, tc := range []struct{ module, want string }{
+		{"v3.0.0-20260908092008-189e7e2a6869", "v3.2.0+g189e7e2"},
+		{"v3.0.0-20260908092008-189e7e2a6869+dirty", "v3.2.0+g189e7e2*"},
+	} {
+		info := &debug.BuildInfo{Main: debug.Module{Version: tc.module}, Settings: []debug.BuildSetting{
+			{Key: "vcs.revision", Value: "189e7e2a68693ab97581046808111b6ada332cd8"},
+		}}
+		if got := short(parse(info)); got != tc.want {
+			t.Errorf("short(%q) = %q, want %q", tc.module, got, tc.want)
+		}
+	}
+}
+
+func TestModifiedReleaseNamesItsRevision(t *testing.T) {
+	info := &debug.BuildInfo{Main: debug.Module{Version: "v3.2.0+dirty"}, Settings: []debug.BuildSetting{
+		{Key: "vcs.revision", Value: "189e7e2a68693ab97581046808111b6ada332cd8"},
+		{Key: "vcs.modified", Value: "true"},
+	}}
+	if got := short(parse(info)); got != "v3.2.0+g189e7e2*" {
+		t.Fatalf("short modified release = %q, want revision and modified marker", got)
+	}
+}
+
+func TestPluginVersionMatchesManifest(t *testing.T) {
+	raw, err := os.ReadFile("../../herdr-plugin.toml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	match := regexp.MustCompile(`(?m)^version = "([^"]+)"$`).FindSubmatch(raw)
+	if len(match) != 2 || pluginVersion != "v"+string(match[1]) {
+		t.Fatalf("plugin version %q does not match herdr-plugin.toml", pluginVersion)
+	}
+}
+
+func FuzzPseudoVersionNeverBecomesReleaseTag(f *testing.F) {
+	f.Add(uint8(3), uint8(2), uint8(0), uint64(20260908092008), uint64(0x189e7e2a6869))
+	f.Fuzz(func(t *testing.T, major, minor, patch uint8, timestamp, revision uint64) {
+		date := timestamp % 100000000000000
+		hash := revision % 0x1000000000000
+		for _, v := range []string{
+			fmt.Sprintf("v%d.%d.%d-%014d-%012x", major, minor, patch, date, hash),
+			fmt.Sprintf("v%d.%d.%d-0.%014d-%012x", major, minor, patch, date, hash),
+			fmt.Sprintf("v%d.%d.%d-rc.1.0.%014d-%012x", major, minor, patch, date, hash),
+		} {
+			got := parse(&debug.BuildInfo{Main: debug.Module{Version: v}})
+			if got.tag != "" {
+				t.Fatalf("pseudo-version %q accepted as release tag %q", v, got.tag)
+			}
+		}
+	})
+}
 
 // A released build states its semver; that is the whole reason Tag exists.
 func TestTagWinsWhenSet(t *testing.T) {
@@ -33,9 +90,16 @@ func TestFallsBackToSomethingUseful(t *testing.T) {
 		}
 		return
 	}
-	// A revision-derived version is short, and only ever marked with '*'.
-	if len(strings.TrimSuffix(got, "*")) > revisionLen {
-		t.Errorf("String() = %q, longer than a short revision", got)
+	// A revision-derived version names the plugin version and short revision.
+	info := read()
+	if info.tag != "" && !info.modified {
+		if got != info.tag {
+			t.Errorf("String() = %q, want release %q", got, info.tag)
+		}
+		return
+	}
+	if r := info.revision; len(r) >= revisionLen && !strings.Contains(got, "+g"+r[:revisionLen]) {
+		t.Errorf("String() = %q, missing short revision", got)
 	}
 }
 

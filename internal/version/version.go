@@ -1,19 +1,13 @@
 // Package version reports which build of bermuda is running.
 //
-// The identity comes from the binary itself rather than a file someone has to
-// remember to bump. Go stamps the git revision, its time, and whether the tree
-// was dirty into every `go build`, which matters here because bermuda rebuilds
-// itself: the board re-execs after a rebuild and scheduled jobs rebuild it too,
-// so any scheme relying on a build flag would silently produce blank versions.
-//
-// One limit worth knowing: Go does not stamp VCS information when building from
-// a git worktree, because the worktree's .git is a file rather than a
-// repository. Such builds report "dev". That is the honest answer — a worktree
-// build is work in progress, not the deployed artifact, which is built in the
-// primary checkout after merge.
+// The identity comes from Go's embedded build information, so a plain go build
+// reports a version without requiring build flags or a runtime git checkout.
+// Go sometimes records a module pseudo-version even at a release tag; those
+// builds use the plugin manifest's version plus their exact source revision.
 package version
 
 import (
+	"regexp"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -26,6 +20,12 @@ import (
 // When it is set it wins, because a human-chosen semver says more than a
 // commit hash. When it is not, the revision is the honest answer.
 var Tag string
+
+// Keep this in sync with herdr-plugin.toml; TestPluginVersionMatchesManifest
+// catches a release that changes the manifest without changing this label.
+const pluginVersion = "v3.2.0"
+
+var pseudoVersion = regexp.MustCompile(`(?:-|\.)0?\.?\d{14}-[0-9a-f]{12,}$`)
 
 // revisionLen is how much of the commit hash to show. Seven is enough to be
 // unambiguous in a repo this size and short enough to sit in a header.
@@ -40,17 +40,28 @@ func String() string {
 	if Tag != "" {
 		return Tag
 	}
-	info := read()
-	if info.tag != "" {
+	return short(read())
+}
+
+func short(info buildInfo) string {
+	if info.tag != "" && !info.modified {
 		return info.tag
 	}
 	if info.revision == "" {
+		if info.tag != "" {
+			return info.tag + "*"
+		}
 		return "dev"
 	}
-	v := info.revision
-	if len(v) > revisionLen {
-		v = v[:revisionLen]
+	revision := info.revision
+	if len(revision) > revisionLen {
+		revision = revision[:revisionLen]
 	}
+	v := info.tag
+	if v == "" {
+		v = pluginVersion
+	}
+	v += "+g" + revision
 	if info.modified {
 		v += "*"
 	}
@@ -94,10 +105,19 @@ func read() buildInfo {
 	if !ok {
 		return buildInfo{}
 	}
+	return parse(bi)
+}
+
+func parse(bi *debug.BuildInfo) buildInfo {
 	out := buildInfo{goVersion: bi.GoVersion}
 	// A module built by `go install pkg@v1.2.3` carries a real version here;
-	// a plain `go build` leaves it empty or "(devel)", which says nothing.
-	if v := bi.Main.Version; v != "" && v != "(devel)" && !strings.HasPrefix(v, "v0.0.0-") {
+	// a plain build can carry a pseudo-version from the module graph instead.
+	v := bi.Main.Version
+	if strings.HasSuffix(v, "+dirty") {
+		v = strings.TrimSuffix(v, "+dirty")
+		out.modified = true
+	}
+	if v != "" && v != "(devel)" && !pseudoVersion.MatchString(v) {
 		out.tag = v
 	}
 	for _, s := range bi.Settings {
@@ -109,7 +129,7 @@ func read() buildInfo {
 				out.built = t
 			}
 		case "vcs.modified":
-			out.modified = s.Value == "true"
+			out.modified = out.modified || s.Value == "true"
 		}
 	}
 	return out
