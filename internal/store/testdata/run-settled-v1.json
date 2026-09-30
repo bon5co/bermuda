@@ -1,0 +1,31 @@
+{
+  "bermuda_version": "VERSION",
+  "event": "run.settled",
+  "event_id": 1,
+  "previous_outcome": "",
+  "result": null,
+  "run": {
+    "ended_at": "2026-09-30T07:02:00Z",
+    "flow": "",
+    "id": "example-run",
+    "job_id": "example-job",
+    "model": "opus",
+    "note": "published",
+    "outcome": "done",
+    "park_reason": "",
+    "ref": "Ticket: 42",
+    "run_dir": "",
+    "space": "",
+    "started_at": "2026-09-30T07:00:00Z",
+    "thread": "",
+    "tokens": {
+      "cache_creation": 4,
+      "cache_read": 3,
+      "input": 1,
+      "output": 2
+    },
+    "trigger": "scheduled"
+  },
+  "settlement": 1,
+  "version": 1
+}

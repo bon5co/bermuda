@@ -76,11 +76,15 @@ func flowRun(argv []string) error {
 	model := fs.String("model", "", "model for agent steps that do not name one")
 	kind := fs.String("kind", "", "herdr agent kind")
 	check := fs.String("check", "", "checklist this run ticks its steps off on")
+	ref := fs.String("ref", "", "external issue, ticket or URL")
 	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
-		return errors.New("usage: bermuda flow run <flow> [--input ...] [--cwd ...] [--model ...] [--check ...]")
+		return errors.New("usage: bermuda flow run <flow> [--input ...] [--ref <value>] [--cwd ...] [--model ...] [--check ...]")
 	}
 	id := argv[0]
 	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
+	if err := store.ValidateRef(*ref); err != nil {
 		return err
 	}
 
@@ -121,7 +125,7 @@ func flowRun(argv []string) error {
 	rec := store.Run{
 		ID: newRunID(def.ID), JobID: def.ID, Trigger: "manual",
 		Outcome: "running", StartedAt: time.Now(),
-		Flow: def.ID, Input: *input,
+		Flow: def.ID, Input: *input, Ref: *ref,
 	}
 	// Resolved before the run starts, so a --check naming a page that does not
 	// exist is a refusal now rather than an hour of steps whose ticks land
@@ -163,11 +167,15 @@ func flowResume(argv []string) error {
 	// silently to anything that calls resume on a schedule.
 	resetLoops := fs.Bool("reset-loops", false,
 		"give this run's on_fail edges their full max_loops again")
+	ref := fs.String("ref", "", "replace this run's external reference")
 	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
-		return errors.New("usage: bermuda flow resume <run> [--reset-loops]")
+		return errors.New("usage: bermuda flow resume <run> [--ref <value>] [--reset-loops]")
 	}
 	runID := argv[0]
 	if err := fs.Parse(argv[1:]); err != nil {
+		return err
+	}
+	if err := store.ValidateRef(*ref); err != nil {
 		return err
 	}
 	s, err := openStore()
@@ -184,6 +192,11 @@ func flowResume(argv []string) error {
 	if strings.TrimSpace(rec.Flow) == "" {
 		return fmt.Errorf("run %s is not a flow run; there is nothing to resume", rec.ID)
 	}
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "ref" {
+			rec.Ref = *ref
+		}
+	})
 	// The job is optional. A flow called directly has no job at all, and one
 	// called by a job may outlive it — but the run itself records which flow ran
 	// and what it was called with, so neither case needs the job to still exist.
@@ -199,6 +212,7 @@ func flowResume(argv []string) error {
 	if stored, err := s.Job(ctx, rec.JobID); err == nil {
 		j = *stored
 	}
+	j.Ref = rec.Ref
 	run, execErr := runFlow(ctx, s, j, *rec, flowOpts{ResetLoops: *resetLoops})
 	if run != nil {
 		printRun(run)
@@ -309,6 +323,7 @@ type flowOpts struct {
 }
 
 func runFlow(ctx context.Context, s *store.Store, j store.Job, rec store.Run, opts flowOpts) (*runner.Run, error) {
+	j.Ref = rec.Ref
 	if rec.RunDir == "" {
 		rec.RunDir = runDirFor(rec.ID)
 	}

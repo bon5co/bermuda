@@ -378,6 +378,25 @@ func TestEachStepIsItsOwnAgentAndCarriesItsOwnConfig(t *testing.T) {
 	}
 }
 
+func TestAFlowAgentStepReceivesTheRunsReferenceAlongsideStepInputs(t *testing.T) {
+	t.Setenv("BERMUDA_STATE_DIR", t.TempDir())
+	agent := &fakeAgent{results: map[string]Result{"review": ok("done")}}
+	job := flowJob(t)
+	job.Ref = "Ticket: Mixed / #42"
+	def := flowDef(store.Step{ID: "review", Agent: "review {input}"})
+	wr, err := (&Flow{Launch: agent.launch}).Execute(context.Background(), job, def, "details", "run1", t.TempDir())
+	if err != nil || wr.Outcome != OutcomeDone {
+		t.Fatalf("flow ended %v (%v)", wr.Outcome, err)
+	}
+	if len(agent.calls) != 1 {
+		t.Fatalf("started %d agents, want one", len(agent.calls))
+	}
+	got := agent.calls[0].job.Env
+	if got["BERMUDA_REF"] != job.Ref || got["BERMUDA_STEP_ID"] != "review" || got[flow.EnvInput] != "details" {
+		t.Fatalf("agent environment = %#v, want reference and step inputs", got)
+	}
+}
+
 // A flow validates its own steps before running any of them. A job stored
 // before a rule existed must not run under the old rules.
 func TestAFlowRefusesToStartOnInvalidSteps(t *testing.T) {

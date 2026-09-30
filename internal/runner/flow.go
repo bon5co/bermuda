@@ -779,17 +779,15 @@ func (w *Flow) runAgentStep(ctx context.Context, job store.Job, step store.Step,
 	// BERMUDA_STEP_DIR names the same directory as BERMUDA_RUN_DIR, which the
 	// launcher injects. Both are given because a step is a run to the agent
 	// writing result.json, and a step to the flow reading it.
-	j.Env = map[string]string{
-		"BERMUDA_STEP_DIR": sr.Dir,
-		"BERMUDA_STEP_ID":  step.ID,
-		"BERMUDA_RUN_ID":   runID,
-		// The prompt has already been interpolated, so these are here for a step
-		// that would rather read a long input from the environment than have it
-		// pasted into its prompt — a stack trace, a diff, anything whose bulk
-		// would drown the instruction it was meant to illustrate.
-		flow.EnvInput:    vals.Input,
-		flow.EnvPrevious: vals.Previous,
-	}
+	j.Env["BERMUDA_STEP_DIR"] = sr.Dir
+	j.Env["BERMUDA_STEP_ID"] = step.ID
+	j.Env["BERMUDA_RUN_ID"] = runID
+	// The prompt has already been interpolated, so these are here for a step
+	// that would rather read a long input from the environment than have it
+	// pasted into its prompt — a stack trace, a diff, anything whose bulk
+	// would drown the instruction it was meant to illustrate.
+	j.Env[flow.EnvInput] = vals.Input
+	j.Env[flow.EnvPrevious] = vals.Previous
 	if w.Space.HasThread() {
 		// So `bermuda thread post` inside the step needs no flag. The prompt above
 		// says to post; a flag it has to remember on every call is a flag it
@@ -853,6 +851,7 @@ func (w *Flow) runCommandStep(ctx context.Context, job store.Job, step store.Ste
 		"BERMUDA_RUN_DIR="+sr.Dir,
 		"BERMUDA_STEP_ID="+step.ID,
 		"BERMUDA_JOB_ID="+job.ID)
+	env = append(env, "BERMUDA_REF="+job.Ref)
 	env = append(env, vals.Env()...)
 	if w.Space.HasThread() {
 		// A command step has no prompt to instruct, but a script that wants to say

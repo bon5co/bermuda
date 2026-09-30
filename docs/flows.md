@@ -69,9 +69,16 @@ thing anyone does with a new flow is run it to see what happens.
 
 ```bash
 bermuda flow run triage --input 'PR #431 fails on arm64'
+bermuda flow run triage --input 'PR #431 fails on arm64' --ref 'https://example.com/issues/42'
 bermuda flow status <run>       # per-step outcome, duration, and note
 bermuda flow resume <run>       # restart at the step that parked
 ```
+
+A direct flow call can carry `--ref` too. The run keeps that reference through
+parking and resumption, even when a job definition changes in between. Pass
+`flow resume <run> --ref <value>` to replace it, or `--ref ''` to clear it.
+Agent steps receive `$BERMUDA_REF`, as do `run:` commands. The value is one
+line of at most 512 bytes and otherwise remains exactly as typed.
 
 **The same command for both callers.** There is no agent-only path and no
 human-only path, so anything an agent can start a person can start identically,

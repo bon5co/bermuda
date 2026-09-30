@@ -121,6 +121,13 @@ func TestBrandStatesTheProblemBesideTheDot(t *testing.T) {
 	}
 }
 
+func TestBrandShowsHowManyHookEventsNeedRedelivery(t *testing.T) {
+	m := &Model{daemonUp: true, deadHooks: 3}
+	if got := m.renderBrand(); !strings.Contains(got, "3 dead hook events") {
+		t.Fatalf("brand = %q", got)
+	}
+}
+
 var errTest = testErr{}
 
 type testErr struct{}

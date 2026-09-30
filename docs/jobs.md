@@ -38,6 +38,8 @@ bermuda job add --id oneshot  --prompt '...' --at '2026-07-26 09:00'
 bermuda job add --id hourly   --prompt '...' --interval 1h --persistent
 
 bermuda job add --id promo --prompt '...' --tags marketing,daily
+bermuda job add --id ticket-review --prompt '...' --ref 'https://example.com/issues/42'
+bermuda job edit ticket-review --ref '' # clear the reference
 
 bermuda job list
 bermuda job list --tag daily        # only jobs carrying a tag
@@ -52,6 +54,14 @@ bermuda run list [--state parked] [--json]
 bermuda run show <run-id>          # artifacts: prompt.md, transcript.txt, result.json
 bermuda usage [--since 24h]        # token totals per job, newest first
 ```
+
+`--ref` attaches one external issue, ticket, or URL to a job. It is copied to
+each run when that run starts, so editing the job later does not rewrite what
+an earlier run was about. Unlike tags, it keeps case and spacing exactly as
+typed. It must fit on one line within 512 bytes. `job show`, `run show`, and
+the board detail show it. An agent receives it as `$BERMUDA_REF`; a reused
+persistent agent also gets the current value in each run's prompt, since its
+shell may still hold the value from an earlier run.
 
 Every run records what it cost. Input, output, cache-read and cache-creation
 tokens are stored separately because they are billed differently, alongside the

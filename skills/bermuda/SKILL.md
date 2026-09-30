@@ -444,6 +444,18 @@ bermuda job add --id nightly --flow nightly --input '...' --cron '0 4 * * *'
 Deterministic work belongs in a `run` step, not in a prompt. Most "the agent
 forgot" incidents are a command a model was asked to remember.
 
+## Run-settled hooks
+
+`bermuda job add|edit --ref <text>` attaches an external issue, ticket, or URL;
+`flow run|resume --ref <text>` does the same for a direct flow. The run keeps its
+reference and passes it as `$BERMUDA_REF`. An executable at
+`$BERMUDA_STATE_DIR/hooks/run-settled` receives a JSON event whenever a run
+settles as done, failed, or parked. Bermuda queues that event even if the daemon
+is down. `bermuda hook status` shows pending, retrying, dead, and skipped events;
+`bermuda hook redeliver <id>|--dead` requeues them. See [the hook
+contract](../../docs/hooks.md) before installing one. A hook reports a result
+elsewhere; its failure never changes the run's outcome.
+
 ## Testing and backups
 
 **`BERMUDA_STATE_DIR`, never `BERMUDA_HOME`.** `BERMUDA_HOME` does not exist in

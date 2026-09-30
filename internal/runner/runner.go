@@ -559,7 +559,7 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 
 	promptPath := filepath.Join(runDir, "prompt.md")
 	resultPath := filepath.Join(runDir, "result.json")
-	body := job.Prompt + "\n" + fmt.Sprintf(resultContract, resultPath) + "\n"
+	body := promptBody(job, resultPath)
 	if err := os.WriteFile(promptPath, []byte(body), statefs.File); err != nil {
 		return run, run.fail(fmt.Errorf("write prompt: %w", err))
 	}
@@ -613,6 +613,18 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 		}
 	}
 	return run, run.Err
+}
+
+// promptBody carries the current ref with every invocation. A persistent agent
+// can keep a tab whose shell still has the ref from an earlier run.
+func promptBody(job Job, resultPath string) string {
+	body := job.Prompt + "\n"
+	if ref := job.Env["BERMUDA_REF"]; ref != "" {
+		body += "Current external reference: " + strconv.Quote(ref) + ". Use this value for this run.\n"
+	} else {
+		body += "This run has no external reference.\n"
+	}
+	return body + fmt.Sprintf(resultContract, resultPath) + "\n"
 }
 
 // withRunDirAccess grants the agent write access to its own run directory.
