@@ -26,13 +26,13 @@ func (m *Model) View() string {
 	// and the conversation.
 	m.resetHits()
 	if m.editor != nil {
-		return m.window(m.renderEditor())
+		return m.renderPane(m.editorPane())
 	}
 	if m.runDetail != nil {
 		return m.window(m.renderRunDetail())
 	}
 	if m.detail != nil {
-		return m.window(m.renderDetail())
+		return m.renderPane(m.detailPane())
 	}
 	if m.focus == focusThread && m.threadFollow {
 		// The thread reads downwards, so the interesting end is the bottom. Asking
