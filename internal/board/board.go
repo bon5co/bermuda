@@ -566,11 +566,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case editFailedMsg:
 		if m.editor != nil {
 			m.editor.errMsg = msg.reason
+			m.editor.saving = false
 		}
 		return m, nil
 
 	case editSavedMsg:
 		m.editor = nil
+		m.scroll = 0
 		m.status = msg.jobID + " saved"
 		// Reload the detail so a job edited from its own page shows the new
 		// values rather than the ones it was opened with.
