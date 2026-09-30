@@ -42,7 +42,7 @@ check_tags() {
   [[ -z $remote_head || $remote_head = "$head" ]] || fail "remote $tag identifies another commit"
 }
 check_tags
-scratch=$(mktemp -d)
+scratch=$(mktemp -d "$HOME/.bermuda-release.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 # Keep tests off real Herdr. Give each test its own HOME-based state instead
 # of one shared BERMUDA_STATE_DIR, which overrides tests that isolate HOME.

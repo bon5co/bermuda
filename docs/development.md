@@ -39,7 +39,8 @@ herdr plugin install bon5co/bermuda --ref v3.3.0 --yes
 ```
 
 The script checks formatting, build, vet, the full test suite and the executable
-version before tagging the exact validated commit. Tests use a temporary home,
+version before tagging the exact validated commit. Tests use a temporary home
+under the original home directory, outside system temporary directories,
 clear any inherited `BERMUDA_STATE_DIR`, and retain the existing Go caches;
 Git and GitHub CLI keep the original home and credentials. It publishes source-only
 releases, refuses to move existing tags, and can resume a draft or a failed
