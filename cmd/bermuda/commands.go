@@ -228,6 +228,9 @@ func runShow(argv []string) error {
 	fmt.Fprintf(w, "agent status\t%s\nagent\t%s\ntab\t%s\nstarted\t%s\nduration\t%s\n",
 		r.Status, r.AgentName, r.TabID,
 		r.StartedAt.Format(time.RFC3339), r.Duration().Round(time.Second))
+	if r.Context != "" {
+		fmt.Fprintf(w, "context\t%s\ncontext session\t%s\ncontext note\t%s\n", r.Context, r.ContextSession, r.ContextNote)
+	}
 	if r.Note != "" {
 		fmt.Fprintf(w, "note\t%s\n", r.Note)
 	}
@@ -301,6 +304,7 @@ func persist(ctx context.Context, s *store.Store, run *runner.Run, trigger, cwd 
 		TabID:      run.TabID,
 		AgentName:  run.AgentName,
 		StartedAt:  run.StartedAt,
+		Context:    run.Context, ContextSession: run.ContextSession, ContextNote: run.ContextNote,
 	}
 	rec.Note = run.Note()
 	if !run.EndedAt.IsZero() {
