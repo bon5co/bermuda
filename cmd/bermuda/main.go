@@ -273,6 +273,11 @@ func printRun(run *runner.Run) {
 		"agent":   run.AgentName,
 		"seconds": int(run.EndedAt.Sub(run.StartedAt).Seconds()),
 	}
+	if run.Context != "" {
+		out["context"] = run.Context
+		out["context_session"] = run.ContextSession
+		out["context_note"] = run.ContextNote
+	}
 	if run.ParkReason != "" {
 		out["park_reason"] = run.ParkReason
 	}

@@ -128,9 +128,8 @@ type Job struct {
 	// Favorite sorts a job to the top of the board.
 	Favorite bool
 	// Persistent keeps the job's agent alive between runs and prompts it
-	// again, instead of starting a fresh agent. This is bermuda's equivalent
-	// of resuming a conversation: Herdr exposes no agent session id, but it
-	// can keep the agent itself.
+	// again, instead of starting a fresh agent. KeepContext also records the
+	// harness session so it can be resumed if that agent disappears.
 	Persistent bool
 	// KeepContext stops the reused agent being cleared between runs, so one
 	// job's conversation carries forward instead of restarting. It only means
@@ -139,6 +138,8 @@ type Job struct {
 	// bound, so a job that keeps context and sets no compaction window will
 	// eventually spend its whole run replaying itself.
 	KeepContext bool
+	// OnContextLoss chooses fresh (default) or park when recovery fails.
+	OnContextLoss string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
@@ -187,18 +188,21 @@ func (j Job) Finished(last *Run) bool {
 
 // Run is one execution of a job.
 type Run struct {
-	ID         string
-	JobID      string
-	Trigger    string // manual | scheduled
-	Outcome    string // running | done | failed | parked
-	ParkReason string
-	Status     string // last observed agent status
-	Note       string
-	RunDir     string
-	TabID      string
-	AgentName  string
-	StartedAt  time.Time
-	EndedAt    *time.Time
+	ID             string
+	JobID          string
+	Trigger        string // manual | scheduled
+	Outcome        string // running | done | failed | parked
+	ParkReason     string
+	Status         string // last observed agent status
+	Note           string
+	Context        string
+	ContextSession string
+	ContextNote    string
+	RunDir         string
+	TabID          string
+	AgentName      string
+	StartedAt      time.Time
+	EndedAt        *time.Time
 
 	// Token usage, read from the agent's session transcript after the run
 	// settles. The four counts are billed differently, so they are kept apart,
@@ -243,6 +247,11 @@ func (r Run) Duration() time.Duration {
 }
 
 const schema = `
+CREATE TABLE IF NOT EXISTS job_sessions (
+ job_id TEXT PRIMARY KEY, harness TEXT NOT NULL, kind TEXT NOT NULL,
+ value TEXT NOT NULL, run_id TEXT NOT NULL, captured_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS jobs (
   id          TEXT PRIMARY KEY,
   prompt      TEXT NOT NULL,
@@ -312,6 +321,10 @@ var addColumns = []struct{ table, column, ddl string }{
 	{"jobs", "favorite", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "persistent", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "keep_context", "INTEGER NOT NULL DEFAULT 0"},
+	{"jobs", "on_context_loss", "TEXT NOT NULL DEFAULT 'fresh'"},
+	{"runs", "context", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "context_session", "TEXT NOT NULL DEFAULT ''"},
+	{"runs", "context_note", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "updated_at", "INTEGER NOT NULL DEFAULT 0"},
 	{"jobs", "flow_id", "TEXT NOT NULL DEFAULT ''"},
 	{"jobs", "flow_input", "TEXT NOT NULL DEFAULT ''"},
@@ -438,10 +451,16 @@ func (s *Store) Close() error { return s.db.Close() }
 const jobColumns = `id, name, description, tags, prompt, cwd, kind, model, permission_mode,
 	allowed_tools, disallowed_tools, add_dirs, extra_args, skip_permissions, max_budget_usd,
 	autocompact, schedule_type, interval_seconds, cron_expr, run_at, catchup, timeout_ms,
-	enabled, favorite, persistent, keep_context, created_at, updated_at, flow_id, flow_input`
+	enabled, favorite, persistent, keep_context, created_at, updated_at, flow_id, flow_input, on_context_loss`
 
 // PutJob inserts or replaces a job.
 func (s *Store) PutJob(ctx context.Context, j Job) error {
+	if j.OnContextLoss == "" {
+		j.OnContextLoss = "fresh"
+	}
+	if j.OnContextLoss != "fresh" && j.OnContextLoss != "park" {
+		return fmt.Errorf("on-context-loss must be fresh or park")
+	}
 	now := time.Now()
 	if j.CreatedAt.IsZero() {
 		j.CreatedAt = now
@@ -474,7 +493,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 	// also stop anyone writing the job first and the flow second.
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO jobs (`+jobColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  name=excluded.name, description=excluded.description, tags=excluded.tags,
 		  prompt=excluded.prompt,
@@ -489,7 +508,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		  enabled=excluded.enabled, favorite=excluded.favorite,
 		  persistent=excluded.persistent, keep_context=excluded.keep_context,
 		  updated_at=excluded.updated_at,
-		  flow_id=excluded.flow_id, flow_input=excluded.flow_input`,
+		  flow_id=excluded.flow_id, flow_input=excluded.flow_input, on_context_loss=excluded.on_context_loss`,
 		j.ID, j.Name, j.Description, strings.Join(j.Tags, ","),
 		j.Prompt, j.CWD, j.Kind, j.Model, j.PermissionMode,
 		j.AllowedTools, j.DisallowedTools, strings.Join(j.AddDirs, "\n"), j.ExtraArgs,
@@ -497,7 +516,7 @@ func (s *Store) PutJob(ctx context.Context, j Job) error {
 		string(j.Schedule), j.IntervalSeconds, j.CronExpr, runAt, j.Catchup,
 		j.Timeout.Milliseconds(), boolToInt(j.Enabled), boolToInt(j.Favorite),
 		boolToInt(j.Persistent), boolToInt(j.KeepContext),
-		j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input)
+		j.CreatedAt.Unix(), j.UpdatedAt.Unix(), j.Flow, j.Input, j.OnContextLoss)
 	return err
 }
 
@@ -511,7 +530,7 @@ func scanJob(rows interface{ Scan(...any) error }) (Job, error) {
 		&j.Model, &j.PermissionMode, &j.AllowedTools, &j.DisallowedTools, &addDirs,
 		&j.ExtraArgs, &skip, &j.MaxBudgetUSD, &j.AutoCompact, &schedule, &j.IntervalSeconds,
 		&j.CronExpr, &runAt, &j.Catchup, &timeoutMS, &enabled, &favorite,
-		&persistent, &keepContext, &created, &updated, &j.Flow, &j.Input)
+		&persistent, &keepContext, &created, &updated, &j.Flow, &j.Input, &j.OnContextLoss)
 	if err != nil {
 		return j, err
 	}
@@ -617,20 +636,28 @@ func (s *Store) SetEnabled(ctx context.Context, id string, enabled bool) error {
 
 // DeleteJob removes a job. Its run history is kept.
 func (s *Store) DeleteJob(ctx context.Context, id string) error {
-	res, err := s.db.ExecContext(ctx, `DELETE FROM jobs WHERE id=?`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	res, err := tx.ExecContext(ctx, `DELETE FROM jobs WHERE id=?`, id)
 	if err != nil {
 		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrNotFound
 	}
-	return nil
+	if _, err := tx.ExecContext(ctx, `DELETE FROM job_sessions WHERE job_id=?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 const runColumns = `id, job_id, trigger, outcome, park_reason, status, note,
 	run_dir, tab_id, agent_name, started_at, ended_at,
 	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, model,
-	flow_id, flow_input, space_id, thread_id, check_list`
+	flow_id, flow_input, space_id, thread_id, check_list, context, context_session, context_note`
 
 // PutRun inserts or updates a run.
 func (s *Store) PutRun(ctx context.Context, r Run) error {
@@ -643,7 +670,7 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 	}
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO runs (`+runColumns+`)
-		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  trigger=excluded.trigger, outcome=excluded.outcome,
 		  park_reason=excluded.park_reason, status=excluded.status,
@@ -655,11 +682,12 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 		  model=excluded.model,
 		  flow_id=excluded.flow_id, flow_input=excluded.flow_input,
 		  space_id=excluded.space_id, thread_id=excluded.thread_id,
-		  check_list=excluded.check_list`,
+		  check_list=excluded.check_list, context=excluded.context,
+		  context_session=excluded.context_session, context_note=excluded.context_note`,
 		r.ID, r.JobID, r.Trigger, r.Outcome, r.ParkReason, r.Status, r.Note,
 		r.RunDir, r.TabID, r.AgentName, r.StartedAt.Unix(), ended,
 		r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheCreationTokens,
-		r.Model, r.Flow, r.Input, r.Space, r.Thread, r.CheckList)
+		r.Model, r.Flow, r.Input, r.Space, r.Thread, r.CheckList, r.Context, r.ContextSession, r.ContextNote)
 	return err
 }
 
@@ -671,7 +699,7 @@ func scanRun(rows interface{ Scan(...any) error }) (Run, error) {
 		&r.Status, &r.Note, &r.RunDir, &r.TabID, &r.AgentName, &started, &ended,
 		&r.InputTokens, &r.OutputTokens, &r.CacheReadTokens,
 		&r.CacheCreationTokens, &r.Model, &r.Flow, &r.Input, &r.Space, &r.Thread,
-		&r.CheckList)
+		&r.CheckList, &r.Context, &r.ContextSession, &r.ContextNote)
 	if err != nil {
 		return r, err
 	}

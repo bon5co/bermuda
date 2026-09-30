@@ -127,7 +127,8 @@ func TestReportStraysWithNoLog(t *testing.T) {
 // A dead pid is history, not an alarm. The log is append-only, so every stray
 // ever recorded stays in it; only the ones still running are a problem.
 func TestReportStraysIgnoresDeadRecords(t *testing.T) {
-	homeAt(t)
+	// Digits in the store path are not a reported process ID.
+	t.Setenv("HOME", filepath.Join(homeAt(t), "home111"))
 	recordStray(roleDaemon, 111, filepath.Join(t.TempDir(), "store"))
 	aliveIs(t, map[int]bool{})
 
@@ -138,7 +139,7 @@ func TestReportStraysIgnoresDeadRecords(t *testing.T) {
 	if !strings.Contains(buf.String(), "no stray scheduler is running") {
 		t.Fatalf("got %q", buf.String())
 	}
-	if strings.Contains(buf.String(), "111") {
+	if strings.Contains(buf.String(), "pid 111") {
 		t.Fatalf("dead pid reported: %q", buf.String())
 	}
 }
