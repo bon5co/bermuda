@@ -264,7 +264,7 @@ func (d *daemon) run(ctx context.Context) {
 
 // sweep launches every job that is due and not already running.
 func (d *daemon) sweep(ctx context.Context) {
-	d.retireClosedWorkspaces(ctx)
+	d.syncWorkspaceThreads(ctx)
 	jobs, err := d.store.Jobs(ctx)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "bermuda: read jobs:", err)
@@ -308,8 +308,11 @@ func (d *daemon) sweep(ctx context.Context) {
 	}
 }
 
-// retireClosedWorkspaces closes the thread of any workspace herdr no longer
-// reports.
+// syncWorkspaceThreads opens a thread for every workspace herdr reports, and
+// closes the thread of any workspace it no longer reports.
+//
+// Opening them up front is what puts every space on the board and in `thread
+// list`, rather than only the ones an agent has already spoken in.
 //
 // A workspace thread is created without anyone asking, so it has to be tidied
 // without anyone asking too: otherwise `thread list` fills with the spaces of
@@ -325,7 +328,7 @@ func (d *daemon) sweep(ctx context.Context) {
 // be read as every workspace having closed: that would retire every thread on
 // the machine at once, and closing is not something a tick should be able to do
 // on bad information.
-func (d *daemon) retireClosedWorkspaces(ctx context.Context) {
+func (d *daemon) syncWorkspaceThreads(ctx context.Context) {
 	c := herdrcli.New()
 	if c == nil {
 		return
@@ -337,6 +340,10 @@ func (d *daemon) retireClosedWorkspaces(ctx context.Context) {
 	live := make([]string, 0, len(spaces))
 	for _, w := range spaces {
 		live = append(live, w.WorkspaceID)
+		// Silent, like the rest of this sweep: a failure that persists would
+		// otherwise write a line to bermuda.log every tick, and the first agent to
+		// post in the space creates the thread anyway.
+		_, _ = d.store.EnsureWorkspaceThread(ctx, w.WorkspaceID, w.Label)
 	}
 	closed, err := d.store.CloseVanishedWorkspaces(ctx, live, time.Now())
 	if err != nil {
