@@ -12,14 +12,23 @@ Put an executable at `$BERMUDA_STATE_DIR/hooks/run-settled` (normally
 `cmd.exe`. There is one hook for every job. It can inspect `run.ref` and ignore
 events it does not care about.
 
-The hook receives one versioned JSON object on stdin. Its working directory is
-the state directory. The same identifiers are available as environment
+The hook receives one versioned JSON object on stdin. Its working directory and
+`BERMUDA_STATE_DIR` are the absolute state directory, including when the state
+override is relative. Hook paths are resolved from that directory. The same
+identifiers are available as environment
 variables: `BERMUDA_EVENT_ID`, `BERMUDA_RUN_ID`, `BERMUDA_JOB_ID`,
 `BERMUDA_RUN_OUTCOME`, `BERMUDA_PARK_REASON`, `BERMUDA_REF`, and
 `BERMUDA_RUN_DIR`. The object includes the run, its settlement number, the
 previous *settled* outcome, and the parsed root `result.json` when one was
 readable. A flow normally has `result: null`: its authoritative results are in
 step directories. Bermuda never judges an outcome from the transcript.
+
+The optional root result snapshot is read before the SQLite write transaction.
+Only regular files containing valid JSON of at most 1 MiB are included. Snapshot
+work waits at most one second, or until the caller's context expires; unreadable,
+nonregular, oversized, and timed-out results become `null`. At most four readers
+can perform filesystem I/O at once, so a stalled filesystem cannot accumulate
+unbounded background work. This does not change the run's outcome.
 
 Each event payload is a snapshot. Changing the end time of an already settled
 run without changing its outcome or whether it has an end time does not emit a

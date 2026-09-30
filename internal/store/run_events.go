@@ -6,8 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/bon5co/bermuda/v3/internal/version"
@@ -35,7 +33,7 @@ func isSettled(outcome string) bool {
 	return outcome == "done" || outcome == "failed" || outcome == "parked"
 }
 
-func enqueueRunSettlement(ctx context.Context, conn *sql.Conn, r Run) error {
+func enqueueRunSettlement(ctx context.Context, conn *sql.Conn, r Run, result json.RawMessage) error {
 	var lastSettlement int
 	var lastPayload string
 	err := conn.QueryRowContext(ctx, `SELECT settlement, payload FROM run_events WHERE run_id=? ORDER BY settlement DESC LIMIT 1`, r.ID).Scan(&lastSettlement, &lastPayload)
@@ -63,7 +61,7 @@ func enqueueRunSettlement(ctx context.Context, conn *sql.Conn, r Run) error {
 	if err != nil {
 		return err
 	}
-	payload, err := json.Marshal(settlementPayload(r, id, lastSettlement+1, previousOutcome))
+	payload, err := json.Marshal(settlementPayload(r, id, lastSettlement+1, previousOutcome, result))
 	if err != nil {
 		return err
 	}
@@ -71,7 +69,7 @@ func enqueueRunSettlement(ctx context.Context, conn *sql.Conn, r Run) error {
 	return err
 }
 
-func settlementPayload(r Run, id int64, settlement int, previous string) any {
+func settlementPayload(r Run, id int64, settlement int, previous string, result json.RawMessage) any {
 	type usage struct {
 		Input         int64 `json:"input"`
 		Output        int64 `json:"output"`
@@ -117,19 +115,8 @@ func settlementPayload(r Run, id int64, settlement int, previous string) any {
 			RunDir: r.RunDir, Space: r.Space, Thread: r.Thread,
 			StartedAt: r.StartedAt.UTC().Format(time.RFC3339), EndedAt: ended,
 			Model: r.Model, Tokens: usage{r.InputTokens, r.OutputTokens, r.CacheReadTokens, r.CacheCreationTokens}},
-		Result: resultAtSettlement(r.RunDir),
+		Result: result,
 	}
-}
-
-func resultAtSettlement(runDir string) json.RawMessage {
-	if runDir == "" {
-		return nil
-	}
-	b, err := os.ReadFile(filepath.Join(runDir, "result.json"))
-	if err != nil || !json.Valid(b) {
-		return nil
-	}
-	return json.RawMessage(b)
 }
 
 const eventColumns = `id,run_id,kind,settlement,prev_outcome,payload,created_at,attempts,next_at,delivered_at,last_error,generation`

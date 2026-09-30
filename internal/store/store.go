@@ -8,6 +8,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -680,6 +681,12 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 	if r.Trigger == "" {
 		r.Trigger = "manual"
 	}
+	// Snapshot optional file data before acquiring a connection or a write lock.
+	// The run and its frozen event still commit together below.
+	var result json.RawMessage
+	if isSettled(r.Outcome) {
+		result = resultAtSettlement(ctx, r.RunDir)
+	}
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
 		return err
@@ -723,7 +730,7 @@ func (s *Store) PutRun(ctx context.Context, r Run) error {
 		return err
 	}
 	if isSettled(r.Outcome) && (errors.Is(previousErr, sql.ErrNoRows) || previous != r.Outcome || previousEnded.Valid != (r.EndedAt != nil)) {
-		if err := enqueueRunSettlement(ctx, conn, r); err != nil {
+		if err := enqueueRunSettlement(ctx, conn, r, result); err != nil {
 			return err
 		}
 	}

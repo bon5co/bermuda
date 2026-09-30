@@ -21,6 +21,10 @@ const hookTimeout = 30 * time.Second
 // runSettledHook invokes one installed hook with a frozen event. It never
 // changes a run row. A missing or non-executable hook is a deliberate skip.
 func runSettledHook(ctx context.Context, dir string, e store.RunEvent, timeout time.Duration) (bool, error) {
+	dir, err := filepath.Abs(dir)
+	if err != nil {
+		return false, fmt.Errorf("hook state directory: %w", err)
+	}
 	path, args, found, err := settledHookCommand(dir)
 	if err != nil {
 		return false, err
