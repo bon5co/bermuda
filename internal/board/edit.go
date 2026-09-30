@@ -120,15 +120,6 @@ func (e *editor) commitField() {
 	e.active = -1
 }
 
-func (e *editor) cancelField() {
-	if e.active < 0 {
-		return
-	}
-	e.area.Blur()
-	e.input.Blur()
-	e.active = -1
-}
-
 // openEditor starts editing the job currently in view.
 func (m *Model) openEditor() tea.Cmd {
 	j, ok := m.selectedJob()
@@ -162,14 +153,13 @@ func (m *Model) openNewJob() tea.Cmd {
 func (m *Model) handleEditorKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	e := m.editor
 
-	// While a text editor is open, keys belong to it, except for the two that
-	// close it. A multi-line field needs Enter for newlines, so it commits
-	// with ctrl+s instead.
+	// While a text editor is open, Esc abandons the whole form and ctrl+s
+	// commits the field. A multi-line field keeps Enter for newlines.
 	if e.active >= 0 {
 		switch msg.String() {
 		case "esc":
-			e.cancelField()
-			return m, nil
+			m.editor = nil
+			return m, m.load()
 		case "ctrl+s":
 			e.commitField()
 			return m, nil
@@ -317,7 +307,7 @@ func (m *Model) renderEditor() string {
 			if f.kind == fieldTextArea {
 				b.WriteString(cursor + label + "\n")
 				b.WriteString(e.area.View() + "\n")
-				b.WriteString(dimStyle.Render("      ctrl+s save field · esc cancel") + "\n")
+				b.WriteString(dimStyle.Render("      ctrl+s save field · esc abandon edit") + "\n")
 				continue
 			}
 			b.WriteString(cursor + label + " " + e.input.View() + "\n")
@@ -351,7 +341,7 @@ func (m *Model) renderEditor() string {
 		b.WriteString("\n" + outcomeStyles["failed"].Render(e.errMsg) + "\n")
 	}
 	b.WriteString("\n" + helpStyle.Render(
-		"j/k move · l/→ or enter edit · space toggle · ctrl+s save job · esc cancel"))
+		"j/k move · l/→ or enter edit · space toggle · ctrl+s save job · esc abandon edit"))
 	return b.String()
 }
 
