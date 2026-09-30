@@ -378,6 +378,7 @@ place instead of duplicating it.
 
 Bermuda's maintainer is [Lodimup](https://github.com/Lodimup).
 [calicoagent](https://github.com/calicoagent) is his scope-limited agent account.
+Please contact [Lodimup](https://github.com/Lodimup) instead.
 
 **v3.0.0**, one maintainer, in daily use on the machine it was written for.
 Few stars and a single author is a fair thing to hesitate over in software that
