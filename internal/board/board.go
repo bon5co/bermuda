@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
+	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/flow"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
 	"github.com/bon5co/bermuda/v3/internal/index"
@@ -54,6 +55,9 @@ type Model struct {
 	deps   Deps
 	// daemonUp is the last observed scheduler state, refreshed on the tick.
 	daemonUp bool
+
+	alogEntries []alog.Entry
+	alogErr     error
 
 	jobs []store.Job
 	runs []store.Run
@@ -189,6 +193,7 @@ const (
 	focusFlows
 	focusForum
 	focusMemory
+	focusALog
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
@@ -213,6 +218,8 @@ type ResumeFlowFunc func(runID string) error
 // Deps are the behaviours the board needs from the command layer.
 type Deps struct {
 	Run RunFunc
+	// ALogDir is the Markdown activity log directory resolved by the CLI.
+	ALogDir string
 	// RunFlow and ResumeFlow are the two things the FLOWS tab does. Without
 	// them the board could show a parked flow and never act on it, which is the
 	// state that tab exists to end.
@@ -245,6 +252,7 @@ type Deps struct {
 func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 	return &Model{
 		store: s, herdr: h, runJob: deps.Run, deps: deps,
+		focus:    focusALog,
 		last:     map[string]store.Run{},
 		lastFlow: map[string]store.Run{},
 		steps:    map[string][]store.RunStep{},
@@ -264,8 +272,10 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 type tickMsg time.Time
 
 type dataMsg struct {
-	jobs []store.Job
-	runs []store.Run
+	alogEntries []alog.Entry
+	alogErr     error
+	jobs        []store.Job
+	runs        []store.Run
 	// lastRuns is every job's most recent run, asked of the store directly.
 	// runs above is a window on the newest runs of all jobs together, so a job
 	// that has not run lately is simply not in it — which is every job the
@@ -335,22 +345,26 @@ func (m *Model) load() tea.Cmd {
 	// after the reader has moved on can be recognised and dropped.
 	thread := m.currentThread()
 	return func() tea.Msg {
+		entries, alogErr := alog.List(m.deps.ALogDir)
+		fail := func(err error) dataMsg {
+			return dataMsg{err: err, alogEntries: entries, alogErr: alogErr}
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		jobs, err := m.store.Jobs(ctx)
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		runs, err := m.store.Runs(ctx, "", 100)
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		// The RUNS tab wants the newest hundred; the JOBS tab wants each job's
 		// own latest, however long ago that was. They are two different
 		// questions and deriving the second from the first answers it wrong.
 		lastRuns, err := m.store.LastRuns(ctx)
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		// The steps of every run on screen in one query rather than one query
 		// per row: this runs every three seconds for as long as the board is
@@ -361,24 +375,24 @@ func (m *Model) load() tea.Cmd {
 		}
 		steps, err := m.store.RunStepsFor(ctx, ids)
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		// One conversation, not all of them: reading somebody else's project is
 		// the cost threads exist to remove, and it would be paid on every tick.
 		log, err := m.store.ThreadLog(ctx, store.ThreadFilter{
 			Thread: thread, Limit: threadTail})
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		// Claims are read for this instant, so a lease that lapsed since the
 		// last tick disappears without anything having swept it.
 		claims, err := m.store.ThreadClaims(ctx, time.Now())
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		threads, err := m.store.Threads(ctx)
 		if err != nil {
-			return dataMsg{err: err}
+			return fail(err)
 		}
 		// Flows are files, so they are listed rather than queried — here, beside
 		// the store reads, because this is the goroutine that is allowed to
@@ -400,7 +414,8 @@ func (m *Model) load() tea.Cmd {
 		}
 		return dataMsg{jobs: jobs, runs: runs, lastRuns: lastRuns, steps: steps,
 			thread: log, threadID: thread, claims: claims, threads: threads,
-			flows: flows, flowErrs: flowErrs, memory: mem, glance: glance}
+			flows: flows, flowErrs: flowErrs, memory: mem, glance: glance,
+			alogEntries: entries, alogErr: alogErr}
 	}
 }
 
@@ -469,6 +484,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case dataMsg:
+		m.alogEntries, m.alogErr = msg.alogEntries, msg.alogErr
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil

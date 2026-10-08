@@ -559,7 +559,7 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 
 	promptPath := filepath.Join(runDir, "prompt.md")
 	resultPath := filepath.Join(runDir, "result.json")
-	body := job.Prompt + "\n" + fmt.Sprintf(resultContract, resultPath) + "\n"
+	body := job.Prompt + ALogContract(r.StateDir) + "\n" + fmt.Sprintf(resultContract, resultPath) + "\n"
 	if err := os.WriteFile(promptPath, []byte(body), statefs.File); err != nil {
 		return run, run.fail(fmt.Errorf("write prompt: %w", err))
 	}

@@ -70,6 +70,8 @@ func newTestModel(t *testing.T) *Model {
 
 	// Load real data through the same message the tick uses.
 	m.apply(t, m.load()())
+	// This fixture exercises the JOBS list, independently of the opening tab.
+	m.selectTab(focusJobs)
 	return m
 }
 
@@ -124,7 +126,7 @@ func TestTabCyclesEveryListAndResetsCursor(t *testing.T) {
 	if m.cursor != 0 {
 		t.Errorf("cursor is %d after switching lists, want 0: the old index means nothing in the new list", m.cursor)
 	}
-	for _, want := range []focus{focusFlows, focusForum, focusMemory, focusThread, focusJobs} {
+	for _, want := range []focus{focusFlows, focusForum, focusMemory, focusALog, focusThread, focusJobs} {
 		m.pressSpecial(t, tea.KeyTab)
 		if m.focus != want {
 			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)
@@ -132,7 +134,7 @@ func TestTabCyclesEveryListAndResetsCursor(t *testing.T) {
 	}
 
 	// Backwards too, or a reader who overshoots has to walk all the way round.
-	for _, want := range []focus{focusThread, focusMemory, focusForum, focusFlows, focusRuns, focusJobs} {
+	for _, want := range []focus{focusThread, focusALog, focusMemory, focusForum, focusFlows, focusRuns, focusJobs} {
 		m.pressSpecial(t, tea.KeyShiftTab)
 		if m.focus != want {
 			t.Fatalf("shift+tab moved to focus %d, want %d", m.focus, want)

@@ -1,6 +1,6 @@
 ---
 name: bermuda
-description: Coordinate with other agents and run multi-step work through the Bermuda harness — threads (what changed on this machine), claims (exclusive resources like the browser), @mentions, the forum (durable, searchable posts other agents find later), memory (standing facts as Obsidian notes), checklists (what is still outstanding on a piece of work, and who it is blocked on), and flows (declared steps instead of one long prompt). Use before taking a shared resource, when another agent needs to know something, when looking for what an earlier agent already worked out, whenever a task spans more than a couple of artifacts a human will ask the status of, and whenever a task has a step that must not be skipped.
+description: Keep the human informed through A.LOG summaries and coordinate with other agents through the Bermuda harness — threads, claims, @mentions, the forum, memory, checklists, and flows. Use at task start and meaningful milestones, before taking a shared resource, when another agent needs to know something, when finding an earlier agent's work, whenever a task spans several artifacts, and whenever a step must not be skipped.
 ---
 
 # Bermuda
@@ -19,6 +19,31 @@ The plugin's own copy lives under the herdr-managed checkout; `go install
 github.com/bon5co/bermuda/v3/cmd/bermuda@latest` puts one where you can type it.
 Both talk to the same store. The `/v2` is load-bearing — without it Go resolves
 the v1 tags and installs a version from before flows and threads existed.
+
+## A.LOG — keep the human informed
+
+At task start, read `bermuda alog list --limit 20` for recent cross-agent context.
+Write a start update, then significant milestones, blockers, and finish. Each
+body is at most **50 words**: the result or constraint and next action, not a
+command transcript. Use the actual repository and working branch; outside a
+repository use the working directory and branch `none`. Never include secrets.
+
+```bash
+bermuda alog write --repo acme/widget --branch feat/cards --topic 'Cards ready' \
+  --body 'Cards render repository and branch. Targeted checks passed; integrated review next.'
+bermuda alog list --json --limit 20
+bermuda alog read <id>
+bermuda alog edit <id> --body 'Independent review passed. Ready to merge.'
+bermuda alog path
+```
+
+One Markdown file per entry in `alog/` under the Bermuda state directory. The
+first board tab, **A.LOG**, shows individual cards newest first, ordered by
+filesystem creation time. CLI edits preserve that time and unedited fields.
+Where birth time is unavailable, the filename's original write timestamp is
+used and explicitly labeled as a fallback. `--body -` reads stdin. These
+summaries supplement thread coordination and required `result.json`, not
+replace them. → `docs/alog.md`
 
 ## Threads — what is currently true
 
@@ -460,8 +485,8 @@ live database: copying `bermuda.db` alone gave 0 messages, copying it with
 
 ## Board
 
-`bermuda board`. `1`/`2`/`3`/`4` are the tabs left to right —
-threads/jobs/runs/flows — `tab` cycles them, `j`/`k` move, `/` search, `R` run
+`bermuda board`. `1` selects **A.LOG**, the first tab; the remaining tabs shift
+right. `tab` cycles them, `j`/`k` move, `/` search, `R` run
 the selected job, `space` expand a flow run's steps, `i` write into the thread,
 `<`/`>` step along the thread row, `t` thread picker, `q` quit.
 

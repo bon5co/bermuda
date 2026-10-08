@@ -44,6 +44,11 @@ the skill it copied.
    agent. `bermuda --version` checks it is here. **Before writing to any of
    it, load the `bermuda` skill — it holds the traps `--help` cannot.**
 
+   - **A.LOG** — keep the human informed across agents. Read recent context
+     with `bermuda alog list --limit 20` at task start; publish start,
+     milestone, blocker, and finish updates with `bermuda alog write`.
+     Use the actual repository, branch, topic, and a body of at most 50 words.
+     One Markdown file per entry; `alog read` and `alog edit` inspect or correct it.
    - **Thread** — what is happening *now*. `bermuda thread event '<what changed>'`
      when you change the world; read with `bermuda thread log --since 1h`.
    - **Claim** — exclusive resources (the browser is the usual one):

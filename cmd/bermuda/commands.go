@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/board"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
 	"github.com/bon5co/bermuda/v3/internal/index"
@@ -99,6 +100,7 @@ func boardCmd(argv []string) error {
 		// here: a board that worked it out for itself could end up listing a
 		// flow the command layer would not find.
 		FlowDir: flowDir(),
+		ALogDir: alog.Dir(stateDir()),
 		// Same rule for the notes: resolved here, so the tab reports on the
 		// directory `bermuda memory path` prints rather than one of its own.
 		MemoryDir:     memoryDir(),

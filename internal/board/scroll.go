@@ -58,7 +58,7 @@ func (m *Model) windowBody(content string, avail int) string {
 	// Follow the selection: find the marked row and pull the window to it.
 	cursorLine := -1
 	for i, l := range lines {
-		if strings.Contains(l, cursorMark) {
+		if m.focus != focusALog && strings.Contains(l, cursorMark) {
 			cursorLine = i
 			break
 		}

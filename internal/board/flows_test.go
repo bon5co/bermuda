@@ -2,6 +2,7 @@ package board
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -154,6 +155,11 @@ func TestTheFlowsTabListsFlowsIncludingTheBrokenOnes(t *testing.T) {
 		t.Fatalf("the tab shows %d rows, want all 3 flow files", got)
 	}
 
+	// Error rows intentionally truncate to the table width. macOS gives
+	// TempDir a long prefix; remove that fixture-only prefix so this assertion
+	// tests the filename and parse error rather than the OS's temporary path.
+	fb.flowErrs[0] = errors.New(strings.ReplaceAll(fb.flowErrs[0].Error(),
+		fb.dir+string(os.PathSeparator), ""))
 	out := fb.renderFlows(0, len(fb.visibleFlows()))
 	for _, want := range []string{"triage", "sweep", "broken.yml"} {
 		if !strings.Contains(out, want) {

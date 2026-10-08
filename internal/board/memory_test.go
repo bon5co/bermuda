@@ -84,7 +84,7 @@ func TestMemoryTabHasNothingToOpen(t *testing.T) {
 	m := newTestModel(t)
 	m.focus = focusRuns
 	m.cursor = 1
-	m.press(t, "6")
+	m.press(t, "7")
 
 	if m.focus != focusMemory {
 		t.Fatalf("6 opened focus %d, want the memory tab", m.focus)

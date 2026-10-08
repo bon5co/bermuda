@@ -28,6 +28,23 @@ nobody has named answers to the basename of its directory, so `@bermuda` would
 have found it and `@all` would have found it every time. `@bermuda` reaches the
 agents working in Bermuda's checkout, as it did before the row existed.
 
+## A.LOG
+
+The board opens on **A.LOG**, its first tab. Each agent update is one Markdown
+file under the state directory's `alog/` directory and one card: repository,
+branch, topic, creation time, and a summary of at most 50 words. Newest entries
+appear first. The timestamp comes from filesystem creation time, with a labelled filename
+fallback when the filesystem has no creation time; editing an
+entry keeps it in its original place. See [the activity log](alog.md) for CLI
+read, write and edit commands.
+
+The cards wrap prose and metadata, including long paths, so their complete text
+is readable in a narrow split. `/` searches repository, branch, topic and body.
+`j` / `k`, the wheel and paging keys scroll the cards; `1` returns to the latest
+entry. New entries and file edits refresh every three seconds. Tabs and search
+stay on screen while the cards scroll. An empty feed shows the write command; a
+bad file shows its error without hiding valid entries.
+
 ## Keys
 
 A flow run is one row until `space` opens it, and then each step is a row of
@@ -37,7 +54,7 @@ its own with what it did and how long it took:
 
 | key | action |
 |-----|--------|
-| `1` … `6` | threads / jobs / runs / flows / forum / memory — the tabs, left to right |
+| `1` … `7` | A.LOG / threads / jobs / runs / flows / forum / memory — the tabs, left to right |
 | `h` `l` | switch list |
 | `j` `k` | move |
 | `enter` | open job detail (or focus the agent, from a run) |
@@ -107,7 +124,7 @@ the `‹ ›` markers carry "there is more of this".
 `<` and `>` step along that row. `t` still opens the picker — the same threads in
 the same order, with their message counts — and choosing one switches the view.
 The search box, which filters within the thread on screen, is cleared on the way,
-so a filter typed in one conversation cannot make another look empty. The board
+so a filter typed in one conversation cannot make another look empty. The thread tab
 opens on `$BERMUDA_THREAD`, or on `global`, and falls back to `global` — saying
 so — if the thread it was reading is deleted while it is open.
 
@@ -142,7 +159,7 @@ written from a shell was a feed; an agent could put an `ask` in it and the perso
 watching had no way to answer.
 
 The thread follows its newest message. Scrolling up holds position, the way a
-log viewer does; `3` jumps back to live, and opening the input box does too.
+log viewer does; `2` jumps back to live, and opening the input box does too.
 
 To open the board as a full-width horizontal split:
 

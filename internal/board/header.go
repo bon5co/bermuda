@@ -59,14 +59,14 @@ func itoa(n int) string {
 // tabOrder is the tabs left to right as they are drawn, and tabLabels names
 // them in the same order.
 //
-// Threads first: it is the tab that is read, where the others are checked.
+// A.LOG first: the activity cards are the human's opening glance.
 // Tab walks this list and the number keys count it, rather than following the
 // order the focus constants happen to be declared in — a tab appended to that
 // enum would otherwise be reached by pressing a number pointing somewhere else,
 // and there is nothing on screen a reader could use to notice.
 var (
-	tabOrder  = []focus{focusThread, focusJobs, focusRuns, focusFlows, focusForum, focusMemory}
-	tabLabels = []string{"THREADS", "JOBS", "RUNS", "FLOWS", "FORUM", "MEMORY"}
+	tabOrder  = []focus{focusALog, focusThread, focusJobs, focusRuns, focusFlows, focusForum, focusMemory}
+	tabLabels = []string{"A.LOG", "THREADS", "JOBS", "RUNS", "FLOWS", "FORUM", "MEMORY"}
 )
 
 // tabIndex is where the current focus sits in the drawn order.
@@ -108,6 +108,30 @@ func (m *Model) stepTab(delta int) {
 func (m *Model) renderTabs(suffix string) string {
 	labels := tabLabels
 	active := m.tabIndex()
+	first := 0
+	// Keep complete labels around the active folder visible in narrow splits.
+	// The drawn subset still records the original focus for mouse clicks.
+	if m.width > 0 {
+		used := 1
+		for _, label := range labels {
+			used += len(label) + 3
+		}
+		if used > m.width {
+			first = active
+			end := active + 1
+			used = len(labels[active]) + 4
+			for end < len(labels) && used+len(labels[end])+3 <= m.width {
+				used += len(labels[end]) + 3
+				end++
+			}
+			for first > 0 && used+len(labels[first-1])+3 <= m.width {
+				first--
+				used += len(labels[first]) + 3
+			}
+			labels = labels[first:end]
+			active -= first
+		}
+	}
 
 	var top, mid, bot strings.Builder
 	// x tracks how far across the row the next folder starts, so a click can be
@@ -137,7 +161,7 @@ func (m *Model) renderTabs(suffix string) string {
 		mid.WriteString(text.Render(" " + label + " "))
 		// The whole folder is the target, padding included: a reader aiming at a
 		// tab aims at the tab, not at its letters.
-		m.tabHits = append(m.tabHits, tabHit{x0: x, x1: x + len(label) + 2, focus: tabOrder[i]})
+		m.tabHits = append(m.tabHits, tabHit{x0: x, x1: x + len(label) + 2, focus: tabOrder[first+i]})
 		x += len(label) + 3 // the folder, plus the edge that follows it
 		if i == active {
 			bot.WriteString(strings.Repeat(" ", len(label)+2))

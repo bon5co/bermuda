@@ -61,7 +61,7 @@ func TestAMessageTypedAtTheBoardReachesTheAgentItNames(t *testing.T) {
 	h := newFakeHerd(mention.Agent{Target: "w1:pA", Dir: "/home/dev/dotfiles"})
 	m.mentions = h
 
-	m.press(t, "1")
+	m.press(t, "2")
 	m.press(t, "i")
 	m.typeText(t, "@dotfiles the browser is free")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyCtrlS})
@@ -89,7 +89,7 @@ func TestDeliveryNeverHappensOnTheUIThread(t *testing.T) {
 	h := newFakeHerd(mention.Agent{Target: "w1:pA", Name: "ada"})
 	m.mentions = h
 
-	m.press(t, "1")
+	m.press(t, "2")
 	m.press(t, "i")
 	m.typeText(t, "@ada ping")
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
@@ -116,7 +116,7 @@ func TestADeliveryFailureStillLeavesTheMessagePosted(t *testing.T) {
 	h.deliver = errors.New("agent_pane_busy")
 	m.mentions = h
 
-	m.press(t, "1")
+	m.press(t, "2")
 	m.press(t, "i")
 	m.typeText(t, "@ada please stop")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyCtrlS})
