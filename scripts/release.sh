@@ -8,13 +8,48 @@ Usage: scripts/release.sh [--check-only|--draft|--publish] vX.Y.Z [notes-file] [
 The default is --check-only. Draft/publish require a notes file and a clean
 checkout at origin/main. Existing tags must identify the same validated commit;
 this script never moves tags. No binary assets are uploaded.
+
+Set BERMUDA_RELEASE_CHECK_RUNNER to an executable path to run Go validation
+elsewhere. The runner receives: -- scripts/release.sh --go-checks vX.Y.Z
 EOF
 }
 fail() { printf 'release: %s\n' "$*" >&2; exit 1; }
+
+check_manifest() {
+  manifest=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' herdr-plugin.toml)
+  [[ $manifest = "${tag#v}" ]] || fail "manifest version $manifest does not match $tag"
+}
+
+# This check-only helper also runs from a synchronized source directory without
+# .git. Publication checks and credentials remain on the calling machine.
+go_checks() {
+  scratch=$(mktemp -d "$HOME/.bermuda-release.XXXXXX")
+  trap 'rm -rf "$scratch"' EXIT
+  # Keep tests off real Herdr. Give each test its own HOME-based state instead
+  # of one shared BERMUDA_STATE_DIR, which overrides tests that isolate HOME.
+  export HERDR_BIN_PATH="$scratch/no-herdr"
+  mkdir -p "$scratch/home"
+  test_gopath=$(go env GOPATH)
+  test_gocache=$(go env GOCACHE)
+  go_files=()
+  while IFS= read -r -d '' file; do go_files+=("$file"); done < <(find . -path './.git' -prune -o -type f -name '*.go' -print0)
+  [[ ${#go_files[@]} -gt 0 ]] || fail "no Go source files"
+  unformatted=$(gofmt -l "${go_files[@]}")
+  [[ -z $unformatted ]] || fail "gofmt required: $unformatted"
+  go build ./...
+  go vet ./...
+  env -u BERMUDA_STATE_DIR HOME="$scratch/home" \
+    GOPATH="$test_gopath" GOCACHE="$test_gocache" go test ./...
+  go build -ldflags "-X github.com/bon5co/bermuda/v3/internal/version.Tag=$tag" \
+    -o "$scratch/bermuda" ./cmd/bermuda
+  reported=$("$scratch/bermuda" --version)
+  [[ ${reported%%$'\n'*} = "bermuda $tag" ]] || fail "built binary version does not match $tag"
+}
+
 mode=--check-only
 case "${1:-}" in
   --help|-h) usage; exit 0 ;;
-  --check-only|--draft|--publish) mode=$1; shift ;;
+  --check-only|--draft|--publish|--go-checks) mode=$1; shift ;;
   --*) usage >&2; exit 2 ;;
 esac
 [[ $# -ge 1 && $# -le 3 ]] || { usage >&2; exit 2; }
@@ -22,6 +57,14 @@ tag=$1
 [[ $tag =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "expected tag vX.Y.Z"
 notes=${2:-}
 title=${3:-$tag}
+if [[ $mode = --go-checks ]]; then
+  [[ $# = 1 ]] || fail "--go-checks accepts only a version tag"
+  cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  check_manifest
+  go_checks
+  printf 'Validated Go checks for %s\n' "$tag"
+  exit 0
+fi
 if [[ $mode != --check-only ]]; then
   [[ -n $notes && -s $notes ]] || fail "a nonempty notes file is required"
   [[ $notes = /* ]] || notes="$PWD/$notes"
@@ -31,8 +74,7 @@ cd "$(git rev-parse --show-toplevel)"
 git fetch origin main
 head=$(git rev-parse HEAD)
 [[ $head = "$(git rev-parse origin/main)" ]] || fail "HEAD must equal freshly fetched origin/main"
-manifest=$(sed -n 's/^version = "\([^"]*\)"$/\1/p' herdr-plugin.toml)
-[[ $manifest = "${tag#v}" ]] || fail "manifest version $manifest does not match $tag"
+check_manifest
 check_tags() {
   if git show-ref --verify --quiet "refs/tags/$tag"; then
     [[ $(git rev-parse "$tag^{commit}") = "$head" ]] || fail "local $tag identifies another commit"
@@ -42,27 +84,12 @@ check_tags() {
   [[ -z $remote_head || $remote_head = "$head" ]] || fail "remote $tag identifies another commit"
 }
 check_tags
-scratch=$(mktemp -d "$HOME/.bermuda-release.XXXXXX")
-trap 'rm -rf "$scratch"' EXIT
-# Keep tests off real Herdr. Give each test its own HOME-based state instead
-# of one shared BERMUDA_STATE_DIR, which overrides tests that isolate HOME.
-export HERDR_BIN_PATH="$scratch/no-herdr"
-mkdir -p "$scratch/home"
-test_gopath=$(go env GOPATH)
-test_gocache=$(go env GOCACHE)
-go_files=()
-while IFS= read -r -d '' file; do go_files+=("$file"); done < <(git ls-files -z '*.go')
-[[ ${#go_files[@]} -gt 0 ]] || fail "no tracked Go files"
-unformatted=$(gofmt -l "${go_files[@]}")
-[[ -z $unformatted ]] || fail "gofmt required: $unformatted"
-go build ./...
-go vet ./...
-env -u BERMUDA_STATE_DIR HOME="$scratch/home" \
-  GOPATH="$test_gopath" GOCACHE="$test_gocache" go test ./...
-go build -ldflags "-X github.com/bon5co/bermuda/v3/internal/version.Tag=$tag" \
-  -o "$scratch/bermuda" ./cmd/bermuda
-reported=$("$scratch/bermuda" --version)
-[[ ${reported%%$'\n'*} = "bermuda $tag" ]] || fail "built binary version does not match $tag"
+if [[ -n ${BERMUDA_RELEASE_CHECK_RUNNER:-} ]]; then
+  [[ -x $BERMUDA_RELEASE_CHECK_RUNNER ]] || fail "validation runner must be an executable path"
+  "$BERMUDA_RELEASE_CHECK_RUNNER" -- scripts/release.sh --go-checks "$tag"
+else
+  go_checks
+fi
 [[ $(git rev-parse HEAD) = "$head" && -z $(git status --porcelain) ]] || fail "checkout changed during validation"
 printf 'Validated %s at %s\n' "$tag" "$head"
 [[ $mode != --check-only ]] || exit 0

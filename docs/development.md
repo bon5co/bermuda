@@ -32,10 +32,10 @@ For a release, bump the manifest version in a reviewed commit, merge it, and
 run the reusable release procedure from a clean checkout at `origin/main`:
 
 ```bash
-scripts/release.sh --check-only v3.3.0
-scripts/release.sh --draft v3.3.0 /path/to/release-notes.md "v3.3.0 — fixes and clearer versions"
-scripts/release.sh --publish v3.3.0 /path/to/release-notes.md "v3.3.0 — fixes and clearer versions"
-herdr plugin install bon5co/bermuda --ref v3.3.0 --yes
+scripts/release.sh --check-only v3.4.0
+scripts/release.sh --draft v3.4.0 /path/to/release-notes.md "v3.4.0 — agent activity at a glance"
+scripts/release.sh --publish v3.4.0 /path/to/release-notes.md "v3.4.0 — agent activity at a glance"
+herdr plugin install bon5co/bermuda --ref v3.4.0 --yes
 ```
 
 The script checks formatting, build, vet, the full test suite and the executable
@@ -44,7 +44,25 @@ under the original home directory, outside system temporary directories,
 clear any inherited `BERMUDA_STATE_DIR`, and retain the existing Go caches;
 Git and GitHub CLI keep the original home and credentials. It publishes source-only
 releases, refuses to move existing tags, and can resume a draft or a failed
-publication safely. Go, Git and GitHub CLI must be on `PATH`.
+publication safely. Go must be on the validation machine's `PATH`; Git and
+GitHub CLI must be on the calling machine's `PATH`.
+
+To run Go validation on another machine, set `BERMUDA_RELEASE_CHECK_RUNNER` to
+an executable runner path:
+
+```bash
+BERMUDA_RELEASE_CHECK_RUNNER=/path/to/remote-runner \
+  scripts/release.sh --publish v3.4.0 /path/to/release-notes.md
+```
+
+The runner receives `-- scripts/release.sh --go-checks v3.4.0`. It must synchronize
+the current source tree, execute that command from the source root, and return
+its exit status. The private `--go-checks` mode needs no Git metadata and runs
+formatting, build, vet, the full tests with an isolated home, and a stamped
+executable version check on the execution machine. It never tags or publishes.
+The outer script still checks the clean commit, fresh `origin/main`, manifest,
+and tags locally, and rechecks the commit after validation. With no runner,
+validation runs locally as before. A failing runner stops publication.
 
 Without `--ref`, Herdr installs the repository's default HEAD, which can be newer
 than the latest release. A `go install …@<pseudo-version>` binary likewise reports

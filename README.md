@@ -373,6 +373,8 @@ bermuda alog edit <id> --body 'Independent review passed. Ready to merge.'
 One ordinary Markdown file per entry in `~/.bermuda/alog`, ordered by filesystem
 creation time. CLI edits preserve that time. → [A.LOG commands and format](docs/alog.md)
 
+![The board's A.LOG tab: short agent updates, newest first](assets/board-alog.png)
+
 ## For the agents
 
 Most of Bermuda's users are not people.
