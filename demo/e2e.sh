@@ -63,6 +63,7 @@ check "plugin is registered and enabled" "$PLUGIN_ID" herdr plugin list
 
 ROOT=$(plugin_root)
 [ -d "$ROOT" ] && ok "plugin root exists: $ROOT" || bad "plugin root" "not found in plugin list output"
+printf '  public checkout: %s\n' "$(git -C "$ROOT" rev-parse HEAD)"
 BIN="$ROOT/bin/bermuda"
 [ -x "$BIN" ] && ok "build command produced $BIN" || bad "the manifest build did not produce a binary"
 export PATH="$ROOT/bin:$PATH"
@@ -125,6 +126,63 @@ SKILL="$ROOT/skills/bermuda/SKILL.md"
 head -1 "$SKILL" 2>/dev/null | grep -q -- --- && ok "skill has frontmatter" || bad "skill frontmatter missing"
 grep -q "^name: bermuda" "$SKILL" 2>/dev/null && ok "skill name matches its directory" || bad "skill name does not match"
 [ -L "$ROOT/.claude/skills/bermuda" ] && ok ".claude/skills symlink survives the clone" || bad ".claude/skills symlink missing"
+
+step "A.LOG keeps short updates as Markdown files"
+alog_dir=$(bermuda alog path 2>&1); status=$?
+[ $status -eq 0 ] && [ "$alog_dir" = "$BERMUDA_STATE_DIR/alog" ] \
+    && ok "A.LOG path follows the state directory" || bad "A.LOG path is wrong" "$alog_dir"
+out=$(bermuda alog list --json --limit 0 2>&1); status=$?
+[ $status -eq 0 ] && jq -e 'length == 0' >/dev/null 2>&1 <<<"$out" \
+    && ok "A.LOG starts as an empty JSON list" || bad "empty A.LOG list failed" "$out"
+
+alog_first=$(bermuda alog write --repo acme/widget --branch feat/cards \
+    --topic Started --body 'Work started. Checking the public install.' 2>&1); status=$?
+[ $status -eq 0 ] && [ -f "$alog_dir/$alog_first.md" ] \
+    && ok "A.LOG write creates one Markdown file" || bad "A.LOG write failed" "$alog_first"
+alog_before=$(bermuda alog read "$alog_first" --json 2>&1); status=$?
+[ $status -eq 0 ] && jq -e '.repo == "acme/widget" and .branch == "feat/cards" and .topic == "Started" and .body == "Work started. Checking the public install." and (.created | length > 0) and (.time_source == "birthtime" or .time_source == "filename")' >/dev/null 2>&1 <<<"$alog_before" \
+    && ok "A.LOG read returns all fields and a labelled timestamp" || bad "A.LOG JSON read lost fields" "$alog_before"
+grep -q '^repo: acme/widget$' "$alog_dir/$alog_first.md" 2>/dev/null \
+    && grep -q '^branch: feat/cards$' "$alog_dir/$alog_first.md" 2>/dev/null \
+    && grep -q 'Work started. Checking the public install.' "$alog_dir/$alog_first.md" 2>/dev/null \
+    && ok "A.LOG file is readable Markdown with metadata and body" || bad "A.LOG Markdown content is wrong"
+check "A.LOG plain read accepts the Markdown filename" "Work started." bermuda alog read "$alog_first.md"
+
+alog_second=$(bermuda alog write --repo acme/widget --branch feat/cards \
+    --topic Reviewed --body 'Public install review passed.' 2>&1); status=$?
+[ $status -eq 0 ] && ok "a second agent can add an A.LOG entry" || bad "second A.LOG write failed" "$alog_second"
+out=$(bermuda alog list --json --limit 1 2>&1); status=$?
+[ $status -eq 0 ] && jq -e --arg id "$alog_second" 'length == 1 and .[0].id == $id' >/dev/null 2>&1 <<<"$out" \
+    && ok "A.LOG list is newest first and applies its limit" || bad "A.LOG list order or limit is wrong" "$out"
+
+alog_inode=$(stat -c %i "$alog_dir/$alog_first.md" 2>/dev/null)
+out=$(bermuda alog edit "$alog_first" --topic Finished --body 'Review complete. Ready to release.' 2>&1); status=$?
+[ $status -eq 0 ] && [ "$out" = "$alog_first" ] \
+    && ok "A.LOG edit returns the existing entry ID" || bad "A.LOG edit failed" "$out"
+alog_after=$(bermuda alog read "$alog_first" --json 2>&1)
+alog_created=$(jq -r '.created' <<<"$alog_before" 2>/dev/null)
+[ "$alog_inode" = "$(stat -c %i "$alog_dir/$alog_first.md" 2>/dev/null)" ] \
+    && jq -e --arg stamp "$alog_created" '.repo == "acme/widget" and .branch == "feat/cards" and .topic == "Finished" and .body == "Review complete. Ready to release." and .created == $stamp' >/dev/null 2>&1 <<<"$alog_after" \
+    && ok "A.LOG edit preserves other fields, inode and creation time" || bad "A.LOG edit changed metadata or timestamp" "$alog_after"
+out=$(bermuda alog list --json --limit 0 2>&1); status=$?
+[ $status -eq 0 ] && jq -e --arg newer "$alog_second" --arg older "$alog_first" 'length == 2 and .[0].id == $newer and .[1].id == $older' >/dev/null 2>&1 <<<"$out" \
+    && ok "editing an older A.LOG card keeps its original order" || bad "A.LOG edit moved a card to the top" "$out"
+
+alog_fifty=$(printf 'word %.0s' {1..50})
+alog_boundary=$(printf '%s' "$alog_fifty" | bermuda alog write --repo acme/widget \
+    --branch feat/cards --topic Boundary --body - 2>&1); status=$?
+[ $status -eq 0 ] && [ -f "$alog_dir/$alog_boundary.md" ] \
+    && ok "A.LOG accepts exactly 50 words from stdin" || bad "A.LOG rejected the 50-word boundary" "$alog_boundary"
+out=$(bermuda alog write --repo acme/widget --branch feat/cards --topic Too-long \
+    --body "$alog_fifty extra" 2>&1); status=$?
+[ $status -ne 0 ] && grep -q '50' <<<"$out" \
+    && [ "$(bermuda alog list --json --limit 0 | jq length)" = 3 ] \
+    && ok "A.LOG refuses 51 words without creating a file" || bad "A.LOG overlength write changed the feed" "$out"
+alog_hash=$(sha256sum "$alog_dir/$alog_first.md" 2>/dev/null)
+out=$(bermuda alog edit "$alog_first" --body "$alog_fifty extra" 2>&1); status=$?
+[ $status -ne 0 ] && grep -q '50' <<<"$out" \
+    && [ "$alog_hash" = "$(sha256sum "$alog_dir/$alog_first.md" 2>/dev/null)" ] \
+    && ok "A.LOG refuses overlength edits without changing the entry" || bad "A.LOG overlength edit changed its file" "$out"
 
 step "jobs and flows really run"
 # `flow new` has to produce something that parses. It is the first flow anybody
