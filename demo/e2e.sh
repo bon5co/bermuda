@@ -196,7 +196,7 @@ improve_first=$(bermuda improve write --kind discovery --repo acme/widget \
 [ $status -eq 0 ] && [ -f "$improve_dir/$improve_first.md" ] \
     && ok "IMPROVE discovery accepts 51 words in a Markdown file" || bad "IMPROVE rejected 51 words" "$improve_first"
 improve_before=$(bermuda improve read "$improve_first" --json 2>&1); status=$?
-[ $status -eq 0 ] && jq -e '.kind == "discovery" and .repo == "acme/widget" and .branch == "feat/lessons" and .topic == "Discovery" and (.body | split(" ") | length == 51) and (.created | length > 0)' >/dev/null 2>&1 <<<"$improve_before" \
+[ $status -eq 0 ] && jq -e --arg body "$alog_fifty extra" '.kind == "discovery" and .repo == "acme/widget" and .branch == "feat/lessons" and .topic == "Discovery" and .body == $body and (.body | [scan("\\S+")] | length == 51) and (.created | length > 0)' >/dev/null 2>&1 <<<"$improve_before" \
     && ok "IMPROVE JSON read preserves kind, fields and the unrestricted body" || bad "IMPROVE read lost data" "$improve_before"
 check "IMPROVE plain read accepts a Markdown filename" "discovery" bermuda improve read "$improve_first.md"
 improve_second=$(bermuda improve write --kind mistake --repo acme/widget \

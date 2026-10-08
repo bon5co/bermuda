@@ -12,7 +12,7 @@
 # anonymously, which is the case this is ultimately here to prove.
 FROM ubuntu:24.04
 
-ARG GO_VERSION=1.26.5
+ARG GO_VERSION=1.26.6
 ARG HERDR_VERSION=v0.7.5
 
 ENV DEBIAN_FRONTEND=noninteractive
