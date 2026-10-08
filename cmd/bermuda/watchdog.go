@@ -292,8 +292,25 @@ func resolvePath(p string) string {
 	if err != nil {
 		abs = filepath.Clean(p)
 	}
-	if real, err := filepath.EvalSymlinks(abs); err == nil {
-		return real
+	// EvalSymlinks requires the whole path to exist. A store about to be
+	// created still has to resolve its existing parents, especially /tmp and
+	// /var/tmp on macOS. Walk back to an existing ancestor and restore only
+	// the missing suffix; leave other resolution errors unchanged.
+	ancestor := abs
+	var missing []string
+	for {
+		real, err := filepath.EvalSymlinks(ancestor)
+		if err == nil {
+			for i := len(missing) - 1; i >= 0; i-- {
+				real = filepath.Join(real, missing[i])
+			}
+			return real
+		}
+		parent := filepath.Dir(ancestor)
+		if !os.IsNotExist(err) || parent == ancestor {
+			return abs
+		}
+		missing = append(missing, filepath.Base(ancestor))
+		ancestor = parent
 	}
-	return abs
 }

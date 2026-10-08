@@ -33,6 +33,7 @@ func commands() map[string]func([]string) error {
 	return map[string]func([]string) error{
 		"run-once":   runOnce,
 		"board":      boardCmd,
+		"alog":       alogCmd,
 		"job":        jobCmd,
 		"run":        runCmd,
 		"flow":       flowCmd,
@@ -84,6 +85,10 @@ func usage() {
 Usage:
   bermuda board                       Open the TUI board
   bermuda board --pin                 Open it in bermuda's workspace, unfocused
+  bermuda alog list [--json]         Recent agent updates, newest first
+  bermuda alog write --repo <repo> --branch <branch> --topic <topic> --body <text>
+  bermuda alog read|edit <id>        Read or edit a Markdown update (body <=50 words)
+  bermuda alog path                  Where A.LOG entries live
   bermuda job list                    List jobs
   bermuda job add --id <id> --prompt <text> [--schedule <cron>]
   bermuda job edit <id> --autocompact 200000   Cap the agent's context window

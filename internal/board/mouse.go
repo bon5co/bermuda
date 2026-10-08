@@ -164,7 +164,7 @@ func (m *Model) selectable() bool {
 		// The picker is driven by its own keys and draws its own selection.
 		return false
 	}
-	return m.focus != focusThread
+	return m.focus != focusThread && m.focus != focusALog
 }
 
 // click selects whatever is under the pointer.

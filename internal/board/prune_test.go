@@ -55,6 +55,8 @@ func prunableBoard(t *testing.T) (*Model, *store.Store, context.Context) {
 	m := New(s, herdrcli.New(), Deps{DaemonRunning: func() bool { return true }})
 	m.width, m.height = 160, 40
 	m.apply(t, m.load()())
+	// Pruning belongs to JOBS, independently of the default opening tab.
+	m.selectTab(focusJobs)
 	return m, s, ctx
 }
 

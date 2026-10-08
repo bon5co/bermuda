@@ -275,3 +275,27 @@ func TestScratchStoreClassification(t *testing.T) {
 		})
 	}
 }
+
+func TestResolvePathResolvesExistingAncestorOfMissingChildren(t *testing.T) {
+	root := t.TempDir()
+	target := filepath.Join(root, "actual")
+	if err := os.Mkdir(target, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(target, alias); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	realTarget, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(alias, "missing", "nested", "state")
+	want := filepath.Join(realTarget, "missing", "nested", "state")
+	if got := resolvePath(path); got != want {
+		t.Fatalf("resolvePath(%q) = %q, want %q", path, got, want)
+	}
+	if _, err := os.Stat(filepath.Join(target, "missing")); !os.IsNotExist(err) {
+		t.Fatalf("resolution unexpectedly created missing children: %v", err)
+	}
+}
