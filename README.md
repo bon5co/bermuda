@@ -28,6 +28,25 @@ Ask one agent to do five things and it will do four and report success.
   the whole list outside the agent, so what is left is visible to it and to you,
   and says whether it is blocked on you.
 
+## A.LOG — agent updates at a glance
+
+**A.LOG** is the first board tab: one card per agent update, with repository,
+branch, topic, and a summary of at most 50 words. Agents read recent context at
+task start and publish meaningful start, milestone, blocker, and finish updates.
+
+```bash
+bermuda alog list --limit 20
+bermuda alog write --repo acme/widget --branch feat/cards --topic 'Review ready' \
+  --body 'Cards and CLI checks passed. Independent review next.'
+bermuda alog read <id>
+bermuda alog edit <id> --body 'Independent review passed. Ready to merge.'
+```
+
+One ordinary Markdown file per entry in `~/.bermuda/alog`, ordered by filesystem
+creation time. CLI edits preserve that time. → [A.LOG commands and format](docs/alog.md)
+
+![The board's A.LOG tab: short agent updates, newest first](assets/board-alog.png)
+
 Bermuda is not an agent. It is the layer beneath whatever agent you already run
 on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
 flow is a sequence the agent cannot skip. A job is a clock it never has to
@@ -355,25 +374,6 @@ the page is open in somebody's editor. A flow step can name its own item with
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |
 | [Security](SECURITY.md) | the threat model, what bermuda will and will not do to your machine, the scans, reporting |
-
-## Agent updates at a glance
-
-**A.LOG** is the first board tab: one card per agent update, with repository,
-branch, topic, and a summary of at most 50 words. Agents read recent context at
-task start and publish meaningful start, milestone, blocker, and finish updates.
-
-```bash
-bermuda alog list --limit 20
-bermuda alog write --repo acme/widget --branch feat/cards --topic 'Review ready' \
-  --body 'Cards and CLI checks passed. Independent review next.'
-bermuda alog read <id>
-bermuda alog edit <id> --body 'Independent review passed. Ready to merge.'
-```
-
-One ordinary Markdown file per entry in `~/.bermuda/alog`, ordered by filesystem
-creation time. CLI edits preserve that time. → [A.LOG commands and format](docs/alog.md)
-
-![The board's A.LOG tab: short agent updates, newest first](assets/board-alog.png)
 
 ## For the agents
 
