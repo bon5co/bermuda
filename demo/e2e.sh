@@ -184,6 +184,54 @@ out=$(bermuda alog edit "$alog_first" --body "$alog_fifty extra" 2>&1); status=$
     && [ "$alog_hash" = "$(sha256sum "$alog_dir/$alog_first.md" 2>/dev/null)" ] \
     && ok "A.LOG refuses overlength edits without changing the entry" || bad "A.LOG overlength edit changed its file" "$out"
 
+step "IMPROVE stores unrestricted lessons separately from A.LOG"
+improve_dir=$(bermuda improve path 2>&1); status=$?
+[ $status -eq 0 ] && [ "$improve_dir" = "$BERMUDA_STATE_DIR/improve" ] \
+    && ok "IMPROVE path is separate from A.LOG" || bad "IMPROVE path is wrong" "$improve_dir"
+out=$(bermuda improve list --json --limit 0 2>&1); status=$?
+[ $status -eq 0 ] && jq -e 'length == 0' >/dev/null 2>&1 <<<"$out" \
+    && ok "IMPROVE starts empty despite existing A.LOG entries" || bad "IMPROVE is not isolated" "$out"
+improve_first=$(bermuda improve write --kind discovery --repo acme/widget \
+    --branch feat/lessons --topic Discovery --body "$alog_fifty extra" 2>&1); status=$?
+[ $status -eq 0 ] && [ -f "$improve_dir/$improve_first.md" ] \
+    && ok "IMPROVE discovery accepts 51 words in a Markdown file" || bad "IMPROVE rejected 51 words" "$improve_first"
+improve_before=$(bermuda improve read "$improve_first" --json 2>&1); status=$?
+[ $status -eq 0 ] && jq -e '.kind == "discovery" and .repo == "acme/widget" and .branch == "feat/lessons" and .topic == "Discovery" and (.body | split(" ") | length == 51) and (.created | length > 0)' >/dev/null 2>&1 <<<"$improve_before" \
+    && ok "IMPROVE JSON read preserves kind, fields and the unrestricted body" || bad "IMPROVE read lost data" "$improve_before"
+check "IMPROVE plain read accepts a Markdown filename" "discovery" bermuda improve read "$improve_first.md"
+improve_second=$(bermuda improve write --kind mistake --repo acme/widget \
+    --branch feat/lessons --topic Mistake --body 'Observed failure. The cause remains a hypothesis.' 2>&1); status=$?
+[ $status -eq 0 ] && ok "IMPROVE records a distinct mistake event" || bad "IMPROVE mistake write failed" "$improve_second"
+
+improve_large=$(printf 'evidence %.0s' {1..10000})tailproof
+improve_third=$(printf '%s' "$improve_large" | bermuda improve write --kind recovery \
+    --repo acme/widget --branch feat/lessons --topic Recovery --body - 2>&1); status=$?
+[ $status -eq 0 ] && ok "IMPROVE accepts a 10001-word recovery from stdin" || bad "IMPROVE imposed a large-body limit" "$improve_third"
+out=$(bermuda improve read "$improve_third" --json 2>&1); status=$?
+[ $status -eq 0 ] && jq -e --arg body "$improve_large" '.kind == "recovery" and .body == $body' >/dev/null 2>&1 <<<"$out" \
+    && ok "IMPROVE reads the entire large body including its last word" || bad "IMPROVE large read was truncated"
+out=$(bermuda improve list --json --limit 0 2>&1); status=$?
+[ $status -eq 0 ] && jq -e --arg first "$improve_first" --arg second "$improve_second" --arg third "$improve_third" 'length == 3 and .[0].id == $third and .[1].id == $second and .[2].id == $first' >/dev/null 2>&1 <<<"$out" \
+    && ok "IMPROVE lists discoveries, mistakes and recoveries newest first" || bad "IMPROVE order or kinds are wrong"
+improve_created=$(jq -r '.created' <<<"$improve_before" 2>/dev/null)
+out=$(bermuda improve edit "$improve_first" --kind mistake --topic Corrected \
+    --body "$improve_large" 2>&1); status=$?
+[ $status -eq 0 ] && [ "$out" = "$improve_first" ] \
+    && ok "IMPROVE edits kind and an unrestricted body" || bad "IMPROVE edit failed" "$out"
+out=$(bermuda improve read "$improve_first" --json 2>&1); status=$?
+[ $status -eq 0 ] && jq -e --arg stamp "$improve_created" --arg body "$improve_large" '.kind == "mistake" and .topic == "Corrected" and .repo == "acme/widget" and .branch == "feat/lessons" and .body == $body and .created == $stamp' >/dev/null 2>&1 <<<"$out" \
+    && ok "IMPROVE edit preserves creation time, other fields and the full body" || bad "IMPROVE edit lost data"
+[ "$(bermuda alog list --json --limit 0 | jq length)" = 3 ] \
+    && ok "IMPROVE writes and edits do not alter A.LOG" || bad "IMPROVE changed A.LOG"
+out=$(bermuda improve write --kind unknown --repo acme/widget --branch feat/lessons \
+    --topic Invalid --body 'This kind is invalid.' 2>&1); status=$?
+[ $status -ne 0 ] && [ "$(bermuda improve list --json --limit 0 | jq length)" = 3 ] \
+    && ok "IMPROVE refuses unknown kinds without adding an entry" || bad "IMPROVE accepted an invalid kind" "$out"
+SELF_IMPROVE="$ROOT/skills/bermuda-self-improve/SKILL.md"
+[ -f "$SELF_IMPROVE" ] && grep -q '^name: bermuda-self-improve$' "$SELF_IMPROVE" \
+    && [ -L "$ROOT/.claude/skills/bermuda-self-improve" ] \
+    && ok "the self-improvement skill ships and its discovery link survives clone" || bad "self-improvement skill or discovery link is missing"
+
 step "jobs and flows really run"
 # `flow new` has to produce something that parses. It is the first flow anybody
 # sees, and a broken template turns "write a flow" into "debug bermuda".

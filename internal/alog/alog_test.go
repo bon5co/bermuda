@@ -1,6 +1,7 @@
 package alog
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,30 @@ import (
 
 func example() Entry {
 	return Entry{Repo: "acme/widget", Branch: "feat/log", Topic: "Build ready", Body: "Implementation complete. Targeted checks passed; integrated review next."}
+}
+
+func TestActivityMarkdownAndJSONKeepLegacyFormat(t *testing.T) {
+	dir := Dir(t.TempDir())
+	e := example()
+	saved, err := Write(dir, e)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(saved.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "---\nrepo: acme/widget\nbranch: feat/log\ntopic: Build ready\n---\n\n" + e.Body + "\n"
+	if string(b) != want {
+		t.Fatalf("legacy Markdown changed: %s", b)
+	}
+	encoded, err := json.Marshal(saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"kind"`) {
+		t.Fatalf("legacy JSON gained category: %s", encoded)
+	}
 }
 
 func TestMarkdownRoundTripAndEditPreservesCreationOrder(t *testing.T) {

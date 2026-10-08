@@ -168,39 +168,57 @@ the container, and the parked one actually failed.
 
 ## The skill
 
-`skills/bermuda/` is an [Agent Skill](https://agentskills.io) — what an agent
-should read before it writes to a thread, takes a claim, or calls a flow.
+Bermuda ships two [Agent Skills](https://agentskills.io):
+
+- [bermuda](../skills/bermuda/SKILL.md): A.LOG updates and harness operations,
+  including threads, claims, memory, checklists and flows.
+- [bermuda-self-improve](../skills/bermuda-self-improve/SKILL.md): retrieve
+  relevant lessons, record discoveries, mistakes and verified recoveries in
+  IMPROVE, then apply and verify what was learned.
 
 ```bash
 npx skills add bon5co/bermuda
 ```
 
-That is the whole installation. A skill is just a folder with a `SKILL.md` in
-it, so if you would rather place it yourself, copying or symlinking into any of
-these does the same job:
+Select both skills for the agent you use. To place them manually, copy or link
+both folders into its discovery directory:
 
-| where it goes | who reads it |
+| directory | agent and scope |
 |---|---|
-| `~/.claude/skills/bermuda/` | Claude Code, in every project |
-| `<project>/.claude/skills/bermuda/` | Claude Code, that project only — commit it and your team has it too |
-| `<project>/.agents/skills/bermuda/` | the cross-tool location other agent clients read |
+| `~/.agents/skills/<skill>/` | Codex, every project |
+| `<project>/.agents/skills/<skill>/` | Codex, that repository |
+| `~/.claude/skills/<skill>/` | Claude Code, every project |
+| `<project>/.claude/skills/<skill>/` | Claude Code, that project |
+
+Codex scans repository `.agents/skills` directories from the working directory
+up to the repository root, and follows symlinked skill folders. Its user
+location is `~/.agents/skills`; see [OpenAI's skill discovery
+documentation](https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills).
+
+For example, install both skills for Codex from a checkout:
 
 ```bash
 git clone https://github.com/bon5co/bermuda
-ln -s "$PWD/bermuda/skills/bermuda" ~/.claude/skills/bermuda
+mkdir -p "$HOME/.agents/skills"
+ln -s "$PWD/bermuda/skills/bermuda" "$HOME/.agents/skills/bermuda"
+ln -s "$PWD/bermuda/skills/bermuda-self-improve" "$HOME/.agents/skills/bermuda-self-improve"
 ```
 
-**Symlink rather than copy** when you want it to follow the code: a linked skill
-picks up the next `git pull`, and a copied one is a snapshot that will quietly
-age past the commands it documents — which is worse than no skill, because an
-agent trusts it either way.
+For Claude Code, use `~/.claude/skills` as the target directory instead.
+Link a checkout when the skills should follow its updates; a copy remains a
+snapshot. Verify that each link resolves to the intended `SKILL.md` file.
+The repository keeps Claude discovery links under `.claude/skills`. A Herdr
+plugin installation also contains the sources under
+`~/.config/herdr/plugins/github/bon5co.bermuda-<hash>/skills/`; `herdr plugin
+list` reports the installed source and revision.
 
-Inside this repo it loads by itself through `.claude/skills/bermuda`, a symlink
-to the same directory. If you installed the plugin rather than cloning, Herdr
-already has a copy under
-`~/.config/herdr/plugins/github/bon5co.bermuda-<hash>/skills/bermuda`. (`herdr
-plugin list` names the source, `github:bon5co/bermuda@<commit>`, rather than that
-path.)
+The shipped [bermuda-install](../skills/bermuda-install/SKILL.md) setup skill
+places a short pointer in the user's standing instructions:
+`~/.codex/AGENTS.md` for Codex or `~/.claude/CLAUDE.md` for Claude Code, unless
+the user names another file. It follows symlinks, updates its managed block
+without duplication and leaves execution permissions unchanged. Ask the
+agent to set up Bermuda for the agent you use. Manuals remain in the two
+skills, rather than being copied into every session's instructions.
 
 ## Nice to have
 

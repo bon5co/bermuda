@@ -61,6 +61,9 @@ func (m *Model) listPane() pane {
 	if m.focus == focusALog {
 		return m.alogPane(p)
 	}
+	if m.focus == focusImprove {
+		return m.improvePane(p)
+	}
 	if m.focus == focusThread {
 		return m.threadPane(p)
 	}
@@ -175,7 +178,7 @@ func (m *Model) threadPane(p pane) pane {
 	}
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
-		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 2 live · M mouse · q quit"))
+		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 3 live · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
 }

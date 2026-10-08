@@ -109,7 +109,7 @@ func (m *Model) handleThreadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "esc":
 		// Clearing a filter puts the whole thread back, and the end of it is
-		// where the reader wants to be — the same place `2` goes.
+		// where the reader wants to be — the same place `3` goes.
 		if m.query != "" {
 			m.query, m.scroll, m.threadFollow = "", 0, true
 		}
@@ -120,12 +120,12 @@ func (m *Model) handleThreadKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "shift+tab":
 		m.stepTab(-1)
 		return m, nil
-	case "2":
+	case "3":
 		// Already here: the threads key means "jump back to live", which is what
 		// a reader who scrolled up into the history wants next.
 		m.threadFollow = true
 		return m, nil
-	case "1", "3", "4", "5", "6", "7":
+	case "1", "2", "4", "5", "6", "7", "8":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "h", "left":

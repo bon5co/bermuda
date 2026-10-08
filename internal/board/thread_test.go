@@ -49,9 +49,9 @@ func seedThread(t *testing.T, s *store.Store) {
 
 func TestThreadTabIsReachableAndLoadsTheThread(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	if m.focus != focusThread {
-		t.Fatal("2 should open the thread")
+		t.Fatal("3 should open the thread")
 	}
 	if len(m.thread) != 4 {
 		t.Fatalf("the thread holds %d messages, want the 4 that were posted", len(m.thread))
@@ -157,7 +157,7 @@ func TestABigHoldsBlockIsCappedAndSaysWhatItHid(t *testing.T) {
 // reach it. `R` in the thread would otherwise run whichever job was first.
 func TestThreadKeysCannotActOnAJob(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	for _, key := range []string{"R", "p", "f", "D", "e", "n"} {
 		m.press(t, key)
 	}
@@ -174,7 +174,7 @@ func TestThreadKeysCannotActOnAJob(t *testing.T) {
 
 func TestThreadSearchFiltersIt(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "/")
 	for _, r := range "camoufox" {
 		m.press(t, string(r))
@@ -211,11 +211,11 @@ func TestTheThreadFollowsItsNewestMessage(t *testing.T) {
 		t.Errorf("scroll is %d after moving up from %d", m.scroll, atBottom)
 	}
 
-	// 2 is the way back to live.
-	m.press(t, "2")
+	// 3 is the way back to live.
+	m.press(t, "3")
 	m.View()
 	if !m.threadFollow {
-		t.Error("2 should jump back to the newest message")
+		t.Error("3 should jump back to the newest message")
 	}
 }
 
@@ -283,19 +283,19 @@ func TestThreadTabIsLabelled(t *testing.T) {
 func TestALogIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 	m := newTestModel(t)
 	tabs := m.renderTabs("")
-	iALog := strings.Index(tabs, "A.LOG")
+	iALog, iImprove := strings.Index(tabs, "A.LOG"), strings.Index(tabs, "IMPROVE")
 	iThreads, iJobs := strings.Index(tabs, "THREADS"), strings.Index(tabs, "JOBS")
 	iRuns, iFlows := strings.Index(tabs, "RUNS"), strings.Index(tabs, "FLOWS")
 	iForum, iMemory := strings.Index(tabs, "FORUM"), strings.Index(tabs, "MEMORY")
-	if !(iALog >= 0 && iALog < iThreads && iThreads < iJobs && iJobs < iRuns && iRuns < iFlows && iFlows < iForum && iForum < iMemory) {
-		t.Fatalf("tabs read %q, want A.LOG then THREADS then JOBS then RUNS then FLOWS then FORUM then MEMORY", tabs)
+	if !(iALog >= 0 && iALog < iImprove && iImprove < iThreads && iThreads < iJobs && iJobs < iRuns && iRuns < iFlows && iFlows < iForum && iForum < iMemory) {
+		t.Fatalf("tabs read %q, want A.LOG then IMPROVE then THREADS then JOBS then RUNS then FLOWS then FORUM then MEMORY", tabs)
 	}
 
 	for _, c := range []struct {
 		key  string
 		want focus
-	}{{"1", focusALog}, {"2", focusThread}, {"3", focusJobs}, {"4", focusRuns}, {"5", focusFlows}, {"6", focusForum},
-		{"7", focusMemory}} {
+	}{{"1", focusALog}, {"2", focusImprove}, {"3", focusThread}, {"4", focusJobs}, {"5", focusRuns}, {"6", focusFlows}, {"7", focusForum},
+		{"8", focusMemory}} {
 		m.press(t, c.key)
 		if m.focus != c.want {
 			t.Errorf("%s opened focus %d, want %d — the keys must count the tabs left to right",
@@ -305,7 +305,7 @@ func TestALogIsTheLeftmostTabAndTheKeysAgree(t *testing.T) {
 
 	// Tab walks the same way round, and comes back to where it started.
 	m.focus = focusThread
-	for _, want := range []focus{focusJobs, focusRuns, focusFlows, focusForum, focusMemory, focusALog, focusThread} {
+	for _, want := range []focus{focusJobs, focusRuns, focusFlows, focusForum, focusMemory, focusALog, focusImprove, focusThread} {
 		m.pressSpecial(t, tea.KeyTab)
 		if m.focus != want {
 			t.Fatalf("tab moved to focus %d, want %d", m.focus, want)
@@ -543,7 +543,7 @@ func TestAReadThatLandsAfterASwitchIsDropped(t *testing.T) {
 	stale := m.load()()
 	m.Update(m.load()()) // so the picker knows quiet exists
 
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "t")
 	m.press(t, "j")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyEnter})
@@ -581,7 +581,7 @@ func TestADeletedThreadDoesNotLeaveItsMessagesOnScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.Update(m.load()())
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "t")
 	m.press(t, "j")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyEnter})

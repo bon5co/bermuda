@@ -11,9 +11,9 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/alog"
 )
 
-// A.LOG is a continuous, newest-first card feed. It has no selected job, so
-// its keyboard never falls through to job creation or launch actions.
-func (m *Model) handleALogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// The file feeds share navigation and rendering. Neither has a selected job,
+// so their keys never reach job creation or launch actions.
+func (m *Model) handleFeedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		return m, tea.Quit
@@ -21,7 +21,7 @@ func (m *Model) handleALogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.stepTab(1)
 	case "shift+tab":
 		m.stepTab(-1)
-	case "1", "2", "3", "4", "5", "6", "7":
+	case "1", "2", "3", "4", "5", "6", "7", "8":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 	case "/":
 		m.searching, m.queryDraft = true, m.query
@@ -45,14 +45,21 @@ func (m *Model) handleALogKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) visibleALog() []alog.Entry {
+func (m *Model) isCardFeed() bool {
+	return m.focus == focusALog || m.focus == focusImprove
+}
+
+func (m *Model) visibleALog() []alog.Entry    { return m.visibleFeed(m.alogEntries) }
+func (m *Model) visibleImprove() []alog.Entry { return m.visibleFeed(m.improveEntries) }
+
+func (m *Model) visibleFeed(entries []alog.Entry) []alog.Entry {
 	if m.query == "" {
-		return m.alogEntries
+		return entries
 	}
 	var out []alog.Entry
-	for _, e := range m.alogEntries {
+	for _, e := range entries {
 		if strings.Contains(strings.ToLower(strings.Join([]string{
-			e.ID, e.Repo, e.Branch, e.Topic, e.Body,
+			e.ID, e.Kind, e.Repo, e.Branch, e.Topic, e.Body,
 		}, "\n")), strings.ToLower(m.query)) {
 			out = append(out, e)
 		}
@@ -60,19 +67,39 @@ func (m *Model) visibleALog() []alog.Entry {
 	return out
 }
 
+type cardFeed struct {
+	label, latestKey, empty string
+	entries                 []alog.Entry
+	err                     error
+}
+
 func (m *Model) alogPane(p pane) pane {
-	entries := m.visibleALog()
+	return m.feedPane(p, cardFeed{
+		label: "A.LOG", latestKey: "1", entries: m.alogEntries, err: m.alogErr,
+		empty: "No activity yet. Add a summary (50 words maximum): bermuda alog write --repo acme/widget --branch feat/status --topic Progress --body \"Started work.\"",
+	})
+}
+
+func (m *Model) improvePane(p pane) pane {
+	return m.feedPane(p, cardFeed{
+		label: "IMPROVE", latestKey: "2", entries: m.improveEntries, err: m.improveErr,
+		empty: "No lessons yet. Record a discovery, mistake or recovery (unlimited body): bermuda improve write --kind discovery --repo acme/widget --branch feat/lessons --topic Evidence --body \"Observed and verified behavior.\"",
+	})
+}
+
+func (m *Model) feedPane(p pane, feed cardFeed) pane {
+	entries := m.visibleFeed(feed.entries)
 	var body strings.Builder
-	if m.alogErr != nil {
+	if feed.err != nil {
 		body.WriteString(outcomeStyles["failed"].Render(m.alogText(
-			"Cannot read A.LOG: " + m.alogErr.Error() + ". Fix the file or directory, then press r.")))
+			"Cannot read " + feed.label + ": " + feed.err.Error() + ". Fix the file or directory, then press r.")))
 		body.WriteString("\n\n")
 	}
-	if len(entries) == 0 && m.alogErr == nil {
+	if len(entries) == 0 && feed.err == nil {
 		if m.query != "" {
 			body.WriteString(m.alogText("No entries match. Esc clears search."))
 		} else {
-			body.WriteString(m.alogText("No activity yet. Add a summary (50 words maximum): bermuda alog write --repo acme/widget --branch feat/status --topic Progress --body \"Started work.\""))
+			body.WriteString(m.alogText(feed.empty))
 		}
 	}
 	for _, entry := range entries {
@@ -82,10 +109,10 @@ func (m *Model) alogPane(p pane) pane {
 	p.body = strings.TrimSuffix(body.String(), "\n")
 	status := itoa(len(entries)) + " entries · newest first"
 	if m.query != "" {
-		status = itoa(len(entries)) + " of " + itoa(len(m.alogEntries)) + " match · newest first"
+		status = itoa(len(entries)) + " of " + itoa(len(feed.entries)) + " match · newest first"
 	}
 	p.bottom = dimStyle.Render(m.alogText(status)) + "\n" + m.renderFooter() +
-		"\n" + helpStyle.Render(m.alogText("tab lists · / search · j/k scroll · [ ] page · 1 latest · r refresh · M mouse · q quit"))
+		"\n" + helpStyle.Render(m.alogText("tab lists · / search · j/k scroll · [ ] page · "+feed.latestKey+" latest · r refresh · M mouse · q quit"))
 	return p
 }
 
@@ -120,7 +147,7 @@ func (m *Model) alogCard(e alog.Entry) string {
 	width := min(m.alogWidth(), threadBubbleMax+4)
 	// A split narrower than a box's four framing columns still keeps its text.
 	if width < 6 {
-		return m.alogText(e.Repo+" · "+e.Branch+"\n"+e.Topic+"\n"+e.Body+"\n"+
+		return m.alogText(e.Repo+" · "+e.Branch+"\n"+cardTopic(e)+"\n"+e.Body+"\n"+
 			alogStamp(e)) + "\n"
 	}
 	textWidth := width - 4
@@ -132,7 +159,7 @@ func (m *Model) alogCard(e alog.Entry) string {
 		}
 	}
 	write(e.Repo+" · "+e.Branch, headerStyle)
-	write(e.Topic, titleStyle)
+	write(cardTopic(e), titleStyle)
 	write(alogStamp(e), dimStyle)
 	write("", lipgloss.NewStyle())
 	write(e.Body, lipgloss.NewStyle())
@@ -146,4 +173,12 @@ func alogStamp(e alog.Entry) string {
 		label = "written (filename) "
 	}
 	return label + e.Created.Local().Format("2006-01-02 15:04:05 MST")
+}
+
+// Kind is a word, not colour alone, so lessons remain distinguishable in any terminal.
+func cardTopic(e alog.Entry) string {
+	if e.Kind == "" {
+		return e.Topic
+	}
+	return strings.ToUpper(e.Kind) + " · " + e.Topic
 }

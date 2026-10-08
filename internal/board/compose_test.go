@@ -40,7 +40,7 @@ func threadBodies(t *testing.T, m *Model) []string {
 
 func TestComposeOpensAndOwnsTheKeyboard(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "i")
 	if m.compose == nil {
 		t.Fatal("i should open the input box")
@@ -63,7 +63,7 @@ func TestComposeOpensAndOwnsTheKeyboard(t *testing.T) {
 
 func TestComposePostsWithCtrlSAndClosesTheBox(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "i")
 	m.typeText(t, "fix the discriminator first")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyCtrlS})
@@ -93,7 +93,7 @@ func TestComposePostsWithCtrlSAndClosesTheBox(t *testing.T) {
 // Enter is a newline, which is the whole reason the box commits with ctrl+s.
 func TestComposeTakesMoreThanOneLine(t *testing.T) {
 	m := newTestModel(t)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "i")
 	m.typeText(t, "first")
 	m.sendKey(tea.KeyMsg{Type: tea.KeyEnter})
@@ -112,7 +112,7 @@ func TestComposeTakesMoreThanOneLine(t *testing.T) {
 func TestEscapeAbandonsTheMessage(t *testing.T) {
 	m := newTestModel(t)
 	before := len(threadBodies(t, m))
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "i")
 	m.typeText(t, "never mind")
 	m.sendKey(tea.KeyMsg{Type: tea.KeyEsc})
@@ -130,7 +130,7 @@ func TestEscapeAbandonsTheMessage(t *testing.T) {
 func TestPostingNothingRefusesInsteadOfClosingQuietly(t *testing.T) {
 	m := newTestModel(t)
 	before := len(threadBodies(t, m))
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "i")
 	m.apply(t, tea.KeyMsg{Type: tea.KeyCtrlS})
 

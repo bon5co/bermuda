@@ -201,7 +201,7 @@ func TestALogNarrowViewKeepsTabsAndFooterOnScreen(t *testing.T) {
 	for _, tc := range []struct {
 		label string
 		want  focus
-	}{{"A.LOG", focusALog}, {"THREADS", focusThread}, {"MEMORY", focusMemory}} {
+	}{{"A.LOG", focusALog}, {"IMPROVE", focusImprove}, {"THREADS", focusThread}, {"MEMORY", focusMemory}} {
 		m.clickCell(t, frameColumn(t, line, tc.label), row)
 		if m.focus != tc.want {
 			t.Fatalf("click %s opens wrong tab", tc.label)
