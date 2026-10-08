@@ -62,7 +62,7 @@ func TestTheThreadOnScreenIsNamed(t *testing.T) {
 func TestThePickerListsEveryThreadAndSwitchesTheView(t *testing.T) {
 	m := newTestModel(t)
 	seedSecondThread(t, m)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "t")
 	if m.picker == nil {
 		t.Fatal("t should open the thread picker")
@@ -101,7 +101,7 @@ func TestThePickerListsEveryThreadAndSwitchesTheView(t *testing.T) {
 func TestThePickerOwnsTheKeyboardWhileOpen(t *testing.T) {
 	m := newTestModel(t)
 	seedSecondThread(t, m)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "t")
 	m.press(t, "i")
 	if m.compose != nil {
@@ -122,7 +122,7 @@ func TestThePickerOwnsTheKeyboardWhileOpen(t *testing.T) {
 func TestComposePostsIntoTheThreadBeingViewed(t *testing.T) {
 	m := newTestModel(t)
 	seedSecondThread(t, m)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.threadID = "webapp"
 
 	m.press(t, "i")
@@ -155,7 +155,7 @@ func TestComposePostsIntoTheThreadBeingViewed(t *testing.T) {
 func TestSwitchingThreadsClearsTheSearch(t *testing.T) {
 	m := newTestModel(t)
 	seedSecondThread(t, m)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.press(t, "/")
 	m.typeText(t, "camoufox")
 	m.pressSpecial(t, tea.KeyEnter)
@@ -179,7 +179,7 @@ func TestSwitchingThreadsClearsTheSearch(t *testing.T) {
 func TestSearchStaysInsideTheCurrentThread(t *testing.T) {
 	m := newTestModel(t)
 	seedSecondThread(t, m)
-	m.press(t, "2")
+	m.press(t, "3")
 	m.query = "stripe"
 	if got := len(m.visibleThread()); got != 0 {
 		t.Errorf("searching global matched %d messages from another thread", got)

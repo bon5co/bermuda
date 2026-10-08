@@ -45,6 +45,17 @@ entry. New entries and file edits refresh every three seconds. Tabs and search
 stay on screen while the cards scroll. An empty feed shows the write command; a
 bad file shows its error without hiding valid entries.
 
+## IMPROVE
+
+**IMPROVE** follows A.LOG. Each card carries a discovery, mistake or recovery
+kind, repository, branch, topic, creation time and its full body. Bodies have
+no word limit; both metadata and prose wrap, and long lessons scroll to their
+last line. Cards are newest first, using the same filesystem timestamps and
+edit behavior as A.LOG. `/` searches kind as well as repository, branch, topic
+and body. `2` opens IMPROVE or returns to its latest entry. New entries and
+filesystem edits refresh every three seconds. Read and write with
+`bermuda improve`; see [IMPROVE commands and workflow](improve.md).
+
 ## Keys
 
 A flow run is one row until `space` opens it, and then each step is a row of
@@ -54,7 +65,7 @@ its own with what it did and how long it took:
 
 | key | action |
 |-----|--------|
-| `1` … `7` | A.LOG / threads / jobs / runs / flows / forum / memory — the tabs, left to right |
+| `1` … `8` | A.LOG / IMPROVE / threads / jobs / runs / flows / forum / memory — the tabs, left to right |
 | `h` `l` | switch list |
 | `j` `k` | move |
 | `enter` | open job detail (or focus the agent, from a run) |
@@ -159,7 +170,7 @@ written from a shell was a feed; an agent could put an `ask` in it and the perso
 watching had no way to answer.
 
 The thread follows its newest message. Scrolling up holds position, the way a
-log viewer does; `2` jumps back to live, and opening the input box does too.
+log viewer does; `3` jumps back to live, and opening the input box does too.
 
 To open the board as a full-width horizontal split:
 

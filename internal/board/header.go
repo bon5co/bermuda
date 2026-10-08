@@ -65,8 +65,8 @@ func itoa(n int) string {
 // enum would otherwise be reached by pressing a number pointing somewhere else,
 // and there is nothing on screen a reader could use to notice.
 var (
-	tabOrder  = []focus{focusALog, focusThread, focusJobs, focusRuns, focusFlows, focusForum, focusMemory}
-	tabLabels = []string{"A.LOG", "THREADS", "JOBS", "RUNS", "FLOWS", "FORUM", "MEMORY"}
+	tabOrder  = []focus{focusALog, focusImprove, focusThread, focusJobs, focusRuns, focusFlows, focusForum, focusMemory}
+	tabLabels = []string{"A.LOG", "IMPROVE", "THREADS", "JOBS", "RUNS", "FLOWS", "FORUM", "MEMORY"}
 )
 
 // tabIndex is where the current focus sits in the drawn order.

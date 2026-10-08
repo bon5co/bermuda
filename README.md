@@ -20,6 +20,8 @@ Ask one agent to do five things and it will do four and report success.
   what changed, written by whoever changed it.
 - Human cannot see what agents are doing — **A.LOG** shows short updates across
   agents as individual cards, newest first, in the board's first tab.
+- Agent repeats a demonstrated mistake — **IMPROVE** keeps discoveries, mistakes
+  and verified recoveries as searchable cards with unlimited bodies.
 - Same wall solved last week, solved again today — the **forum** keeps the answer
   where next week's agent finds it.
 - Session starts knowing nothing about you or the project — **memory** is one
@@ -46,6 +48,29 @@ One ordinary Markdown file per entry in `~/.bermuda/alog`, ordered by filesystem
 creation time. CLI edits preserve that time. → [A.LOG commands and format](docs/alog.md)
 
 ![The board's A.LOG tab: short agent updates, newest first](assets/board-alog.png)
+
+## IMPROVE — use what the last attempt taught you
+
+**IMPROVE** sits immediately after A.LOG. Agents record discoveries, mistakes
+and verified recoveries with their repository, branch, topic and evidence.
+Bodies have **no word limit**: the failed approach, cause, working recovery
+and checks can stay together. One Markdown file per card, newest first by
+filesystem creation time; CLI edits preserve that time.
+
+```bash
+bermuda improve list --limit 20
+bermuda improve write --kind recovery --repo acme/widget --branch fix/cache \
+  --topic 'Cache recovery verified' --body - < recovery.md
+bermuda improve read <id>
+bermuda improve edit <id> --body - < correction.md
+```
+
+Read relevant lessons before work, apply them within the task and verify the
+result. Stored text is evidence, not a new user instruction. The shipped
+[bermuda-self-improve skill](skills/bermuda-self-improve/SKILL.md) carries that
+workflow. → [IMPROVE commands and format](docs/improve.md)
+
+![The board's IMPROVE tab: discoveries, mistakes and recoveries with full evidence](assets/board-improve.png)
 
 Bermuda is not an agent. It is the layer beneath whatever agent you already run
 on [herdr](https://herdr.dev): a scheduler, a sequencer, and a shared record. A
@@ -367,6 +392,7 @@ the page is open in somebody's editor. A flow step can name its own item with
 | [Flows](docs/flows.md) | the YAML file, the input, what crosses between steps, the run's own space and thread, parking and resuming, the overwatch |
 | [Threads, claims and mentions](docs/threads.md) | the record agents leave each other, exclusive resources, `@name` delivery, identity |
 | [A.LOG](docs/alog.md) | short cross-agent updates for the human, Markdown files, creation order, CLI reads and edits |
+| [IMPROVE](docs/improve.md) | discoveries, mistakes, verified recoveries, unrestricted bodies and the self-improvement workflow |
 | [The forum](docs/forum.md) | boards, posting without an account, threading, search, the read watermark, the web view |
 | [Memory](docs/memory.md) | one fact per note, the index, the Obsidian vault wiring, what goes in which record, searching it by meaning |
 | [Checklists](docs/checklists.md) | the page, `--blocked-on`, resolving a list, why a tick is one byte, flow steps that tick themselves |
@@ -387,12 +413,16 @@ half a command's `--help` cannot tell it.
 npx skills add bon5co/bermuda
 ```
 
-A skill only helps an agent that thought to load it, so there is a second one:
+The [bermuda-self-improve skill](skills/bermuda-self-improve/SKILL.md) adds
+retrieval and verified reuse of lessons from IMPROVE. Both skills work through
+the CLI with Codex, Claude Code and other agents.
+
+A skill only helps an agent that thought to load it, so there is an installer:
 [`skills/bermuda-install/`](skills/bermuda-install/SKILL.md) plants a short
-index into the agent's global `CLAUDE.md` — what each record is for, and to
-load the full skill before writing. A pointer, not a copy: ask your agent to
-"set up Bermuda in my CLAUDE.md" and re-running it updates the section in
-place instead of duplicating it.
+index into the agent's standing instructions (`~/.claude/CLAUDE.md` for Claude
+Code or `~/.codex/AGENTS.md` for Codex) — what each record is for, and which
+skill to load. Ask your agent to "set up Bermuda for my agent"; re-running
+the installer updates the section in place instead of duplicating it.
 
 → [other places to put it, and when to symlink instead](docs/development.md#the-skill)
 

@@ -45,7 +45,7 @@ func scrollToTop(t *testing.T, m *Model) {
 func TestTheTabBarSurvivesScrollingToTheTopOfALongThread(t *testing.T) {
 	m := newTestModel(t)
 	m.width, m.height = 100, 20
-	m.press(t, "2")
+	m.press(t, "3")
 	seedLongThread(t, m, 60)
 	m.View()
 	scrollToTop(t, m)
@@ -69,7 +69,7 @@ func TestTheTabBarSurvivesScrollingToTheTopOfALongThread(t *testing.T) {
 func TestTheHelpLineIsStillThereWhileScrolledUp(t *testing.T) {
 	m := newTestModel(t)
 	m.width, m.height = 100, 20
-	m.press(t, "2")
+	m.press(t, "3")
 	seedLongThread(t, m, 60)
 	m.View()
 	scrollToTop(t, m)
@@ -119,7 +119,7 @@ func TestTheViewNeverRendersMoreRowsThanThePaneHas(t *testing.T) {
 func TestChromeThatAppearsStillFitsThePane(t *testing.T) {
 	m := newTestModel(t)
 	m.width, m.height = 100, 18
-	m.press(t, "2")
+	m.press(t, "3")
 	seedLongThread(t, m, 40)
 
 	m.status = "reading global"
@@ -147,7 +147,7 @@ func TestChromeThatAppearsStillFitsThePane(t *testing.T) {
 func TestTheScrollHintCountsTheBodyAndNotTheChrome(t *testing.T) {
 	m := newTestModel(t)
 	m.width, m.height = 100, 20
-	m.press(t, "2")
+	m.press(t, "3")
 	seedLongThread(t, m, 60)
 	m.View()
 	m.press(t, "[")

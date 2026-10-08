@@ -34,6 +34,7 @@ func commands() map[string]func([]string) error {
 		"run-once":   runOnce,
 		"board":      boardCmd,
 		"alog":       alogCmd,
+		"improve":    improveCmd,
 		"job":        jobCmd,
 		"run":        runCmd,
 		"flow":       flowCmd,
@@ -89,6 +90,10 @@ Usage:
   bermuda alog write --repo <repo> --branch <branch> --topic <topic> --body <text>
   bermuda alog read|edit <id>        Read or edit a Markdown update (body <=50 words)
   bermuda alog path                  Where A.LOG entries live
+  bermuda improve list [--json]      Discoveries, mistakes, and recoveries, newest first
+  bermuda improve write --kind <discovery|mistake|recovery> --repo <repo> --branch <branch> --topic <topic> --body <text>
+  bermuda improve read|edit <id>     Read or edit an unlimited learning note
+  bermuda improve path               Where IMPROVE entries live
   bermuda job list                    List jobs
   bermuda job add --id <id> --prompt <text> [--schedule <cron>]
   bermuda job edit <id> --autocompact 200000   Cap the agent's context window

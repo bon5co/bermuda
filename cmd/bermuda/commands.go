@@ -13,6 +13,7 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/board"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
+	"github.com/bon5co/bermuda/v3/internal/improve"
 	"github.com/bon5co/bermuda/v3/internal/index"
 	"github.com/bon5co/bermuda/v3/internal/runner"
 	"github.com/bon5co/bermuda/v3/internal/store"
@@ -99,8 +100,9 @@ func boardCmd(argv []string) error {
 		// The one directory this installation keeps flows in, resolved once
 		// here: a board that worked it out for itself could end up listing a
 		// flow the command layer would not find.
-		FlowDir: flowDir(),
-		ALogDir: alog.Dir(stateDir()),
+		FlowDir:    flowDir(),
+		ALogDir:    alog.Dir(stateDir()),
+		ImproveDir: improve.Dir(stateDir()),
 		// Same rule for the notes: resolved here, so the tab reports on the
 		// directory `bermuda memory path` prints rather than one of its own.
 		MemoryDir:     memoryDir(),

@@ -7,6 +7,7 @@ import (
 
 	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/flow"
+	"github.com/bon5co/bermuda/v3/internal/improve"
 	"github.com/bon5co/bermuda/v3/internal/memory"
 )
 
@@ -102,6 +103,7 @@ func TestStateDirContainsEverythingBermudaWrites(t *testing.T) {
 		"flow dir":      flowDir(),
 		"memory dir":    memory.Dir(stateDir()),
 		"A.LOG dir":     alog.Dir(stateDir()),
+		"IMPROVE dir":   improve.Dir(stateDir()),
 		"run dir":       runDirFor("20260101T000000Z-somejob"),
 		"sentinel lock": lockPath(roleSentinel),
 	}

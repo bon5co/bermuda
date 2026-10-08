@@ -15,6 +15,7 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/flow"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
+	"github.com/bon5co/bermuda/v3/internal/improve"
 	"github.com/bon5co/bermuda/v3/internal/index"
 	"github.com/bon5co/bermuda/v3/internal/memory"
 	"github.com/bon5co/bermuda/v3/internal/mention"
@@ -56,8 +57,10 @@ type Model struct {
 	// daemonUp is the last observed scheduler state, refreshed on the tick.
 	daemonUp bool
 
-	alogEntries []alog.Entry
-	alogErr     error
+	alogEntries    []alog.Entry
+	alogErr        error
+	improveEntries []alog.Entry
+	improveErr     error
 
 	jobs []store.Job
 	runs []store.Run
@@ -194,6 +197,7 @@ const (
 	focusForum
 	focusMemory
 	focusALog
+	focusImprove
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
@@ -220,6 +224,8 @@ type Deps struct {
 	Run RunFunc
 	// ALogDir is the Markdown activity log directory resolved by the CLI.
 	ALogDir string
+	// ImproveDir holds unrestricted discovery, mistake and recovery cards.
+	ImproveDir string
 	// RunFlow and ResumeFlow are the two things the FLOWS tab does. Without
 	// them the board could show a parked flow and never act on it, which is the
 	// state that tab exists to end.
@@ -272,10 +278,12 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 type tickMsg time.Time
 
 type dataMsg struct {
-	alogEntries []alog.Entry
-	alogErr     error
-	jobs        []store.Job
-	runs        []store.Run
+	alogEntries    []alog.Entry
+	alogErr        error
+	improveEntries []alog.Entry
+	improveErr     error
+	jobs           []store.Job
+	runs           []store.Run
 	// lastRuns is every job's most recent run, asked of the store directly.
 	// runs above is a window on the newest runs of all jobs together, so a job
 	// that has not run lately is simply not in it — which is every job the
@@ -346,8 +354,10 @@ func (m *Model) load() tea.Cmd {
 	thread := m.currentThread()
 	return func() tea.Msg {
 		entries, alogErr := alog.List(m.deps.ALogDir)
+		lessons, improveErr := improve.List(m.deps.ImproveDir)
 		fail := func(err error) dataMsg {
-			return dataMsg{err: err, alogEntries: entries, alogErr: alogErr}
+			return dataMsg{err: err, alogEntries: entries, alogErr: alogErr,
+				improveEntries: lessons, improveErr: improveErr}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -415,7 +425,8 @@ func (m *Model) load() tea.Cmd {
 		return dataMsg{jobs: jobs, runs: runs, lastRuns: lastRuns, steps: steps,
 			thread: log, threadID: thread, claims: claims, threads: threads,
 			flows: flows, flowErrs: flowErrs, memory: mem, glance: glance,
-			alogEntries: entries, alogErr: alogErr}
+			alogEntries: entries, alogErr: alogErr,
+			improveEntries: lessons, improveErr: improveErr}
 	}
 }
 
@@ -485,6 +496,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case dataMsg:
 		m.alogEntries, m.alogErr = msg.alogEntries, msg.alogErr
+		m.improveEntries, m.improveErr = msg.improveEntries, msg.improveErr
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
