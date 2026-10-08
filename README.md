@@ -51,11 +51,11 @@ creation time. CLI edits preserve that time. → [A.LOG commands and format](doc
 
 ## IMPROVE — use what the last attempt taught you
 
-**IMPROVE** sits immediately after A.LOG. Agents record discoveries, mistakes
-and verified recoveries with their repository, branch, topic and evidence.
-Bodies have **no word limit**: the failed approach, cause, working recovery
-and checks can stay together. One Markdown file per card, newest first by
-filesystem creation time; CLI edits preserve that time.
+**IMPROVE**, available from **v3.5.0**, sits immediately after A.LOG. Agents record
+discoveries, mistakes and verified recoveries with their repository, branch,
+topic and evidence. Bodies have **no word or byte cap**: the failed approach,
+cause, working recovery and checks can stay together. One Markdown file per card,
+newest first by filesystem creation time; CLI edits preserve that time.
 
 ```bash
 bermuda improve list --limit 20
