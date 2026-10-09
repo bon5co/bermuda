@@ -1,6 +1,6 @@
 module github.com/bon5co/bermuda/v3
 
-go 1.26.6
+go 1.26.9
 
 
 require (
