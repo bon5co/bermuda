@@ -36,6 +36,8 @@ const (
 	// hitDetailRun is a run in the job detail's history, which is indexed into
 	// m.detailRuns rather than into the runs list.
 	hitDetailRun
+	hitCheckFolder
+	hitCheckItem
 )
 
 // hit is what one body line selects: an index into the *visible* list, so a
@@ -185,35 +187,22 @@ func (m *Model) click(x, y int) (tea.Model, tea.Cmd) {
 	}
 	if m.focus == focusChecklists {
 		row := y - m.hitTop
-		if row < 0 || row >= m.hitRows {
+		if row < 0 || row >= m.hitRows || x < 0 || x >= m.alogWidth() {
 			return m, nil
 		}
-		left, _ := m.checkWidths()
-		if x < left {
-			lists := m.visibleChecklists()
-			index := row/checkFolderRows(m.checkRows()) + m.checkScroll
-			if index < len(lists) {
-				m.checkItemsFocus = false
-				m.checkCursor = index
-				m.checkPath = lists[index].Path
-				m.syncChecks()
-			}
-		} else if x >= left+3 {
-			if l, ok := m.currentChecklist(); ok {
-				items := m.visibleCheckItems(l)
-				p := m.checkPosition(l.Path)
-				index := row + p.scroll
-				if index < len(items) {
-					m.checkItemsFocus = true
-					p.cursor = index
-					p.index = items[index].Index
-					p.identity, p.invalid = items[index].String(), false
-					p.identityCount = checkIdentityCount(l, p.identity)
-				}
-			}
+		h, ok := m.hits[row+m.hitScroll]
+		if !ok {
+			return m, nil
+		}
+		if h.kind == hitCheckFolder {
+			m.selectCheckTreeRow(checkTreeRow{h.index, -1})
+		}
+		if h.kind == hitCheckItem {
+			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, h.index})
 		}
 		return m, nil
 	}
+
 	row := y - m.hitTop
 	if row < 0 || row >= m.hitRows {
 		// Above the body, or below the last row of it. The row under the last

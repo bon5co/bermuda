@@ -21,17 +21,28 @@ bermuda check ls
 branch-a1b2c3d4e5f6a1b2c3d4e5f6 ship-640-fix   2/5 done, 2 blocked on operator
 ```
 
-The **CHK.L** board tab follows **A.LOG**. It shows checklist folders on the
-left and their items on the right, without a preview pane. Both columns sort by
-last update, newest first. A folder shows its branch, repository and update
-time; each item shows a checkbox, its original CLI number and update time.
+The **CHK.L** board tab follows **A.LOG**. It displays one tree across the full
+terminal width. Folder rows read `📁 <repo> · <branch>`, with full update dates
+(`YYYY-MM-DD HH:mm`) aligned at the right edge. Items appear indented directly
+under their folder. Folder labels are bold cyan; the selected row has a bright
+marker; completed item text and timestamps are muted. Both folders and items
+sort by last update, newest first. There is no preview.
 
-Use ↑/↓ or `j`/`k` to select, ←/→ or `h`/`l` to switch panes, and Space to toggle
-an item in the right pane. `/` searches branches, repositories, titles and item
-text. Esc clears the filter. `[ ]` pages the focused pane. Mouse clicks select
-rows; the wheel moves the focused pane. Selection and both scroll positions
-survive the automatic refresh and switching tabs. If a manual edit deletes or
-ambiguously changes the selected item, select it again before toggling.
+↑/↓ or `j`/`k` move the keyboard selection through folders and items. Selecting a
+checklist automatically expands it and collapses the previous one. Selecting an
+item keeps its parent open. Down from a folder enters its first item; down from
+its last item selects the next folder. Up from the first item selects its parent;
+up from a folder selects the previous collapsed folder. Only the selected
+checklist is expanded. `h`/← selects the parent; `l`/→ enters the first child.
+
+Space toggles the selected item and does nothing on folder rows. `/` searches
+branches, repositories, titles and item text; Esc clears the filter. `[ ]` pages
+through visible tree rows. Home/End select the first/last visible row. Mouse
+clicks select a row across its full width, and the wheel moves the selection.
+Selection and scrolling survive refresh and switching tabs. A manual edit that
+deletes or ambiguously changes the selected item requires deliberate reselection
+before toggling. Extremely narrow terminals clip labels and omit dates only when
+a complete timestamp cannot fit beside the selection marker.
 
 ## The gap it fills
 
