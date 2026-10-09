@@ -47,12 +47,18 @@ bad file shows its error without hiding valid entries.
 
 ## CHK.L
 
-**CHK.L** follows A.LOG. The left pane lists checklist folders by branch, with
-repository and last update; the right pane lists the selected checklist's items.
-Both sort newest update first. There is no preview pane. Use arrow keys or
-`h`/`j`/`k`/`l` to navigate, Space in the items pane to toggle, `/` to search and
-`[ ]` to page the focused pane. Mouse clicks select and the wheel moves the
-focused pane. `2` opens CHK.L. The original item numbers stay valid for the CLI.
+**CHK.L** follows A.LOG. It fills the terminal width with a single tree. Folder
+rows show `📁 <repo> · <branch>`; their items appear indented underneath. Full
+`YYYY-MM-DD HH:mm` dates align at the right edge. Both folders and items sort by
+last update, newest first. Folder labels are bold cyan, selection is bright and
+marked, and completed text/timestamps are muted. There is no preview.
+
+Arrow up/down or `j`/`k` select visible rows. The selected checklist automatically
+expands, and the previous checklist collapses; selecting a child keeps its parent
+open. Space toggles an item, `/` searches, and `[ ]` pages visible tree rows.
+`h`/← selects the parent and `l`/→ enters its first item. Mouse clicks select rows
+across the terminal width and the wheel moves selection. `2` opens CHK.L. The
+original item numbers stay valid for CLI commands.
 
 Create and add items through `bermuda check`; the empty states show the command.
 New checklists belong to one repository and branch. Existing pages remain

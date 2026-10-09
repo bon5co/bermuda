@@ -361,7 +361,8 @@ PR was opened and cannot say it is still unmerged; a flow's step state dies with
 the run; the forum and memory have the wrong half-life for work in flight. So:
 one Markdown page of ordinary checkboxes per repository and branch, in `checklists/`
 inside the same vault, readable and editable in Obsidian by somebody who never
-runs this CLI.
+runs this CLI. The board's **CHK.L** tab shows a full-width tree; arrow selection
+expands the current checklist and collapses the previous one.
 
 ```bash
 bermuda check new "ship 640 fix" --about 'timezone fix, webapp'
@@ -378,8 +379,8 @@ bermuda check ls
 `--blocked-on` is the distinction the whole thing turns on: "the agent has not
 done it yet" and **"the agent cannot do it"** look identical in every other
 record, and a list that cannot tell them apart reads as an idle agent. A tick
-writes the one byte between the brackets and nothing else, so it is safe while
-the page is open in somebody's editor. A flow step can name its own item with
+updates a branch item's checkbox and timestamp while preserving its page order.
+Legacy ticks still change only the checkbox byte. A flow step can name its own item with
 `check:` and have it ticked when the step reports ok.
 → [checklists](docs/checklists.md)
 

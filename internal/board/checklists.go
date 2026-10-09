@@ -13,13 +13,13 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/checklist"
 )
 
-// Each folder remembers its item selection and scroll. CLI numbers refer to
-// page order; display order is independent and can change after a toggle.
+// Each checklist remembers its item identity. CLI numbers refer to page order;
+// the tree sorts display rows independently and can reorder after a toggle.
 type checkPosition struct {
-	index, cursor, scroll int
-	identity, snapshot    string
-	identityCount         int
-	invalid               bool
+	index, cursor      int
+	identity, snapshot string
+	identityCount      int
+	invalid            bool
 }
 
 func (m *Model) visibleChecklists() []checklist.List {
@@ -77,15 +77,20 @@ func clampCheck(n, size int) int {
 	return min(max(n, 0), size-1)
 }
 
-// A refresh may reorder both columns; keep the selected folder's path and the
-// selected item's original page number rather than whichever row moved there.
+// Refresh preserves the selected folder path and item identity while the tree
+// sorts by update time. Only the selected checklist is expanded.
 func (m *Model) syncChecks() {
 	lists := m.visibleChecklists()
+	foundPath := false
 	for i, l := range lists {
 		if l.Path == m.checkPath {
+			foundPath = true
 			m.checkCursor = i
 			break
 		}
+	}
+	if m.checkPath != "" && !foundPath {
+		m.checkItemsFocus = false
 	}
 	m.checkCursor = clampCheck(m.checkCursor, len(lists))
 	if len(lists) == 0 {
@@ -137,24 +142,88 @@ func (m *Model) resetCheckSearch() {
 	}
 	m.syncChecks()
 }
-func (m *Model) moveCheck(delta int) {
+
+// checkTreeRows is the visible tree: every folder, and children only for the
+// currently selected checklist. Empty hints are visible but not selectable.
+type checkTreeRow struct{ folder, item int }
+
+func (m *Model) checkTreeRows() []checkTreeRow {
+	var rows []checkTreeRow
+	for i, l := range m.visibleChecklists() {
+		rows = append(rows, checkTreeRow{i, -1})
+		if l.Path != m.checkPath {
+			continue
+		}
+		items := m.visibleCheckItems(l)
+		if len(items) == 0 {
+			rows = append(rows, checkTreeRow{i, -2})
+		}
+		for j := range items {
+			rows = append(rows, checkTreeRow{i, j})
+		}
+	}
+	return rows
+}
+func (m *Model) selectedCheckTreeRow(rows []checkTreeRow) int {
+	item := -1
 	if m.checkItemsFocus {
 		if l, ok := m.currentChecklist(); ok {
-			items := m.visibleCheckItems(l)
-			p := m.checkPosition(l.Path)
-			p.cursor = checkMove(p.cursor, delta, len(items))
-			if len(items) > 0 {
-				p.index, p.identity, p.invalid = items[p.cursor].Index, items[p.cursor].String(), false
-				p.identityCount = checkIdentityCount(l, p.identity)
-			}
+			item = m.checkPosition(l.Path).cursor
 		}
-	} else {
-		lists := m.visibleChecklists()
-		m.checkCursor = checkMove(m.checkCursor, delta, len(lists))
-		if len(lists) > 0 {
-			m.checkPath = lists[m.checkCursor].Path
+	}
+	for i, row := range rows {
+		if row.folder == m.checkCursor && row.item == item {
+			return i
 		}
+	}
+	for i, row := range rows {
+		if row.folder == m.checkCursor && row.item == -1 {
+			return i
+		}
+	}
+	return 0
+}
+func (m *Model) selectCheckTreeRow(row checkTreeRow) {
+	lists := m.visibleChecklists()
+	if row.folder < 0 || row.folder >= len(lists) || row.item < -1 {
+		return
+	}
+	l := lists[row.folder]
+	if row.item < 0 {
+		m.checkCursor, m.checkPath, m.checkItemsFocus = row.folder, l.Path, false
 		m.syncChecks()
+		return
+	}
+	items := m.visibleCheckItems(l)
+	if row.item >= len(items) {
+		return
+	}
+	m.checkCursor, m.checkPath, m.checkItemsFocus = row.folder, l.Path, true
+	p := m.checkPosition(l.Path)
+	p.cursor, p.index, p.identity, p.invalid = row.item, items[row.item].Index, items[row.item].String(), false
+	p.identityCount = checkIdentityCount(l, p.identity)
+}
+func (m *Model) moveCheck(delta int) {
+	rows := m.checkTreeRows()
+	selected := m.selectedCheckTreeRow(rows)
+	var selectable []checkTreeRow
+	cursor := 0
+	for i, row := range rows {
+		if row.item < -1 {
+			continue
+		}
+		if i == selected {
+			cursor = len(selectable)
+		}
+		selectable = append(selectable, row)
+	}
+	if len(selectable) == 0 {
+		return
+	}
+	target := checkMove(cursor, delta, len(selectable))
+	// A clamped key that did not move must not recover a stale selection.
+	if target != cursor {
+		m.selectCheckTreeRow(selectable[target])
 	}
 }
 
@@ -188,9 +257,15 @@ func (m *Model) handleChecklistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 	case "l", "right", "enter":
-		m.checkItemsFocus = true
+		if !m.checkItemsFocus {
+			if l, ok := m.currentChecklist(); ok && len(m.visibleCheckItems(l)) > 0 {
+				m.selectCheckTreeRow(checkTreeRow{m.checkCursor, 0})
+			}
+		}
 	case "h", "left":
-		m.checkItemsFocus = false
+		if m.checkItemsFocus {
+			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, -1})
+		}
 	case "j", "down":
 		m.moveCheck(1)
 	case "k", "up":
@@ -209,8 +284,8 @@ func (m *Model) handleChecklistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.query != "" {
 			m.query = ""
 			m.resetCheckSearch()
-		} else {
-			m.checkItemsFocus = false
+		} else if m.checkItemsFocus {
+			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, -1})
 		}
 	case " ", "space":
 		if !m.checkItemsFocus {
@@ -243,14 +318,9 @@ func (m *Model) handleChecklistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) checkWidths() (int, int) {
-	w := m.alogWidth()
-	left := max(1, (w-3)*2/5)
-	return left, max(1, w-left-3)
-}
 func (m *Model) checkBottom() string {
 	var b strings.Builder
-	if l, ok := m.currentChecklist(); ok && m.checkPosition(l.Path).invalid {
+	if l, ok := m.currentChecklist(); ok && m.checkItemsFocus && m.checkPosition(l.Path).invalid {
 		b.WriteString(m.alogText("Selected item changed. Select it again with ↑/↓ before toggling.") + "\n")
 	}
 	if len(m.checkErrs) > 0 {
@@ -260,11 +330,11 @@ func (m *Model) checkBottom() string {
 		}
 	}
 	b.WriteString(m.renderFooter())
-	b.WriteString("\n" + helpStyle.Render(m.alogText("tab lists · / search · ↑↓/j/k select · ←→/h/l pane · space toggle item · [ ] page · r refresh · M mouse · q quit")))
+	b.WriteString("\n" + checkMutedStyle.Render(m.alogText("tab lists · / search · ↑↓/j/k select · ←/h parent · →/l items · space toggle item · [ ] page · r refresh · M mouse · q quit")))
 	return b.String()
 }
 func (m *Model) checkRows() int {
-	// Brand + folder tab chrome + column heading, then pinned feedback/help.
+	// Brand, tabs and tree heading, then pinned feedback/help.
 	return max(1, m.paneHeight()-5-blockRows(m.checkBottom()))
 }
 func checkWindow(cursor, size, rows int, scroll *int) {
@@ -280,10 +350,8 @@ func checkStamp(t time.Time) string {
 	if t.IsZero() {
 		return "—"
 	}
-	return t.Local().Format("01-02 15:04")
+	return t.Local().Format("2006-01-02 15:04")
 }
-
-func checkFolderRows(rows int) int { return min(2, rows) }
 
 func checkRepoLabel(repo string) string {
 	if filepath.IsAbs(repo) {
@@ -297,77 +365,70 @@ func checkFit(text string, width int) string {
 	text = strings.ReplaceAll(strings.ReplaceAll(alogPlain(text), "\n", " "), "\t", " ")
 	return fit(ansi.Truncate(text, width, "…"), width)
 }
+
+var (
+	checkFolderStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("6"))
+	// Keep muted checklist text readable on the board's dark terminal surface.
+	checkMutedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
+)
+
 func (m *Model) checklistPane(p pane) pane {
 	m.syncChecks()
-	leftWidth, rightWidth := m.checkWidths()
-	leftHeading, rightHeading := "CHECKLISTS / BRANCHES", "ITEMS"
-	if !m.checkItemsFocus {
-		leftHeading = cursorMark + " " + leftHeading
-	} else {
-		rightHeading = cursorMark + " " + rightHeading
-	}
-	p.top += "\n" + headerStyle.Render(checkFit(leftHeading, leftWidth)+" │ "+checkFit(rightHeading, rightWidth))
+	width := m.alogWidth()
+	p.top += "\n" + headerStyle.Render(checkFit("CHECKLISTS · newest first", width))
 	p.bottom = m.checkBottom()
-	rows := max(1, m.paneHeight()-blockRows(p.top)-blockRows(p.bottom))
+	available := max(1, m.paneHeight()-blockRows(p.top)-blockRows(p.bottom))
+	rows := m.checkTreeRows()
+	selected := m.selectedCheckTreeRow(rows)
+	checkWindow(selected, len(rows), available, &m.checkScroll)
 	lists := m.visibleChecklists()
-	folderRows := checkFolderRows(rows)
-	checkWindow(m.checkCursor, len(lists), max(1, rows/folderRows), &m.checkScroll)
-	var items []checklist.Item
-	var position *checkPosition
-	l, hasList := m.currentChecklist()
-	if hasList {
-		items = m.visibleCheckItems(l)
-		position = m.checkPosition(l.Path)
-		checkWindow(position.cursor, len(items), rows, &position.scroll)
-	}
-	left := make([]string, rows)
-	right := make([]string, rows)
-	for row := 0; row < rows; row++ {
-		i := row/folderRows + m.checkScroll
-		if i < len(lists) {
-			folder := lists[i]
-			label := folder.Branch
-			if label == "" {
-				label = "legacy: " + folder.Title
-			}
-			mark := "  "
-			if i == m.checkCursor {
-				mark = cursorMark + " "
-			}
-			text := mark + "📁 " + label
-			if folderRows == 1 {
-				text = checkTimedRow(text, checkStamp(folder.Updated), leftWidth)
-			}
-			if row%folderRows == 1 {
-				text = checkTimedRow("    "+checkRepoLabel(folder.Repo), checkStamp(folder.Updated), leftWidth)
-			}
-			left[row] = checkFit(text, leftWidth)
-			if i == m.checkCursor {
-				if !m.checkItemsFocus {
-					left[row] = rowSelected.Render(left[row])
-				} else {
-					left[row] = titleStyle.Render(left[row])
-				}
-			}
+	var body []string
+	for screenRow := 0; screenRow < available; screenRow++ {
+		at := screenRow + m.checkScroll
+		if at >= len(rows) {
+			body = append(body, strings.Repeat(" ", width))
+			continue
 		}
-		if position != nil {
-			i := row + position.scroll
-			if i < len(items) {
-				it := items[i]
-				mark := "  "
-				if i == position.cursor && m.checkItemsFocus && !position.invalid {
-					mark = cursorMark + " "
-				}
-				text := fmt.Sprintf("%s%s %d. %s", mark, it.Box(), it.Index, it.String())
-				stamp := checkStamp(it.Updated)
-				if rightWidth >= len(stamp)+24 {
-					text = checkTimedRow(text, stamp, rightWidth)
-				}
-				right[row] = checkFit(text, rightWidth)
-				if i == position.cursor && m.checkItemsFocus && !position.invalid {
-					right[row] = rowSelected.Render(right[row])
-				}
+		row := rows[at]
+		l := lists[row.folder]
+		marker := "  "
+		isSelected := at == selected
+		if row.item >= 0 && m.checkPosition(l.Path).invalid {
+			isSelected = false
+		}
+		if isSelected {
+			marker = cursorMark + " "
+		}
+		switch {
+		case row.item == -1:
+			label := checkRepoLabel(l.Repo) + " · " + l.Branch
+			if l.Branch == "" {
+				label = "legacy: " + l.Title
 			}
+			style := checkFolderStyle
+			if isSelected {
+				style = rowSelected
+			}
+			body = append(body, checkTreeLine(marker+"📁 "+label, checkStamp(l.Updated), width, style))
+			m.mark(screenRow, hitCheckFolder, row.folder)
+		case row.item == -2:
+			message := "    No items. Run: bermuda check add \"" + l.Name + "\" \"<item>\""
+			if m.query != "" {
+				message = "    No items match. Esc clears search."
+			}
+			body = append(body, checkMutedStyle.Render(checkFit(message, width)))
+		default:
+			it := m.visibleCheckItems(l)[row.item]
+			style := lipgloss.NewStyle()
+			if it.Done {
+				style = checkMutedStyle
+			}
+			if isSelected {
+				style = rowSelected
+			}
+			text := fmt.Sprintf("%s    %s %d. %s", marker, it.Box(), it.Index, it.String())
+			body = append(body, checkTreeLine(text, checkStamp(it.Updated), width, style))
+			m.mark(screenRow, hitCheckItem, row.item)
 		}
 	}
 	if len(lists) == 0 {
@@ -375,40 +436,23 @@ func (m *Model) checklistPane(p pane) pane {
 		if m.query != "" {
 			message = "No matches. Esc clears search."
 		}
-		for i, line := range wrapText(message, leftWidth) {
-			if i < rows {
-				left[i] = checkFit(line, leftWidth)
+		for i, line := range wrapText(message, width) {
+			if i < available {
+				body[i] = checkFit(line, width)
 			}
 		}
-	} else if len(items) == 0 {
-		message := "No items. Run: bermuda check add \"" + l.Name + "\" \"<item>\""
-		if m.query != "" {
-			message = "No items match. Esc clears search."
-		}
-		for i, line := range wrapText(message, rightWidth) {
-			if i < rows {
-				right[i] = checkFit(line, rightWidth)
-			}
-		}
-	}
-	var body []string
-	for i := 0; i < rows; i++ {
-		body = append(body, checkFitStyled(left[i], leftWidth)+dimStyle.Render(" │ ")+checkFitStyled(right[i], rightWidth))
 	}
 	p.body = strings.Join(body, "\n")
-	// Both columns are already independently windowed. The shared pane window
-	// must not follow one column's marker and shift the other.
+	// The tree owns its scroll; body hit mappings refer to the rendered rows.
 	m.scroll = 0
 	return p
 }
-func checkFitStyled(text string, width int) string {
-	return text + strings.Repeat(" ", max(0, width-lipgloss.Width(text)))
-}
-func checkTimedRow(text, stamp string, width int) string {
-	// At narrow widths keep the actual work readable; timestamps reappear once
-	// there is room for a useful filename beside them.
-	if width < len(stamp)+12 {
-		return text
+
+func checkTreeLine(text, stamp string, width int, style lipgloss.Style) string {
+	// Keep a full date at the terminal's right edge whenever it can fit alongside
+	// a visible cursor. Extremely narrow terminals retain the work label.
+	if width < len(stamp)+3 {
+		return style.Render(checkFit(text, width))
 	}
-	return checkFit(text, width-len(stamp)-1) + " " + stamp
+	return style.Render(checkFit(text, width-len(stamp)-1)) + " " + checkMutedStyle.Render(stamp)
 }
