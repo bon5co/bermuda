@@ -21,7 +21,7 @@ func (m *Model) handleFeedKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.stepTab(1)
 	case "shift+tab":
 		m.stepTab(-1)
-	case "1", "2", "3", "4", "5", "6", "7", "8":
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 	case "/":
 		m.searching, m.queryDraft = true, m.query
@@ -82,7 +82,7 @@ func (m *Model) alogPane(p pane) pane {
 
 func (m *Model) improvePane(p pane) pane {
 	return m.feedPane(p, cardFeed{
-		label: "IMPROVE", latestKey: "2", entries: m.improveEntries, err: m.improveErr,
+		label: "IMPROVE", latestKey: "3", entries: m.improveEntries, err: m.improveErr,
 		empty: "No lessons yet. Record a discovery, mistake or recovery (unlimited body): bermuda improve write --kind discovery --repo acme/widget --branch feat/lessons --topic Evidence --body \"Observed and verified behavior.\"",
 	})
 }

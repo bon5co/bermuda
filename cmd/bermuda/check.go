@@ -5,6 +5,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -57,6 +59,8 @@ func checkDir() string { return checklist.Dir(memoryDir()) }
 func checkNew(argv []string) error {
 	fs := flag.NewFlagSet("check new", flag.ExitOnError)
 	about := fs.String("about", "", "one line on what this piece of work is")
+	repo := fs.String("repo", "", "repository identity (defaults to the git common directory's repository)")
+	branch := fs.String("branch", "", "branch (defaults to the current git branch)")
 	if len(argv) == 0 || strings.HasPrefix(argv[0], "-") {
 		return errors.New(`usage: bermuda check new "<title>" [--about '...']`)
 	}
@@ -64,7 +68,11 @@ func checkNew(argv []string) error {
 	if err := fs.Parse(argv[1:]); err != nil {
 		return err
 	}
-	l, err := checklist.New(checkDir(), title, *about, time.Now())
+	r, b, err := checkIdentity(*repo, *branch)
+	if err != nil {
+		return err
+	}
+	l, err := checklist.NewBranch(checkDir(), title, *about, r, b, time.Now())
 	if err != nil {
 		return err
 	}
@@ -94,7 +102,7 @@ func checkAdd(argv []string) error {
 		return errors.New("--why says why an item is blocked, so it needs --blocked-on <who>")
 	}
 
-	l, err := checklist.Resolve(checkDir(), list)
+	l, err := resolveCheck(list)
 	if err != nil {
 		return err
 	}
@@ -118,7 +126,7 @@ func checkSet(argv []string, done bool) error {
 	if len(rest) == 0 {
 		return fmt.Errorf("usage: bermuda check %s [<list>] <n|prefix>", verb)
 	}
-	l, err := checklist.Resolve(checkDir(), list)
+	l, err := resolveCheck(list)
 	if err != nil {
 		return err
 	}
@@ -159,6 +167,7 @@ func checkList(argv []string) error {
 		return err
 	}
 	lists, bad := checklist.All(checkDir())
+	checklist.Newest(lists)
 	// An unreadable page is named before the rest are listed, because it is
 	// invisible everywhere else — it simply does not appear, which reads as "I
 	// never made that one".
@@ -204,7 +213,7 @@ func checkShow(argv []string) error {
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
-	l, err := checklist.Resolve(checkDir(), list)
+	l, err := resolveCheck(list)
 	if err != nil {
 		return err
 	}
@@ -221,6 +230,9 @@ func checkShow(argv []string) error {
 
 	fmt.Println(l.Path)
 	for _, line := range l.Head {
+		if strings.HasPrefix(strings.TrimSpace(line), "<!-- bermuda-check:") {
+			continue
+		}
 		fmt.Println(line)
 	}
 	// Numbered, because the number is what `tick` takes. The page itself has no
@@ -240,6 +252,47 @@ func checkShow(argv []string) error {
 	fmt.Println()
 	fmt.Println(l.Counts().Line())
 	return nil
+}
+
+// Worktrees share the common git directory, so the same repository and branch
+// resolve to the same page whichever checkout is used. Outside git, both flags
+// are required. Detached HEAD requires an explicit branch.
+func checkIdentity(repo, branch string) (string, string, error) {
+	git := func(args ...string) string {
+		out, err := exec.Command("git", args...).Output()
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if strings.TrimSpace(repo) == "" {
+		common := git("rev-parse", "--path-format=absolute", "--git-common-dir")
+		if common != "" {
+			repo = filepath.Dir(common)
+		}
+	}
+	if strings.TrimSpace(branch) == "" {
+		branch = git("symbolic-ref", "--quiet", "--short", "HEAD")
+	}
+	repo, branch = strings.TrimSpace(repo), strings.TrimSpace(branch)
+	if repo == "" || branch == "" {
+		return "", "", errors.New("cannot detect repository and branch; pass --repo <repo> --branch <branch> (required outside git or for detached HEAD)")
+	}
+	return repo, branch, nil
+}
+
+func resolveCheck(query string) (checklist.List, error) {
+	if strings.TrimSpace(query) != "" || strings.TrimSpace(os.Getenv(checklist.Env)) != "" {
+		return checklist.Resolve(checkDir(), query)
+	}
+	if repo, branch, err := checkIdentity("", ""); err == nil {
+		l, err := checklist.ForBranch(checkDir(), repo, branch)
+		if err == nil {
+			return l, nil
+		}
+		return checklist.List{}, fmt.Errorf("%s · %s: %w; run bermuda check new \"<title>\" or name a checklist explicitly", repo, branch, err)
+	}
+	return checklist.List{}, errors.New("no current git branch; name a checklist or set BERMUDA_CHECK")
 }
 
 // splitListArg separates an optional leading <list> from the rest of a command

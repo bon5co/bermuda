@@ -103,6 +103,7 @@ func boardCmd(argv []string) error {
 		FlowDir:    flowDir(),
 		ALogDir:    alog.Dir(stateDir()),
 		ImproveDir: improve.Dir(stateDir()),
+		CheckDir:   checkDir(),
 		// Same rule for the notes: resolved here, so the tab reports on the
 		// directory `bermuda memory path` prints rather than one of its own.
 		MemoryDir:     memoryDir(),

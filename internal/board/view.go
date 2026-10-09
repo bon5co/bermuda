@@ -58,6 +58,9 @@ func (m *Model) listPane() pane {
 	// leaving clicks landing a row off.
 	m.tabRow = blockRows(brand) + 1
 	p := pane{top: brand + "\n" + m.renderTabs("")}
+	if m.focus == focusChecklists {
+		return m.checklistPane(p)
+	}
 	if m.focus == focusALog {
 		return m.alogPane(p)
 	}
@@ -178,7 +181,7 @@ func (m *Model) threadPane(p pane) pane {
 	}
 	bottom.WriteString(m.renderFooter())
 	bottom.WriteString("\n" + helpStyle.Render(
-		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 3 live · M mouse · q quit"))
+		"tab lists · < > thread · t pick · i say · / search · j/k scroll · 4 live · M mouse · q quit"))
 	p.bottom = bottom.String()
 	return p
 }

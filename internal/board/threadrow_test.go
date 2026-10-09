@@ -83,7 +83,7 @@ func TestThePickerUsesTheSameOrderAsTheRow(t *testing.T) {
 		"stale":  48 * time.Hour,
 		"recent": time.Minute,
 	})
-	m.press(t, "3")
+	m.press(t, "4")
 	m.press(t, "t")
 	order := m.threadOrder()
 	rendered := m.renderPicker()
@@ -160,7 +160,7 @@ func TestTheThreadRowTruncatesRatherThanWraps(t *testing.T) {
 func TestAngleKeysStepThroughThreadsAndDoNotPage(t *testing.T) {
 	m := newTestModel(t)
 	seedThreads(t, m, map[string]time.Duration{"recent": time.Minute})
-	m.press(t, "3")
+	m.press(t, "4")
 	if got := threadIDs(m.threadOrder()); got[0] != store.GlobalThread || got[1] != "recent" {
 		t.Fatalf("the row lists %v, want global then recent", got)
 	}

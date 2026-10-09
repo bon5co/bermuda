@@ -16,12 +16,13 @@ import (
 	"github.com/bon5co/bermuda/v3/internal/improve"
 )
 
-func TestImproveIsSecondAndEmptyStateIncludesKind(t *testing.T) {
+func TestImproveFollowsChecklistsAndEmptyStateIncludesKind(t *testing.T) {
 	m := newTestModel(t)
 	m.press(t, "1")
 	m.pressSpecial(t, tea.KeyTab)
+	m.pressSpecial(t, tea.KeyTab)
 	if m.focus != focusImprove {
-		t.Fatal("IMPROVE is not immediately after A.LOG")
+		t.Fatal("IMPROVE is not immediately after CHK.L")
 	}
 	view := ansi.Strip(m.View())
 	for _, want := range []string{"IMPROVE", "No lessons yet", "unlimited body", "--kind discovery", "--repo", "--branch", "--topic", "--body"} {
@@ -114,10 +115,10 @@ func TestImproveLongBodyKindSearchAndScrollingReachTheEnd(t *testing.T) {
 		t.Fatal("lesson wheel did not scroll")
 	}
 	m.press(t, "G")
-	if view := ansi.Strip(m.View()); !strings.Contains(view, "tailproof") || !strings.Contains(view, "IMPROVE") || !strings.Contains(strings.Join(strings.Fields(view), " "), "2 latest") {
+	if view := ansi.Strip(m.View()); !strings.Contains(view, "tailproof") || !strings.Contains(view, "IMPROVE") || !strings.Contains(strings.Join(strings.Fields(view), " "), "3 latest") {
 		t.Fatalf("end of long lesson or pinned chrome missing:\n%s", view)
 	}
-	m.press(t, "2")
+	m.press(t, "3")
 	if m.scroll != 0 {
 		t.Fatal("2 does not jump back to latest lesson")
 	}

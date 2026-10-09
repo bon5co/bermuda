@@ -45,14 +45,27 @@ entry. New entries and file edits refresh every three seconds. Tabs and search
 stay on screen while the cards scroll. An empty feed shows the write command; a
 bad file shows its error without hiding valid entries.
 
+## CHK.L
+
+**CHK.L** follows A.LOG. The left pane lists checklist folders by branch, with
+repository and last update; the right pane lists the selected checklist's items.
+Both sort newest update first. There is no preview pane. Use arrow keys or
+`h`/`j`/`k`/`l` to navigate, Space in the items pane to toggle, `/` to search and
+`[ ]` to page the focused pane. Mouse clicks select and the wheel moves the
+focused pane. `2` opens CHK.L. The original item numbers stay valid for the CLI.
+
+Create and add items through `bermuda check`; the empty states show the command.
+New checklists belong to one repository and branch. Existing pages remain
+unchanged and appear with their legacy titles. See [checklists](checklists.md).
+
 ## IMPROVE
 
-**IMPROVE** follows A.LOG. Each card carries a discovery, mistake or recovery
+**IMPROVE** follows CHK.L. Each card carries a discovery, mistake or recovery
 kind, repository, branch, topic, creation time and its full body. Bodies have
 no word limit; both metadata and prose wrap, and long lessons scroll to their
 last line. Cards are newest first, using the same filesystem timestamps and
 edit behavior as A.LOG. `/` searches kind as well as repository, branch, topic
-and body. `2` opens IMPROVE or returns to its latest entry. New entries and
+and body. `3` opens IMPROVE or returns to its latest entry. New entries and
 filesystem edits refresh every three seconds. Read and write with
 `bermuda improve`; see [IMPROVE commands and workflow](improve.md).
 
@@ -65,7 +78,7 @@ its own with what it did and how long it took:
 
 | key | action |
 |-----|--------|
-| `1` … `8` | A.LOG / IMPROVE / threads / jobs / runs / flows / forum / memory — the tabs, left to right |
+| `1` … `9` | A.LOG / CHK.L / IMPROVE / threads / jobs / runs / flows / forum / memory — the tabs, left to right |
 | `h` `l` | switch list |
 | `j` `k` | move |
 | `enter` | open job detail (or focus the agent, from a run) |

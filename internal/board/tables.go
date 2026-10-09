@@ -226,6 +226,8 @@ func (m *Model) tableWidth() int {
 		cols = m.runColumns()
 	case focusFlows:
 		cols = m.flowColumns()
+	case focusChecklists:
+		return m.alogWidth()
 	case focusALog, focusImprove:
 		return min(m.alogWidth(), threadBubbleMax+4)
 	case focusThread:

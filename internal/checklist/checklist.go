@@ -28,6 +28,7 @@
 package checklist
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -88,6 +89,8 @@ type Item struct {
 	Why       string
 
 	Done bool
+	// Updated is persisted on new branch checklists; legacy pages have no item metadata.
+	Updated time.Time
 
 	// Index is the item's 1-based position on the page, which is what `tick 3`
 	// means.
@@ -170,8 +173,13 @@ type List struct {
 	About string
 	// Head is every line before the first checkbox, kept verbatim so `show` can
 	// print the page rather than a reconstruction of it.
-	Head  []string
-	Items []Item
+	Head    []string
+	Items   []Item
+	Repo    string
+	Branch  string
+	Updated time.Time
+	// Revision guards board toggles against edits after the displayed snapshot.
+	Revision [32]byte
 }
 
 // Slug is the name without its datetime stamp.
@@ -292,7 +300,20 @@ func Load(path string) (List, error) {
 	if err != nil {
 		return List{}, err
 	}
-	return parse(path, data), nil
+	l := parse(path, data)
+	l.Revision = sha256.Sum256(data)
+	if err := readBranchMetadata(&l, string(data)); err != nil {
+		return List{}, fmt.Errorf("%s: %w", path, err)
+	}
+	if info, err := os.Stat(path); err == nil {
+		l.Updated = info.ModTime()
+	}
+	for _, it := range l.Items {
+		if it.Updated.After(l.Updated) {
+			l.Updated = it.Updated
+		}
+	}
+	return l, nil
 }
 
 // parse reads a page's bytes into a List.
@@ -313,7 +334,9 @@ func parse(path string, data []byte) List {
 				// one byte each in every encoding this file can be in.
 				Offset: offset + int64(len(m[1])) + 3,
 			}
-			it.Text, it.BlockedOn, it.Why = splitBlocked(strings.TrimSpace(m[4]))
+			text, updated := itemMetadata(strings.TrimSpace(m[4]))
+			it.Updated = updated
+			it.Text, it.BlockedOn, it.Why = splitBlocked(text)
 			l.Items = append(l.Items, it)
 		} else if len(l.Items) == 0 {
 			l.Head = append(l.Head, body)
@@ -332,7 +355,7 @@ func parse(path string, data []byte) List {
 func titleAndAbout(head []string) (title, about string) {
 	for _, line := range head {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
+		if trimmed == "" || strings.HasPrefix(trimmed, branchMarker) {
 			continue
 		}
 		if title == "" {
@@ -515,6 +538,11 @@ func (l List) Find(selector string) (Item, error) {
 // it is now — a human who added two lines since it was loaded would otherwise
 // have a different item ticked than the one that was named.
 func Set(path, selector string, done bool) (Item, bool, error) {
+	lock, err := pageLock(path)
+	if err != nil {
+		return Item{}, false, err
+	}
+	defer lock.Release()
 	l, err := Load(path)
 	if err != nil {
 		return Item{}, false, err
@@ -525,6 +553,9 @@ func Set(path, selector string, done bool) (Item, bool, error) {
 	}
 	if it.Done == done {
 		return it, false, nil
+	}
+	if l.Branch != "" {
+		return setBranchItem(l, it, done, time.Now())
 	}
 	mark := byte(' ')
 	if done {
@@ -555,17 +586,33 @@ func Add(path string, e Entry) (Item, error) {
 	if strings.TrimSpace(e.Text) == "" {
 		return Item{}, errors.New("an item needs text: what is the thing that has to happen")
 	}
+	lock, err := pageLock(path)
+	if err != nil {
+		return Item{}, err
+	}
+	defer lock.Release()
 	data, err := os.ReadFile(path) // #nosec G304 -- resolved from the checklist folder
 	if err != nil {
 		return Item{}, err
 	}
-	line := e.Line() + "\n"
+	l, err := Load(path)
+	if err != nil {
+		return Item{}, err
+	}
+	line := e.Line()
+	if l.Branch != "" {
+		line += updatedComment(time.Now())
+	}
+	line += "\n"
 	at := insertAt(string(data))
+	if at > 0 && data[at-1] != '\n' {
+		line = "\n" + line
+	}
 	out := string(data[:at]) + line + string(data[at:])
 	if err := os.WriteFile(path, []byte(out), statefs.File); err != nil {
 		return Item{}, err
 	}
-	l := parse(path, []byte(out))
+	l = parse(path, []byte(out))
 	if len(l.Items) == 0 {
 		return Item{}, fmt.Errorf("%s: wrote an item the page does not read back", path)
 	}

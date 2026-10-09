@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,6 +24,11 @@ import (
 // checkEnv points a test at its own vault.
 func checkEnv(t *testing.T) {
 	t.Helper()
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "init", "--quiet", "--initial-branch=main", dir).CombinedOutput(); err != nil {
+		t.Fatalf("git fixture: %s: %v", out, err)
+	}
+	t.Chdir(dir)
 	t.Setenv("BERMUDA_STATE_DIR", t.TempDir())
 	t.Setenv("BERMUDA_MEMORY_DIR", "")
 	t.Setenv(checklist.Env, "")
@@ -238,4 +244,93 @@ func TestSeedChecklistSurvivesAnUnwritablePage(t *testing.T) {
 	// And a run bound to nothing is the ordinary case: it must do nothing at all.
 	seedChecklist(def, "")
 	tickStep(def, "", runner.StepRun{ID: "a", Outcome: runner.OutcomeDone})
+}
+
+func TestCheckNewExplicitIdentityOutsideGitAndRawMetadata(t *testing.T) {
+	checkEnv(t)
+	t.Chdir(t.TempDir())
+	if err := checkNew([]string{"work"}); err == nil {
+		t.Fatal("outside git guessed branch")
+	}
+	out, err := captureStdout(t, func() error { return checkNew([]string{"work", "--repo", "acme/widget", "--branch", "feat/work"}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := strings.SplitN(out, "\n", 2)[0]
+	if _, err := captureStdout(t, func() error { return checkAdd([]string{path, "one item"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkAdd([]string{"unbound item"}); err == nil {
+		t.Fatal("outside git guessed global latest page")
+	}
+	show, err := captureStdout(t, func() error { return checkShow([]string{path}) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(show, "bermuda-check:") || strings.Contains(show, "bermuda-updated:") {
+		t.Fatal("non-raw show leaked metadata")
+	}
+	raw, err := captureStdout(t, func() error { return checkShow([]string{path, "--raw"}) })
+	if err != nil || !strings.Contains(raw, "bermuda-check:") {
+		t.Fatal("raw show lost metadata")
+	}
+}
+
+func TestCheckImplicitWritesStayOnCurrentBranch(t *testing.T) {
+	checkEnv(t)
+	if _, err := captureStdout(t, func() error { return checkNew([]string{"main work"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "checkout", "--quiet", "-b", "feat/other").CombinedOutput(); err != nil {
+		t.Fatalf("branch: %s %v", out, err)
+	}
+	if err := checkAdd([]string{"must not land on main"}); err == nil {
+		t.Fatal("missing branch checklist fell back to global latest")
+	}
+	if _, err := captureStdout(t, func() error { return checkNew([]string{"other work"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := captureStdout(t, func() error { return checkAdd([]string{"other item"}) }); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command("git", "checkout", "--quiet", "-B", "main").CombinedOutput(); err != nil {
+		t.Fatalf("main: %s %v", out, err)
+	}
+	if _, err := captureStdout(t, func() error { return checkAdd([]string{"main item"}) }); err != nil {
+		t.Fatal(err)
+	}
+	repo, branch, err := checkIdentity("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l, err := checklist.ForBranch(checkDir(), repo, branch)
+	if err != nil || len(l.Items) != 1 || l.Items[0].Text != "main item" {
+		t.Fatalf("branch writes mixed: %+v %v", l, err)
+	}
+	out, err := captureStdout(t, func() error { return checkNew([]string{"retry title"}) })
+	if err != nil || strings.SplitN(out, "\n", 2)[0] != l.Path {
+		t.Fatal("branch creation retry created another list")
+	}
+}
+
+func TestCheckIdentitySharesRepositoryAcrossWorktrees(t *testing.T) {
+	checkEnv(t)
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %s %v", args, out, err)
+		}
+	}
+	git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.com", "commit", "--quiet", "--allow-empty", "-m", "fixture")
+	repo, _, err := checkIdentity("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(t.TempDir(), "checkout")
+	git("worktree", "add", "--quiet", "-b", "feat/worktree", worktree)
+	t.Chdir(worktree)
+	got, branch, err := checkIdentity("", "")
+	if err != nil || got != repo || branch != "feat/worktree" {
+		t.Fatalf("worktree identity: %q %q %v;want %q feat/worktree", got, branch, err, repo)
+	}
 }

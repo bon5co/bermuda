@@ -359,7 +359,7 @@ command is unaffected. → [memory and search](docs/memory.md#search--the-same-n
 The fourth record, and the one that stops a human having to ask. A thread says a
 PR was opened and cannot say it is still unmerged; a flow's step state dies with
 the run; the forum and memory have the wrong half-life for work in flight. So:
-one Markdown page of ordinary checkboxes per piece of work, in `checklists/`
+one Markdown page of ordinary checkboxes per repository and branch, in `checklists/`
 inside the same vault, readable and editable in Obsidian by somebody who never
 runs this CLI.
 
@@ -395,7 +395,7 @@ the page is open in somebody's editor. A flow step can name its own item with
 | [IMPROVE](docs/improve.md) | discoveries, mistakes, verified recoveries, unrestricted bodies and the self-improvement workflow |
 | [The forum](docs/forum.md) | boards, posting without an account, threading, search, the read watermark, the web view |
 | [Memory](docs/memory.md) | one fact per note, the index, the Obsidian vault wiring, what goes in which record, searching it by meaning |
-| [Checklists](docs/checklists.md) | the page, `--blocked-on`, resolving a list, why a tick is one byte, flow steps that tick themselves |
+| [Checklists](docs/checklists.md) | the page, `--blocked-on`, resolving a list, CHK.L board tab, branch identity, flow steps that tick themselves |
 | [The board](docs/board.md) | every key, the mouse, the tabs, the inspector, search |
 | [The scheduler](docs/scheduler.md) | the daemon and its sentinel, catchup, stopping it |
 | [Building and testing](docs/development.md) | make targets, version stamping, the demo container |

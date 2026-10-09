@@ -7,21 +7,31 @@ Bermuda keeps four kinds of record, and each answers a different question:
 | [thread](threads.md) | what is happening on this machine *now*? | append-only events, claims, mentions |
 | [forum](forum.md) | what happened that is worth *finding later*? | durable, searchable posts |
 | [memory](memory.md) | what is *true*? | one fact per Markdown note, curated |
-| checklist | what is still *outstanding*, and on whom? | one page of checkboxes per piece of work |
+| checklist | what is still *outstanding*, and on whom? | one page of checkboxes per repository and branch |
 
 ```bash
 bermuda check new "ship 640 fix" --about 'timezone fix, webapp'
-bermuda check add "open PR into dev" --ref https://github.com/org/repo/pull/474
+bermuda check add "open PR into dev" --ref https://github.com/acme/widget/pull/474
 bermuda check add "merge release-42" --blocked-on operator --why 'auto-deploys to QA'
 bermuda check tick 'open PR'
 bermuda check ls
 ```
 
 ```
-2026-08-28T1631 ship-640-fix   2/5 done, 2 blocked on operator
+branch-a1b2c3d4e5f6a1b2c3d4e5f6 ship-640-fix   2/5 done, 2 blocked on operator
 ```
 
-That line is the whole feature. Everything below it is detail.
+The **CHK.L** board tab follows **A.LOG**. It shows checklist folders on the
+left and their items on the right, without a preview pane. Both columns sort by
+last update, newest first. A folder shows its branch, repository and update
+time; each item shows a checkbox, its original CLI number and update time.
+
+Use ↑/↓ or `j`/`k` to select, ←/→ or `h`/`l` to switch panes, and Space to toggle
+an item in the right pane. `/` searches branches, repositories, titles and item
+text. Esc clears the filter. `[ ]` pages the focused pane. Mouse clicks select
+rows; the wheel moves the focused pane. Selection and both scroll positions
+survive the automatic refresh and switching tabs. If a manual edit deletes or
+ambiguously changes the selected item, select it again before toggling.
 
 ## The gap it fills
 
@@ -52,13 +62,30 @@ The other three records each hold a piece of that and none can answer it:
 
 ## It is just a page
 
-One Markdown file per piece of work, in `checklists/` inside the memory vault
-(`bermuda memory path`). The filename is datetime-prefixed, so the folder sorts
-newest-last with no index, no frontmatter and no metadata to maintain:
+New checklists are one Markdown file per repository and branch, in
+`checklists/` inside the memory vault (`bermuda memory path`). `check new`
+automatically detects the current git branch and the repository shared by its
+worktrees. Calling it again for that identity returns the existing path without
+changing the title, description or items. The same branch in a different
+repository gets its own checklist.
 
+Outside git, or in detached HEAD, provide an explicit identity:
+
+```bash
+bermuda check new "ship the fix" --repo acme/widget --branch feat/status
 ```
-checklists/2026-08-28T1631 ship-640-fix.md
-```
+
+Repository identity is the absolute repository path when detected automatically;
+explicit `--repo` values are used as given. Keep the same value when creating
+from outside git. New filenames include an identity hash and readable title
+slug. Hidden Markdown comments store repository, branch and per-item update
+timestamps; Obsidian still displays ordinary checkboxes. Hand-added items without
+a timestamp use the checklist's creation time. Checklist folder order uses file
+modification time and item timestamps.
+
+Existing pages remain unchanged and accessible by CLI path, name, prefix or
+`BERMUDA_CHECK`. CHK.L displays them as `legacy: <title>`, using file modification
+time for folder order; unstamped legacy item times show `—`. There is no migration.
 
 The body is ordinary checkboxes:
 
@@ -66,7 +93,7 @@ The body is ordinary checkboxes:
 # ship 640 fix
 timezone handling in the export path, webapp
 
-- [x] open PR into dev — https://github.com/org/repo/pull/474
+- [x] open PR into dev — https://github.com/acme/widget/pull/474
 - [x] open PR into release-42 — #475
 - [ ] human approving review on 474 — BLOCKED: operator (agent has admin:false, rulesets)
 - [ ] merge release-42 — BLOCKED: operator (auto-deploys to QA, breaks it until 812 ships)
@@ -104,7 +131,7 @@ something a person can act on.
 ## The commands
 
 ```bash
-bermuda check new "<title>" [--about '...']       # creates the dated page, prints the path
+bermuda check new "<title>" [--about '...'] [--repo <repo> --branch <branch>]
 bermuda check add [<list>] "<item>" [--ref <url>]
 bermuda check add [<list>] "<item>" --blocked-on <who> --why '...'
 bermuda check add [<list>] "<item>" --done        # work finished before the list existed
@@ -117,8 +144,10 @@ bermuda check show [<list>] [--raw]
 `<list>` is optional, and the arity settles which is which: `check tick 3` names
 an item, `check tick ship-640 3` names both. It resolves by filename prefix,
 slug, or a fuzzy match on the title, and defaults to `$BERMUDA_CHECK`, then the
-most recent page — the same bargain `--thread` makes, for the same reason. A
-query matching two pages is refused with both named rather than guessed at.
+checklist for the current repository and branch. It refuses to guess another
+branch's page if none exists, or if git identity is unavailable. To use an explicit
+identity created outside git, name the page or set `BERMUDA_CHECK`. A query
+matching two pages is refused with both named rather than guessed at.
 
 An item is picked by its number from `check show` or by the start of its text.
 Ambiguity is refused there too: two items starting "open PR" would otherwise
@@ -127,14 +156,14 @@ mean ticking the wrong artifact and being told it worked.
 `check ls` hides pages with nothing left open, because "what is outstanding" is
 the question it answers; `--all` shows them.
 
-## Ticking does not rewrite the page
+## Updating items
 
-A tick writes the single byte between the brackets — `- [ ]` to `- [x]` — and
-leaves every other byte of the file identical. That is what makes it safe to run
-from a terminal while the same page is open in somebody's Obsidian, and it keeps
-a vault's `git diff` down to the one line that actually moved. Adding an item
-does rewrite the file, because an insert has to; it goes after the last existing
-checkbox, so notes written under the list stay under it.
+On branch checklists, a tick changes the checkbox and its hidden update timestamp
+on that line. Other lines and the original item order remain unchanged. Display
+sorting never renumbers the CLI items. Legacy ticks retain the historical single
+byte update with no added metadata. Adding an item goes after the last existing
+checkbox, so notes written under the list stay under it. CLI writes share a file
+lock; board toggles also refuse a page that changed after the displayed snapshot.
 
 The page is re-read at the moment it is written, never trusted from a copy
 loaded earlier, so a human who added two lines in between does not get a

@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/bon5co/bermuda/v3/internal/alog"
+	"github.com/bon5co/bermuda/v3/internal/checklist"
 	"github.com/bon5co/bermuda/v3/internal/flow"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
 	"github.com/bon5co/bermuda/v3/internal/improve"
@@ -57,10 +58,17 @@ type Model struct {
 	// daemonUp is the last observed scheduler state, refreshed on the tick.
 	daemonUp bool
 
-	alogEntries    []alog.Entry
-	alogErr        error
-	improveEntries []alog.Entry
-	improveErr     error
+	alogEntries     []alog.Entry
+	alogErr         error
+	improveEntries  []alog.Entry
+	improveErr      error
+	checklists      []checklist.List
+	checkErrs       []error
+	checkPath       string
+	checkCursor     int
+	checkScroll     int
+	checkItemsFocus bool
+	checkPositions  map[string]*checkPosition
 
 	jobs []store.Job
 	runs []store.Run
@@ -198,6 +206,7 @@ const (
 	focusMemory
 	focusALog
 	focusImprove
+	focusChecklists
 )
 
 // RunFunc executes a job and persists the result. The board takes this as a
@@ -226,6 +235,7 @@ type Deps struct {
 	ALogDir string
 	// ImproveDir holds unrestricted discovery, mistake and recovery cards.
 	ImproveDir string
+	CheckDir   string
 	// RunFlow and ResumeFlow are the two things the FLOWS tab does. Without
 	// them the board could show a parked flow and never act on it, which is the
 	// state that tab exists to end.
@@ -278,6 +288,8 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 type tickMsg time.Time
 
 type dataMsg struct {
+	checklists     []checklist.List
+	checkErrs      []error
 	alogEntries    []alog.Entry
 	alogErr        error
 	improveEntries []alog.Entry
@@ -355,9 +367,11 @@ func (m *Model) load() tea.Cmd {
 	return func() tea.Msg {
 		entries, alogErr := alog.List(m.deps.ALogDir)
 		lessons, improveErr := improve.List(m.deps.ImproveDir)
+		lists, checkErrs := checklist.All(m.deps.CheckDir)
+		checklist.Newest(lists)
 		fail := func(err error) dataMsg {
 			return dataMsg{err: err, alogEntries: entries, alogErr: alogErr,
-				improveEntries: lessons, improveErr: improveErr}
+				improveEntries: lessons, improveErr: improveErr, checklists: lists, checkErrs: checkErrs}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -426,7 +440,7 @@ func (m *Model) load() tea.Cmd {
 			thread: log, threadID: thread, claims: claims, threads: threads,
 			flows: flows, flowErrs: flowErrs, memory: mem, glance: glance,
 			alogEntries: entries, alogErr: alogErr,
-			improveEntries: lessons, improveErr: improveErr}
+			improveEntries: lessons, improveErr: improveErr, checklists: lists, checkErrs: checkErrs}
 	}
 }
 
@@ -495,6 +509,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 
 	case dataMsg:
+		m.checklists, m.checkErrs = msg.checklists, msg.checkErrs
+		m.syncChecks()
 		m.alogEntries, m.alogErr = msg.alogEntries, msg.alogErr
 		m.improveEntries, m.improveErr = msg.improveEntries, msg.improveErr
 		if msg.err != nil {
