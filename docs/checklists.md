@@ -28,17 +28,20 @@ under their folder. Folder labels are bold cyan; the selected row has a bright
 marker; completed item text and timestamps are muted. Both folders and items
 sort by last update, newest first. There is no preview.
 
-↑/↓ or `j`/`k` move the keyboard selection through folders and items. Selecting a
-checklist automatically expands it and collapses the previous one. Selecting an
-item keeps its parent open. Down from a folder enters its first item; down from
-its last item selects the next folder. Up from the first item selects its parent;
-up from a folder selects the previous collapsed folder. Only the selected
-checklist is expanded. `h`/← selects the parent; `l`/→ enters the first child.
+Navigation has two modes. In folder mode, ↑/↓ or `j`/`k` selects the next or
+previous checklist, skipping its expanded children. Selecting a checklist
+expands it and collapses the previous one. Enter, Space or `l`/→ enters its first
+item without changing a checkbox. Only the selected checklist is expanded.
 
-Space toggles the selected item and does nothing on folder rows. `/` searches
-branches, repositories, titles and item text; Esc clears the filter. `[ ]` pages
-through visible tree rows. Home/End select the first/last visible row. Mouse
-clicks select a row across its full width, and the wheel moves the selection.
+In item mode, ↑/↓ or `j`/`k` stays within that checklist and stops at its first or
+last item. Space toggles the selected item; Enter does nothing. `h`/← or Esc
+returns to its folder. Paging, Home/End and mouse wheel follow the current mode:
+folders in folder mode, children of the current checklist in item mode. Clicking
+a folder selects folder mode; clicking an item selects item mode.
+
+`/` searches branches, repositories, titles and item text, returning selection
+to folder mode so Space first enters items safely. Esc from an item returns its
+parent while preserving the filter; Esc on the folder clears the filter.
 Selection and scrolling survive refresh and switching tabs. A manual edit that
 deletes or ambiguously changes the selected item requires deliberate reselection
 before toggling. Extremely narrow terminals clip labels and omit dates only when

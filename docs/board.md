@@ -53,12 +53,14 @@ rows show `📁 <repo> · <branch>`; their items appear indented underneath. Ful
 last update, newest first. Folder labels are bold cyan, selection is bright and
 marked, and completed text/timestamps are muted. There is no preview.
 
-Arrow up/down or `j`/`k` select visible rows. The selected checklist automatically
-expands, and the previous checklist collapses; selecting a child keeps its parent
-open. Space toggles an item, `/` searches, and `[ ]` pages visible tree rows.
-`h`/← selects the parent and `l`/→ enters its first item. Mouse clicks select rows
-across the terminal width and the wheel moves selection. `2` opens CHK.L. The
-original item numbers stay valid for CLI commands.
+Arrow up/down or `j`/`k` selects checklists in folder mode, skipping expanded
+children. The selected checklist expands and the previous one collapses. Enter,
+Space or `l`/→ enters its items without a write. In item mode, arrows, paging,
+Home/End and wheel stay within that checklist; Space toggles and Enter does
+nothing. `h`/← or Esc returns to the folder. Mouse clicks select folder or item
+mode. `/` searches and safely returns selection to folder mode. Esc returns from
+items before clearing a filter on its folder. `2` opens CHK.L. Original item
+numbers remain valid for CLI commands.
 
 Create and add items through `bermuda check`; the empty states show the command.
 New checklists belong to one repository and branch. Existing pages remain
