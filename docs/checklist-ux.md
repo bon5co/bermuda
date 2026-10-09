@@ -10,13 +10,13 @@ It retains the existing board tabs and typography.
 | Control | User story / outcome | UX gate | Verification |
 |---|---|---|---|
 | CHK.L tab, Tab, Shift+Tab, `2` | Open branch work beside A.LOG | C1–C3, C9; Nielsen visible state, Jakob consistency | Reach from every tab; order A.LOG, CHK.L, IMPROVE |
-| Folder row / ↑↓ / j k | Choose a branch and see its items | C2, C9; Norman feedback | Up/down selection expands current folder and collapses previous; repo distinguishes branch identity |
-| Parent/child / ←→ / h l | Select the parent or its first item | C2, C9; Nielsen user control | Marker moves to actual tree row; child keeps parent open |
-| Item row / ↑↓ / j k | Select the exact work to update | C2, C9; Nielsen recognition | Display sort preserves original CLI numbering |
+| Folder row / ↑↓ / j k | Choose a branch and see its items | C2, C9; Norman feedback | Folder arrows skip children, expand current folder and collapse previous; repo distinguishes branch identity |
+| Enter/Space/→/l on folder, ←/h/Esc on item | Enter items or return to parent | C2, C9; Nielsen user control | Entry changes navigation mode without writing; child keeps parent open |
+| Item row / ↑↓ / j k | Select the exact work to update | C2, C9; Nielsen recognition | Item arrows clamp within parent; display sort preserves original CLI numbering |
 | Space on item | Mark work done or reopen it | C2, C8, C9; Cooper no confirmation for reversible actions | Persist checkbox and item time; same item selected after reorder |
-| Space on folder | Navigate safely without changing work | C2 scope; Nielsen error prevention | No write occurs |
-| `/`, Enter, Esc | Find work and clear the filter | C2, S2, S7; Nielsen recovery | Match branch/repo/title/item; Esc returns full list |
-| `[ ]`, Page Up/Down, Home/End, wheel | Browse long lists | S10; Tidwell scaling | One tree window; arrows skip empty hints; End from nonzero selection reaches last visible row |
+| Enter on item | Keep selection without changing work | C2 scope; Nielsen error prevention | No write or navigation occurs |
+| `/`, Enter, Esc | Find work and clear the filter | C2, S2, S7; Nielsen recovery | Search resets to folder mode; Esc on item returns parent before folder Esc clears filter |
+| `[ ]`, Page Up/Down, Home/End, wheel | Browse long lists | S10; Tidwell scaling | Keys and wheel follow current mode; item boundaries cannot change checklist |
 | Refresh / `r` | Read external edits without losing place | F6; Nielsen recognition | Preserve folder identity and selected item text; stale/ambiguous item cannot toggle |
 | Empty state | Start a branch checklist or add its first item | S5, S7; Tidwell blank slate | Visible CLI command; legacy and new pages coexist |
 | Read/write error | Understand the failure and retry | S7, W6; Nielsen error recovery | Error names file and action; readable pages remain visible |
@@ -35,13 +35,18 @@ stripped of terminal control sequences and fitted to terminal cell widths.
 2. Open the real `bermuda board` terminal UI. Confirm A.LOG → CHK.L → IMPROVE,
    one full-width tree, repo/branch folder rows, indented item checkboxes and full
    dates at the far right at 80, 160 and 240 columns.
-3. Space on folder must do nothing. Move right, toggle and reopen an item;
+3. Enter or Space on a folder enters its first item without changing the file.
+   Toggle and reopen an item;
    inspect the Markdown page and CLI `check show`. The original number must
    match the item despite the display reorder. Non-raw show hides metadata.
-4. Search an item, branch and repo; clear with Esc. Arrow down through folder,
-   children and next folder: old children collapse and new children appear. Up
-   selects the parent or previous folder. Click full-width rows (including the
-   timestamp), then test hjkl, paging, Home/End and wheel with a long tree.
+4. In folder mode, arrow down skips expanded children and selects the next
+   checklist; old children collapse and new children appear. Enter or Space enters
+   items. Item Up/Down and paging/Home/End/wheel must clamp inside that checklist.
+   Left or Esc returns to the parent. Click full-width folder/item rows and check
+   that navigation mode follows the click. Enter on an item must not write.
+   Search an item, branch and repo: selection must return to folder mode. Esc
+   from a filtered item returns the parent without clearing the query; a second
+   Esc clears the filter.
 5. Update another checklist from CLI and wait for refresh. Folder order changes
    but selected folder, item, expansion and tree scroll remain stable.
 6. Insert a distinct item above the selected item in Markdown and refresh.
@@ -58,6 +63,7 @@ stripped of terminal control sequences and fitted to terminal cell widths.
 
 Automated regressions cover identity reuse/repo separation, untouched legacy
 bytes, per-item timestamps, revision refusal, original numbering, navigation,
-search, automatic expansion/collapse, full-width dates, stale/duplicate selection
-and rendered-row mouse hit mappings. The
-integrated pass uses the real terminal binary with isolated state.
+search reset safety, folder/item navigation modes, boundary clamping, automatic
+expansion/collapse, full-width dates, stale/duplicate selection and rendered-row
+mouse hit mappings. The integrated pass uses the real terminal binary with
+isolated state.

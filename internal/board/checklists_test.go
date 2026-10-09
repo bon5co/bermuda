@@ -52,8 +52,11 @@ func TestChecklistsTreeNewestAndSpaceOwnsItemsOnly(t *testing.T) {
 		t.Fatalf("display not newest first: %+v", items)
 	}
 	_, cmd := m.handleChecklistKey(tea.KeyMsg{Type: tea.KeySpace})
-	if cmd != nil {
-		t.Fatal("folder space toggled")
+	if cmd != nil || !m.checkItemsFocus {
+		t.Fatal("folder space must enter items without a write")
+	}
+	if unchanged, err := checklist.Load(l.Path); err != nil || unchanged.Counts().Done != 0 {
+		t.Fatal("folder space changed persistence")
 	}
 	m.press(t, "l")
 	m.pressSpecial(t, tea.KeySpace)
@@ -115,21 +118,13 @@ func TestChecklistSelectionSurvivesRefreshAndManualInsertion(t *testing.T) {
 	}
 }
 
-func TestChecklistTreeArrowsExpandOnlySelectedParent(t *testing.T) {
+func TestChecklistTreeFolderAndItemNavigationModes(t *testing.T) {
 	m := seedBoardChecks(t, 3, 2)
 	initial, _ := m.currentChecklist()
 	m.pressSpecial(t, tea.KeyDown)
-	if !m.checkItemsFocus || m.checkPosition(initial.Path).cursor != 0 {
-		t.Fatal("down from folder did not enter its first item")
-	}
-	m.pressSpecial(t, tea.KeyDown)
-	if m.checkPosition(initial.Path).cursor != 1 {
-		t.Fatal("down skipped a child")
-	}
-	m.pressSpecial(t, tea.KeyDown)
 	next, _ := m.currentChecklist()
 	if m.checkItemsFocus || next.Path == initial.Path {
-		t.Fatal("down from last child did not select next folder")
+		t.Fatal("folder down did not skip expanded children")
 	}
 	for _, row := range m.checkTreeRows() {
 		if row.item >= 0 && row.folder != m.checkCursor {
@@ -139,15 +134,31 @@ func TestChecklistTreeArrowsExpandOnlySelectedParent(t *testing.T) {
 	m.pressSpecial(t, tea.KeyUp)
 	current, _ := m.currentChecklist()
 	if current.Path != initial.Path || m.checkItemsFocus {
-		t.Fatal("up did not select and reopen previous collapsed folder")
+		t.Fatal("folder up did not select and reopen previous folder")
 	}
-	m.pressSpecial(t, tea.KeyDown)
-	if !m.checkItemsFocus {
-		t.Fatal("down did not reenter reopened folder")
+	m.pressSpecial(t, tea.KeyEnter)
+	if !m.checkItemsFocus || m.checkPosition(initial.Path).cursor != 0 {
+		t.Fatal("folder Enter did not enter first item")
 	}
 	m.pressSpecial(t, tea.KeyUp)
-	if m.checkItemsFocus {
-		t.Fatal("up from first child did not select parent")
+	if !m.checkItemsFocus || m.checkPosition(initial.Path).cursor != 0 {
+		t.Fatal("item Up left its parent or failed to clamp")
+	}
+	m.pressSpecial(t, tea.KeyDown)
+	if m.checkPosition(initial.Path).cursor != 1 {
+		t.Fatal("item Down skipped child")
+	}
+	m.pressSpecial(t, tea.KeyDown)
+	if !m.checkItemsFocus || m.checkPath != initial.Path || m.checkPosition(initial.Path).cursor != 1 {
+		t.Fatal("item Down left its checklist")
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	if !m.checkItemsFocus || m.checkPosition(initial.Path).cursor != 1 {
+		t.Fatal("Enter on item navigated or wrote")
+	}
+	m.press(t, "h")
+	if m.checkItemsFocus || m.checkPath != initial.Path {
+		t.Fatal("left did not return to parent")
 	}
 }
 
@@ -158,8 +169,9 @@ func TestChecklistTreeNavigationSearchAndFullWidthDates(t *testing.T) {
 	if m.checkCursor != 11 || m.checkItemsFocus {
 		t.Fatal("End did not reach last visible folder")
 	}
-	m.View()        // collapsed folders fit before the selected folder's children
-	m.press(t, "G") // the selected last folder has now expanded
+	m.View() // collapsed folders fit before the selected folder's children
+	m.pressSpecial(t, tea.KeyEnter)
+	m.press(t, "G") // item End selects the last child of this checklist
 	l, _ := m.currentChecklist()
 	p := m.checkPosition(l.Path)
 	if !m.checkItemsFocus || p.cursor != 29 {
@@ -170,9 +182,14 @@ func TestChecklistTreeNavigationSearchAndFullWidthDates(t *testing.T) {
 		t.Fatal("tree did not scroll to selected item")
 	}
 	m.press(t, "g")
+	if !m.checkItemsFocus || m.checkCursor != 11 || p.cursor != 0 {
+		t.Fatal("item Home did not stay in current checklist")
+	}
+	m.press(t, "h")
+	m.press(t, "g")
 	m.View()
 	if m.checkCursor != 0 || m.checkItemsFocus || m.checkScroll != 0 {
-		t.Fatal("Home did not return to first folder")
+		t.Fatal("folder Home did not return to first folder")
 	}
 	m.press(t, "/")
 	for _, r := range "item-17" {
@@ -288,6 +305,7 @@ func TestChecklistDuplicateDeletionInvalidatesSelectedIdentity(t *testing.T) {
 
 func TestChecklistStaleIdentitySurvivesClampedMovementAndRecoversOnReselect(t *testing.T) {
 	m := seedBoardChecks(t, 1, 2)
+	m.pressSpecial(t, tea.KeyEnter)
 	m.press(t, "G")
 	l, _ := m.currentChecklist()
 	p := m.checkPosition(l.Path)
@@ -309,6 +327,7 @@ func TestChecklistStaleIdentitySurvivesClampedMovementAndRecoversOnReselect(t *t
 func TestChecklistTreeScrolledMouseSelectsRenderedItem(t *testing.T) {
 	m := seedBoardChecks(t, 2, 30)
 	m.press(t, "G")
+	m.pressSpecial(t, tea.KeyEnter)
 	m.press(t, "G")
 	m.View()
 	if m.checkScroll == 0 {
@@ -340,7 +359,7 @@ func TestChecklistTreeEmptyFolderTraversalAndDeletedParent(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.apply(t, m.load()())
-	m.pressSpecial(t, tea.KeyDown)
+	m.pressSpecial(t, tea.KeyEnter)
 	if !m.checkItemsFocus {
 		t.Fatal("fixture must select child")
 	}
@@ -372,5 +391,116 @@ func TestChecklistTreeLineClipsBelowTimestampWidth(t *testing.T) {
 	line := ansi.Strip(checkTreeLine("▸ 📁 acme/widget · feat/work", "2026-10-09 12:34", 10, checkFolderStyle))
 	if lipgloss.Width(line) != 10 || !strings.Contains(line, "📁") {
 		t.Fatalf("narrow tree line: %q", line)
+	}
+}
+
+func TestChecklistModePagingWheelAndBoundaries(t *testing.T) {
+	m := seedBoardChecks(t, 4, 3)
+	initial, _ := m.currentChecklist()
+	m.wheel(1)
+	if m.checkCursor != 1 || m.checkItemsFocus {
+		t.Fatal("folder wheel did not skip children")
+	}
+	m.press(t, "]")
+	if m.checkCursor != 3 || m.checkItemsFocus {
+		t.Fatal("folder page did not reach last checklist")
+	}
+	m.press(t, "g")
+	if m.checkPath != initial.Path || m.checkItemsFocus {
+		t.Fatal("folder Home did not select first checklist")
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	p := m.checkPosition(initial.Path)
+	m.wheel(30)
+	if p.cursor != 2 || m.checkPath != initial.Path || !m.checkItemsFocus {
+		t.Fatal("item wheel escaped its parent")
+	}
+	for _, key := range []string{"j", "]", "G"} {
+		m.press(t, key)
+		if p.cursor != 2 || m.checkPath != initial.Path || !m.checkItemsFocus {
+			t.Fatalf("item boundary escaped on %q", key)
+		}
+	}
+	m.press(t, "[")
+	if p.cursor != 0 || m.checkPath != initial.Path || !m.checkItemsFocus {
+		t.Fatal("item page-up escaped its parent")
+	}
+	for _, key := range []string{"k", "[", "g"} {
+		m.press(t, key)
+		if p.cursor != 0 || m.checkPath != initial.Path || !m.checkItemsFocus {
+			t.Fatalf("item top boundary escaped on %q", key)
+		}
+	}
+	m.wheel(-30)
+	if p.cursor != 0 || !m.checkItemsFocus {
+		t.Fatal("item wheel top boundary escaped")
+	}
+}
+
+func TestChecklistEntryAndEnterItemDoNotWrite(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyEnter, tea.KeySpace} {
+		m := seedBoardChecks(t, 1, 2)
+		l, _ := m.currentChecklist()
+		before, err := os.ReadFile(l.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, cmd := m.handleChecklistKey(tea.KeyMsg{Type: key})
+		if cmd != nil || !m.checkItemsFocus {
+			t.Fatal("folder entry did not enter safely")
+		}
+		_, cmd = m.handleChecklistKey(tea.KeyMsg{Type: tea.KeyEnter})
+		if cmd != nil {
+			t.Fatal("item Enter returned a write command")
+		}
+		after, err := os.ReadFile(l.Path)
+		if err != nil || string(after) != string(before) {
+			t.Fatal("folder entry or item Enter changed Markdown bytes")
+		}
+	}
+}
+
+func TestChecklistSearchStartsInFolderModeAndEscReturnsParentFirst(t *testing.T) {
+	m := seedBoardChecks(t, 2, 3)
+	m.pressSpecial(t, tea.KeyEnter)
+	m.press(t, "/")
+	for _, r := range "item-01" {
+		m.press(t, string(r))
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	if m.checkItemsFocus {
+		t.Fatal("search left an arbitrary matched item armed for toggle")
+	}
+	l, _ := m.currentChecklist()
+	before, _ := os.ReadFile(l.Path)
+	_, cmd := m.handleChecklistKey(tea.KeyMsg{Type: tea.KeySpace})
+	if cmd != nil || !m.checkItemsFocus {
+		t.Fatal("Space after search did not enter items safely")
+	}
+	after, _ := os.ReadFile(l.Path)
+	if string(before) != string(after) {
+		t.Fatal("Space after search toggled arbitrary match")
+	}
+	m.pressSpecial(t, tea.KeyEsc)
+	if m.checkItemsFocus || m.query != "item-01" {
+		t.Fatal("first Esc did not return parent preserving filter")
+	}
+	m.pressSpecial(t, tea.KeyEsc)
+	if m.query != "" || m.checkItemsFocus {
+		t.Fatal("second Esc did not clear filter in folder mode")
+	}
+	for _, end := range []tea.KeyType{tea.KeyEnter, tea.KeyEsc} {
+		m.pressSpecial(t, tea.KeyEnter)
+		m.press(t, "/")
+		m.pressSpecial(t, end)
+		if m.checkItemsFocus {
+			t.Fatal("empty search dismissal left item mode active")
+		}
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	m.press(t, "/")
+	m.pressSpecial(t, tea.KeyBackspace)
+	if m.checkItemsFocus || m.searching {
+		t.Fatal("erase-past-empty search did not safely return folder mode")
 	}
 }

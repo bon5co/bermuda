@@ -137,6 +137,7 @@ func (m *Model) syncChecks() {
 }
 func (m *Model) resetCheckSearch() {
 	m.checkCursor, m.checkScroll, m.checkPath = 0, 0, ""
+	m.checkItemsFocus = false
 	for _, p := range m.checkPositions {
 		*p = checkPosition{}
 	}
@@ -204,26 +205,30 @@ func (m *Model) selectCheckTreeRow(row checkTreeRow) {
 	p.identityCount = checkIdentityCount(l, p.identity)
 }
 func (m *Model) moveCheck(delta int) {
-	rows := m.checkTreeRows()
-	selected := m.selectedCheckTreeRow(rows)
-	var selectable []checkTreeRow
-	cursor := 0
-	for i, row := range rows {
-		if row.item < -1 {
-			continue
+	if m.checkItemsFocus {
+		if l, ok := m.currentChecklist(); ok {
+			p := m.checkPosition(l.Path)
+			target := checkMove(p.cursor, delta, len(m.visibleCheckItems(l)))
+			// A clamped key must not recover a stale item identity.
+			if target != p.cursor {
+				m.selectCheckTreeRow(checkTreeRow{m.checkCursor, target})
+			}
 		}
-		if i == selected {
-			cursor = len(selectable)
-		}
-		selectable = append(selectable, row)
-	}
-	if len(selectable) == 0 {
 		return
 	}
-	target := checkMove(cursor, delta, len(selectable))
-	// A clamped key that did not move must not recover a stale selection.
-	if target != cursor {
-		m.selectCheckTreeRow(selectable[target])
+	// Folder mode skips the expanded children; item mode never leaves its parent.
+	target := checkMove(m.checkCursor, delta, len(m.visibleChecklists()))
+	if target != m.checkCursor {
+		m.selectCheckTreeRow(checkTreeRow{target, -1})
+	}
+}
+
+func (m *Model) enterCheckItems() {
+	if m.checkItemsFocus {
+		return
+	}
+	if l, ok := m.currentChecklist(); ok && len(m.visibleCheckItems(l)) > 0 {
+		m.selectCheckTreeRow(checkTreeRow{m.checkCursor, 0})
 	}
 }
 
@@ -257,11 +262,7 @@ func (m *Model) handleChecklistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 	case "l", "right", "enter":
-		if !m.checkItemsFocus {
-			if l, ok := m.currentChecklist(); ok && len(m.visibleCheckItems(l)) > 0 {
-				m.selectCheckTreeRow(checkTreeRow{m.checkCursor, 0})
-			}
-		}
+		m.enterCheckItems()
 	case "h", "left":
 		if m.checkItemsFocus {
 			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, -1})
@@ -279,16 +280,18 @@ func (m *Model) handleChecklistKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G", "end":
 		m.moveCheck(maxInt)
 	case "/":
+		m.checkItemsFocus = false
 		m.searching, m.queryDraft = true, m.query
 	case "esc":
-		if m.query != "" {
+		if m.checkItemsFocus {
+			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, -1})
+		} else if m.query != "" {
 			m.query = ""
 			m.resetCheckSearch()
-		} else if m.checkItemsFocus {
-			m.selectCheckTreeRow(checkTreeRow{m.checkCursor, -1})
 		}
 	case " ", "space":
 		if !m.checkItemsFocus {
+			m.enterCheckItems()
 			return m, nil
 		}
 		l, ok := m.currentChecklist()
@@ -330,7 +333,11 @@ func (m *Model) checkBottom() string {
 		}
 	}
 	b.WriteString(m.renderFooter())
-	b.WriteString("\n" + checkMutedStyle.Render(m.alogText("tab lists · / search · ↑↓/j/k select · ←/h parent · →/l items · space toggle item · [ ] page · r refresh · M mouse · q quit")))
+	help := "tab lists · / search · ↑↓/j/k checklists · enter/space/→ items · [ ] page · r refresh · M mouse · q quit"
+	if m.checkItemsFocus {
+		help = "tab lists · / search · ↑↓/j/k items · space toggle · ←/h/esc parent · [ ] page · r refresh · M mouse · q quit"
+	}
+	b.WriteString("\n" + checkMutedStyle.Render(m.alogText(help)))
 	return b.String()
 }
 func (m *Model) checkRows() int {

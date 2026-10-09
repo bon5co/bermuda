@@ -214,6 +214,9 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// an empty prompt sitting there with nothing to erase.
 			m.searching, m.query, m.queryDraft = false, "", ""
 			m.cursor, m.scroll = 0, 0
+			if m.focus == focusChecklists {
+				m.resetCheckSearch()
+			}
 			return m, nil
 		}
 		m.queryDraft = string(r[:len(r)-1])
