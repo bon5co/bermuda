@@ -183,13 +183,13 @@ Usage:
   $BERMUDA_MEMORY_DIR overrides; --vault links the default location into a
   vault folder instead. init never replaces notes that already exist.
   bermuda check ls                    Every checklist with something open, and its counts
-  bermuda check new "<title>" [--about ...]
+  bermuda check new "<title>" [--about ...] [--repo <repo> --branch <branch>]
   bermuda check add [<list>] "<item>" [--ref <url>]
   bermuda check add [<list>] "<item>" --blocked-on <who> --why '...'
   bermuda check tick|untick [<list>] <n|prefix>
   bermuda check show [<list>] [--raw]
 
-  A checklist is one Markdown page of ordinary checkboxes, in checklists/ inside
+  A checklist is one Markdown page per repository and branch, in checklists/ inside
   the memory vault -- readable and editable in Obsidian by a human who never
   runs this CLI. It is the fourth record and the one that answers "is that done
   yet": a thread says a PR was opened and cannot say it is still unmerged, and a

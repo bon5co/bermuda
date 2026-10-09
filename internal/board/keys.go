@@ -46,6 +46,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// The thread is a conversation, not a list of jobs, so it owns its own keys:
 	// the switch below acts on a selected job, and the thread has no selection for
 	// it to act on.
+	if m.focus == focusChecklists {
+		return m.handleChecklistKey(msg)
+	}
 	if m.isCardFeed() {
 		return m.handleFeedKey(msg)
 	}
@@ -94,7 +97,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// delivered as a Tab press, and the board is meant to be drivable
 	// remotely, not only by hand. They count the tabs as drawn, so 1 is the
 	// leftmost one.
-	case "1", "2", "3", "4", "5", "6", "7", "8":
+	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		m.selectTab(tabOrder[int(msg.String()[0]-'1')])
 		return m, nil
 	case "l", "right":
@@ -172,7 +175,7 @@ func (m *Model) descend() tea.Cmd {
 		// tab. `l` deliberately does not launch it either — a horizontal key
 		// that started agents would spend money on a mistyped navigation.
 		return nil
-	case focusALog, focusImprove, focusForum, focusMemory:
+	case focusALog, focusImprove, focusChecklists, focusForum, focusMemory:
 		// Neither tab has rows. Without these cases both fall through to the
 		// run detail below and open whatever a stale cursor happens to point
 		// at, which is a different tab's run.
@@ -220,6 +223,9 @@ func (m *Model) handleSearchKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.query = m.queryDraft
+	if m.focus == focusChecklists {
+		m.resetCheckSearch()
+	}
 	m.cursor, m.scroll = 0, 0
 	return m, nil
 }

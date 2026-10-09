@@ -133,6 +133,10 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 // have no selection, so the wheel moves the window itself. Doing the same thing
 // to both would leave the wheel dead in exactly one of them.
 func (m *Model) wheel(delta int) (tea.Model, tea.Cmd) {
+	if m.focus == focusChecklists && m.editor == nil {
+		m.moveCheck(delta)
+		return m, nil
+	}
 	if m.editor != nil {
 		// The editor is a form being typed into, not something to scroll past.
 		return m, nil
@@ -178,6 +182,37 @@ func (m *Model) click(x, y int) (tea.Model, tea.Cmd) {
 	}
 	if cmd, ok := m.clickTab(x, y); ok {
 		return m, cmd
+	}
+	if m.focus == focusChecklists {
+		row := y - m.hitTop
+		if row < 0 || row >= m.hitRows {
+			return m, nil
+		}
+		left, _ := m.checkWidths()
+		if x < left {
+			lists := m.visibleChecklists()
+			index := row/checkFolderRows(m.checkRows()) + m.checkScroll
+			if index < len(lists) {
+				m.checkItemsFocus = false
+				m.checkCursor = index
+				m.checkPath = lists[index].Path
+				m.syncChecks()
+			}
+		} else if x >= left+3 {
+			if l, ok := m.currentChecklist(); ok {
+				items := m.visibleCheckItems(l)
+				p := m.checkPosition(l.Path)
+				index := row + p.scroll
+				if index < len(items) {
+					m.checkItemsFocus = true
+					p.cursor = index
+					p.index = items[index].Index
+					p.identity, p.invalid = items[index].String(), false
+					p.identityCount = checkIdentityCount(l, p.identity)
+				}
+			}
+		}
+		return m, nil
 	}
 	row := y - m.hitTop
 	if row < 0 || row >= m.hitRows {
