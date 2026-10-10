@@ -63,7 +63,7 @@ func TestBranchToggleStampsOnlySelectedItemAndKeepsNumbers(t *testing.T) {
 	if after.Items[1].Updated != l.Items[1].Updated || after.Items[1].Done {
 		t.Fatal("toggle touched other item")
 	}
-	if got := after.NewestItems()[0].Index; got != 1 {
+	if got := after.NumberedItems()[0].Index; got != 1 {
 		t.Fatalf("newest display index=%d;want original item1", got)
 	}
 	if after.Items[0].Text != "first" || after.Items[1].Text != "second" {

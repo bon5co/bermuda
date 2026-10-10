@@ -49,7 +49,7 @@ func (m *Model) currentChecklist() (checklist.List, bool) {
 	return lists[m.checkCursor], true
 }
 func (m *Model) visibleCheckItems(l checklist.List) []checklist.Item {
-	items := l.NewestItems()
+	items := l.NumberedItems()
 	if m.query == "" || checkMatches(l.Repo+"\n"+l.Branch+"\n"+l.Title+"\n"+l.Name, m.query) {
 		return items
 	}

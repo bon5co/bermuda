@@ -35,7 +35,7 @@ func seedBoardChecks(t *testing.T, folders, items int) *Model {
 	return m
 }
 
-func TestChecklistsTreeNewestAndSpaceOwnsItemsOnly(t *testing.T) {
+func TestChecklistsTreeNumberedAndSpaceOwnsItemsOnly(t *testing.T) {
 	m := seedBoardChecks(t, 2, 2)
 	view := ansi.Strip(m.View())
 	for _, want := range []string{"CHK.L", "CHECKLISTS", "acme/widget · feat/work-1", "item-01"} {
@@ -48,8 +48,8 @@ func TestChecklistsTreeNewestAndSpaceOwnsItemsOnly(t *testing.T) {
 	}
 	l, _ := m.currentChecklist()
 	items := m.visibleCheckItems(l)
-	if items[0].Index != 2 {
-		t.Fatalf("display not newest first: %+v", items)
+	if items[0].Index != 1 || items[1].Index != 2 {
+		t.Fatalf("display not in item-number order: %+v", items)
 	}
 	_, cmd := m.handleChecklistKey(tea.KeyMsg{Type: tea.KeySpace})
 	if cmd != nil || !m.checkItemsFocus {
@@ -62,10 +62,10 @@ func TestChecklistsTreeNewestAndSpaceOwnsItemsOnly(t *testing.T) {
 	m.pressSpecial(t, tea.KeySpace)
 	m.apply(t, m.load()())
 	after, _ := checklist.Load(l.Path)
-	if !after.Items[1].Done || after.Items[0].Done {
-		t.Fatal("toggle used display ordinal instead of original number")
+	if !after.Items[0].Done || after.Items[1].Done {
+		t.Fatal("toggle hit wrong item")
 	}
-	if m.checkPath != l.Path || !m.checkItemsFocus || m.checkPosition(l.Path).index != 2 {
+	if m.checkPath != l.Path || !m.checkItemsFocus || m.checkPosition(l.Path).index != 1 {
 		t.Fatal("toggle refresh lost selection/focus")
 	}
 }
@@ -273,7 +273,8 @@ func TestChecklistDuplicateDeletionInvalidatesSelectedIdentity(t *testing.T) {
 		}
 	}
 	m.apply(t, m.load()())
-	m.press(t, "l") // newest is the second duplicate
+	m.press(t, "l")
+	m.press(t, "j") // second duplicate
 	l, _ = m.currentChecklist()
 	if m.checkPosition(l.Path).index != 2 {
 		t.Fatal("fixture must select second duplicate")

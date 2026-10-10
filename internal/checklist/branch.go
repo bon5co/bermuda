@@ -191,7 +191,7 @@ func setBranchItem(l List, it Item, done bool, now time.Time) (Item, bool, error
 	return it, true, nil
 }
 
-// Newest sorts display copies without changing page order or CLI item numbers.
+// Newest sorts checklists by latest touch, without changing page order or CLI item numbers.
 func Newest(lists []List) {
 	sort.SliceStable(lists, func(i, j int) bool {
 		if lists[i].Updated.Equal(lists[j].Updated) {
@@ -200,9 +200,11 @@ func Newest(lists []List) {
 		return lists[i].Updated.After(lists[j].Updated)
 	})
 }
-func (l List) NewestItems() []Item {
+
+// NumberedItems returns display copies in item-number order (1,2,3...).
+func (l List) NumberedItems() []Item {
 	items := append([]Item(nil), l.Items...)
-	sort.SliceStable(items, func(i, j int) bool { return items[i].Updated.After(items[j].Updated) })
+	sort.SliceStable(items, func(i, j int) bool { return items[i].Index < items[j].Index })
 	return items
 }
 
