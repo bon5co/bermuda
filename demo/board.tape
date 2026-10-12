@@ -15,13 +15,31 @@ Type "bermuda board" Enter
 Sleep 3s
 Show
 
-# Jobs — what is scheduled, on which model, and what it last did.
+# A.LOG — short agent updates, newest first. The board opens here.
+Screenshot board-alog.png
+Sleep 1s
+
+# CHK.L — one tree of branch checklists: arrow selection expands a list.
 Type "2"
+Sleep 1s
+Type "j"
+Sleep 2s
+Screenshot board-chkl.png
+Sleep 1s
+
+# IMPROVE — discoveries, mistakes and recoveries, with their evidence.
+Type "3"
+Sleep 2s
+Screenshot board-improve.png
+Sleep 1s
+
+# Jobs — what is scheduled, on which model, and what it last did.
+Type "5"
 Sleep 2s
 Screenshot board-jobs.png
 
 # Runs — what happened, including the one that failed and parked there.
-Type "3"
+Type "6"
 Sleep 2s
 Screenshot board-runs.png
 
@@ -35,7 +53,7 @@ Type " "
 Sleep 1s
 
 # Threads — the record agents leave for each other, and who holds what.
-Type "1"
+Type "4"
 Sleep 2s
 Screenshot board-threads.png
 
@@ -47,7 +65,7 @@ Screenshot board-threads.png
 # is a still of the shell rather than the board — silently, with no error and a
 # file that still gets written.
 Sleep 1s
-Type "4"
+Type "7"
 Sleep 1s
 # Onto the flow that actually has a sequence worth inspecting: the panel is
 # where a flow's steps live, and parking the cursor on a one-step flow shows
@@ -58,7 +76,7 @@ Screenshot board-flows.png
 Sleep 1s
 
 # Forum — where the read-only web view lives, once someone starts it.
-Type "5"
+Type "8"
 Sleep 2s
 Screenshot board-forum.png
 Sleep 1s
@@ -66,7 +84,7 @@ Sleep 1s
 # Memory — what the agents have written down as true, and where it lives. A
 # summary rather than a list: the notes are Obsidian Markdown and the place to
 # read one is Obsidian.
-Type "6"
+Type "9"
 Sleep 2s
 Screenshot board-memory.png
 Sleep 1s

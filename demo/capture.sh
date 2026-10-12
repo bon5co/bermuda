@@ -141,6 +141,30 @@ Resolved: state used to live under ~/.local/state/bermuda. It moved to
 ~/.bermuda because run directories get read by hand.
 MD
 
+say "alog, improve, checklists"
+bermuda alog write --repo acme/widget --branch feat/status --topic 'Started' \
+    --body 'Reading the status handler before changing how parked runs are reported.'
+bermuda alog write --repo acme/widget --branch feat/status --topic 'Tests green' \
+    --body 'Status fix covered by two new tests. Opening the pull request next.'
+bermuda improve write --kind discovery --repo acme/widget --branch feat/cache \
+    --topic 'Cache location is loaded at startup' \
+    --body 'Observed the old path after changing configuration. Restarted the process and verified its next read used the new path.'
+bermuda improve write --kind mistake --repo acme/widget --branch fix/cache \
+    --topic 'Reusing the previous process kept the old path' \
+    --body 'Assumed a reload would pick up the change. It did not; the process held the first value for its whole life.'
+bermuda improve write --kind recovery --repo acme/widget --branch fix/cache \
+    --topic 'Restarting refreshed the cache path' \
+    --body 'Restarted the process and re-ran the read. The new path appeared. Check the path after any configuration change.'
+bermuda check new "ship status fix" --about 'parked-run status, widget' \
+    --repo acme/widget --branch feat/status
+bermuda check add "ship status" "write the failing test"
+bermuda check add "ship status" "open PR into main"
+bermuda check add "ship status" "merge and tag" --blocked-on operator --why 'release approval'
+bermuda check tick "ship status" 'write the failing'
+bermuda check new "cache path fix" --about 'restart after config change' \
+    --repo acme/widget --branch fix/cache
+bermuda check add "cache path" "document the restart"
+
 say "screenshots"
 cd "$OUT"
 vhs /src/demo/board.tape
