@@ -364,6 +364,8 @@ inside the same vault, readable and editable in Obsidian by somebody who never
 runs this CLI. The board's **CHK.L** tab shows a full-width tree; arrow selection
 expands the current checklist and collapses the previous one.
 
+![The board's CHK.L tab: branch checklists as one tree, with a blocked item](assets/board-chkl.png)
+
 ```bash
 bermuda check new "ship 640 fix" --about 'timezone fix, webapp'
 bermuda check add "open PR into dev" --ref https://github.com/org/repo/pull/474
