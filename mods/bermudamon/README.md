@@ -1,6 +1,6 @@
 # Bermudamon
 
-An inverted-triangle monster that lives in the Claude Code prompt footer. It is
+A round-cheeked critter that lives in the Claude Code prompt footer. It is
 a mod for Claude Code, shipped with [Bermuda](../../README.md).
 
 - **Grows as you work.** Every tool call and finished answer feeds it; it

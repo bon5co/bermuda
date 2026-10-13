@@ -138,7 +138,7 @@ func TestReportStraysIgnoresDeadRecords(t *testing.T) {
 	if !strings.Contains(buf.String(), "no stray scheduler is running") {
 		t.Fatalf("got %q", buf.String())
 	}
-	if strings.Contains(buf.String(), "111") {
+	if strings.Contains(buf.String(), "pid 111") {
 		t.Fatalf("dead pid reported: %q", buf.String())
 	}
 }

@@ -13,18 +13,18 @@ test('pack turns pixels into quadrant blocks, two pixels per cell', async () => 
   expect(pack(['....', '....', '#..#', '####'])).toEqual(['  ', '▙▟'])
 })
 
-test('every stage is an inverted triangle: the top row is widest and each row below is no wider', async () => {
+test('every stage narrows from its top row to its chin, and the top is the widest', async () => {
   for (const s of STAGES) {
     const spans = s.body.map(span)
-    expect(spans[0]).toBe(s.body[0].length)
+    expect(spans[0]).toBe(Math.max(...spans))
     for (let i = 1; i < spans.length; i++) expect(spans[i]!).toBeLessThanOrEqual(spans[i - 1]!)
     expect(spans[3]!).toBeLessThan(spans[0]!)
   }
 })
 
-test('every stage is mirror symmetric, so the monster faces front', async () => {
+test('the top, the eye row and the chin are mirror symmetric, so it faces front', async () => {
   for (const s of STAGES)
-    for (const row of s.body) expect([...row].reverse().join('')).toBe(row)
+    for (const row of [s.body[0], s.body[2], s.body[3]]) expect([...row].reverse().join('')).toBe(row)
 })
 
 test('stages grow wider as they evolve and every frame fits the track', async () => {
@@ -39,15 +39,23 @@ test('stages grow wider as they evolve and every frame fits the track', async ()
     }
 })
 
-test('one eye, open in every frame: the tip and the mouth never touch the eye rows', async () => {
+test('two big eyes, each a 2x2 hole with a lit sparkle, open in every frame', async () => {
   for (const s of STAGES.slice(1)) {
-    // A single centered hole in the second row: one gap, between lit pixels.
-    expect(s.body[1].match(/#\.+#/g)).toHaveLength(1)
+    const [, sparkled, hollow] = s.body
+    const holes = [...hollow.matchAll(/#(\.\.)#/g)]
+    expect(holes).toHaveLength(2)
+    for (const hole of holes) {
+      const x = hole.index! + 1
+      expect(sparkled.slice(x, x + 2)).toBe('.#')
+    }
+    // The shuffle and the mouth are on the chin; the eyes never change.
     for (const f of [...s.idle, ...s.munch]) expect(f[0]).toBe(pack(s.body)[0])
   }
+  // An egg has no face.
+  expect(STAGES[0]!.body[1]).not.toMatch(/#\.\.#/)
 })
 
-test('walking wiggles the tip, munching opens the mouth', async () => {
+test('walking shuffles the chin, munching opens it', async () => {
   for (const s of STAGES) {
     expect(s.idle[0]).not.toEqual(s.idle[1])
     expect(s.idle[0][0]).toBe(s.idle[1][0])

@@ -195,10 +195,3 @@ test('session.end lands a completed turn whose feed is still running', async ($,
   expect(atEnd).toBe(20 + FEED.turn.xp)
 })
 
-test('the eyes stay open in every frame from Baby on', async () => {
-  for (const stage of STAGES.slice(1))
-    for (const [head] of [...stage.idle, ...stage.munch]) {
-      expect(head).toContain('▛')
-      expect(head).toContain('▜')
-    }
-})

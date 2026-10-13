@@ -29,11 +29,30 @@ export const pack = (pixels: Body): Sprite => {
 }
 
 const nudge = (row: string, by: 1 | -1): string => (by === 1 ? '.' + row.slice(0, -1) : row.slice(1) + '.')
+/** Walking shuffles the chin one pixel either way. */
 const withTip = (body: Body, by: 1 | -1): Body => [body[0], body[1], body[2], nudge(body[3], by)]
-/** The mouth: the two middle pixels of the third row go dark. */
+/** Eating: the middle of the chin opens. */
 const withMouth = (body: Body): Body => {
-  const mid = body[2].length / 2
-  return [body[0], body[1], body[2].slice(0, mid - 1) + '..' + body[2].slice(mid + 1), body[3]]
+  const mid = body[3].length / 2
+  return [body[0], body[1], body[2], body[3].slice(0, mid - 1) + '..' + body[3].slice(mid + 1)]
+}
+
+/**
+ * A round-cheeked face: a wide top, two big eyes and a narrow chin. Each eye
+ * is a 2x2 hole whose upper-right pixel stays lit, the sparkle that makes it
+ * look alive. `inset` is the body's margin on each side below the top row and
+ * `eye` the column of the left eye; the right eye mirrors it.
+ */
+const face = (top: string, inset: number, eye: number, chin: string): Body => {
+  const width = top.length
+  const body = (sparkle: boolean) =>
+    Array.from({ length: width }, (_, x) => {
+      if (x < inset || x >= width - inset) return '.'
+      const right = width - 2 - eye
+      const inEye = (x === eye || x === eye + 1 || x === right || x === right + 1) && !(sparkle && (x === eye + 1 || x === right + 1))
+      return inEye ? '.' : '#'
+    }).join('')
+  return [top, body(true), body(false), chin]
 }
 
 const stage = (name: string, xp: number, body: Body, canEat = true): Stage => {
@@ -42,20 +61,19 @@ const stage = (name: string, xp: number, body: Body, canEat = true): Stage => {
 }
 
 /**
- * Evolution line: each stage unlocks at `xp`. An inverted triangle monster:
- * the top row is the widest and each row below narrows toward a point. The
- * single eye is a hole in the second row and stays open in every frame; walking
- * wiggles the tip, munching opens and closes the mouth. Every glyph is one
- * column wide.
+ * Evolution line: each stage unlocks at `xp`. A cute inverted-trapezoid
+ * critter that grows from a seed to a big-eyed mascot: a wide top (ears
+ * notched in from Rookie on), two sparkling eyes and a narrow chin. Walking
+ * shuffles the chin, munching opens it. Every glyph is one column wide.
  */
 export const STAGES: readonly Stage[] = [
-  stage('Egg', 0, ['######', '.####.', '..##..', '..##..'], false),
-  stage('Baby', 15, ['########', '.##..##.', '..####..', '...##...']),
-  stage('In-Training', 60, ['##########', '.###..###.', '..######..', '....##....']),
-  stage('Rookie', 200, ['##.######.##', '.####..####.', '..########..', '....####....']),
-  stage('Champion', 700, ['##..######..##', '.####....####.', '..##########..', '.....####.....']),
-  stage('Ultimate', 2500, ['###..######..###', '.#####....#####.', '..############..', '......####......']),
-  stage('Mega', 8000, ['####..########..####', '.#######....#######.', '..################..', '........####........']),
+  stage('Egg', 0, ['######', '.####.', '.####.', '..##..'], false),
+  stage('Baby', 15, face('.########.', 1, 2, '...####...')),
+  stage('In-Training', 60, face('.##########.', 1, 3, '....####....')),
+  stage('Rookie', 200, face('##.########.##', 1, 3, '....######....')),
+  stage('Champion', 700, face('##..########..##', 1, 4, '.....######.....')),
+  stage('Ultimate', 2500, face('###..########..###', 1, 4, '......######......')),
+  stage('Mega', 8000, face('####..##########..####', 1, 5, '.......########.......')),
 ]
 
 /** Columns the pet walks in, sprite included. */
