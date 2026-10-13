@@ -39,9 +39,10 @@ test('stages grow wider as they evolve and every frame fits the track', async ()
     }
 })
 
-test('eyes are open in every frame: the tip and the mouth never touch the eye rows', async () => {
+test('one eye, open in every frame: the tip and the mouth never touch the eye rows', async () => {
   for (const s of STAGES.slice(1)) {
-    expect(s.body[1]).toMatch(/#\.+#/)
+    // A single centered hole in the second row: one gap, between lit pixels.
+    expect(s.body[1].match(/#\.+#/g)).toHaveLength(1)
     for (const f of [...s.idle, ...s.munch]) expect(f[0]).toBe(pack(s.body)[0])
   }
 })

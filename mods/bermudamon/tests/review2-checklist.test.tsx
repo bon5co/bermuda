@@ -774,7 +774,7 @@ test('review2: footer validates as untracked on terminal and desktop', async ($,
   }
 })
 
-test('review2: footer validates as absent on terminal and desktop', async ($, on) => {
+test('review2: footer holds an empty checklist slot when no page is tracked, on terminal and desktop', async ($, on) => {
   setup(on, { run: () => missing() })
   await start($)
 
@@ -786,6 +786,7 @@ test('review2: footer validates as absent on terminal and desktop', async ($, on
       props: { modes: [] },
     })
     expect(await ui.find({ type: 'Text', text: /☑|no list/ })).toBeUndefined()
+    expect(await ui.find({ type: 'Text', text: /☐ --/ })).toBeDefined()
     await ui.unmount()
   }
 })

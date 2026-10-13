@@ -44,18 +44,18 @@ const stage = (name: string, xp: number, body: Body, canEat = true): Stage => {
 /**
  * Evolution line: each stage unlocks at `xp`. An inverted triangle monster:
  * the top row is the widest and each row below narrows toward a point. The
- * eyes are holes in the second row and stay open in every frame; walking
+ * single eye is a hole in the second row and stays open in every frame; walking
  * wiggles the tip, munching opens and closes the mouth. Every glyph is one
  * column wide.
  */
 export const STAGES: readonly Stage[] = [
   stage('Egg', 0, ['######', '.####.', '..##..', '..##..'], false),
-  stage('Baby', 15, ['########', '.#.##.#.', '..####..', '...##...']),
-  stage('In-Training', 60, ['##########', '.#.####.#.', '..######..', '....##....']),
-  stage('Rookie', 200, ['##.######.##', '.#..####..#.', '..########..', '....####....']),
-  stage('Champion', 700, ['##..######..##', '.##..####..##.', '..##########..', '.....####.....']),
-  stage('Ultimate', 2500, ['###..######..###', '.###..####..###.', '..############..', '......####......']),
-  stage('Mega', 8000, ['####..########..####', '.####..######..####.', '..################..', '........####........']),
+  stage('Baby', 15, ['########', '.##..##.', '..####..', '...##...']),
+  stage('In-Training', 60, ['##########', '.###..###.', '..######..', '....##....']),
+  stage('Rookie', 200, ['##.######.##', '.####..####.', '..########..', '....####....']),
+  stage('Champion', 700, ['##..######..##', '.####....####.', '..##########..', '.....####.....']),
+  stage('Ultimate', 2500, ['###..######..###', '.#####....#####.', '..############..', '......####......']),
+  stage('Mega', 8000, ['####..########..####', '.#######....#######.', '..################..', '........####........']),
 ]
 
 /** Columns the pet walks in, sprite included. */
