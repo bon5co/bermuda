@@ -1,6 +1,6 @@
 # Bermudamon
 
-A round-cheeked critter that lives in the Claude Code prompt footer. It is
+A square critter with tiny hands that lives in the Claude Code prompt footer. It is
 a mod for Claude Code, shipped with [Bermuda](../../README.md).
 
 - **Grows as you work.** Every tool call and finished answer feeds it; it
@@ -27,5 +27,5 @@ claude plugin test mods/bermudamon
 ```
 
 The sprites are pixel grids in `hooks/pet.ts`; `pack` turns them into the
-quadrant blocks the footer draws. The tests hold every stage to the shape: top
-row widest, narrowing to a point, mirror symmetric.
+quadrant blocks the footer draws. The tests hold every stage to the shape:
+square, mirror symmetric, dot eyes, two feet, hands that wave and come up to eat.

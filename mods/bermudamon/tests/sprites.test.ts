@@ -2,35 +2,29 @@ import { expect, test } from 'claude-code/testing'
 
 import { STAGES, TRACK, pack, width } from '../hooks/pet'
 
-const span = (row: string): number => {
-  const first = row.indexOf('#')
-  return first === -1 ? 0 : row.lastIndexOf('#') - first + 1
-}
-
 test('pack turns pixels into quadrant blocks, two pixels per cell', async () => {
   expect(pack(['##..', '##..', '....', '....'])).toEqual(['█ ', '  '])
   expect(pack(['#.#.', '.#.#', '####', '....'])).toEqual(['▚▚', '▀▀'])
   expect(pack(['....', '....', '#..#', '####'])).toEqual(['  ', '▙▟'])
 })
 
-test('every stage narrows from its top row to its chin, and the top is the widest', async () => {
+test('every stage is square: a pixel is twice as tall as wide, so width <= 1.5 x (rows x 2)', async () => {
   for (const s of STAGES) {
-    const spans = s.body.map(span)
-    expect(spans[0]).toBe(Math.max(...spans))
-    for (let i = 1; i < spans.length; i++) expect(spans[i]!).toBeLessThanOrEqual(spans[i - 1]!)
-    expect(spans[3]!).toBeLessThan(spans[0]!)
+    const ratio = s.body[0].length / (s.body.length * 2)
+    expect(ratio).toBeGreaterThanOrEqual(0.7)
+    expect(ratio).toBeLessThanOrEqual(1.5)
   }
 })
 
-test('the top, the eye row and the chin are mirror symmetric, so it faces front', async () => {
+test('every stage is mirror symmetric, so it faces front', async () => {
   for (const s of STAGES)
-    for (const row of [s.body[0], s.body[2], s.body[3]]) expect([...row].reverse().join('')).toBe(row)
+    for (const row of s.body) expect([...row].reverse().join('')).toBe(row)
 })
 
-test('stages grow wider as they evolve and every frame fits the track', async () => {
+test('stages never shrink, stay inside the track, and each looks different', async () => {
   const widths = STAGES.map(s => width(s.idle[0][0]))
   expect([...widths].sort((a, b) => a - b)).toEqual(widths)
-  expect(new Set(widths).size).toBe(widths.length)
+  expect(new Set(STAGES.map(s => s.body.join('/'))).size).toBe(STAGES.length)
   for (const s of STAGES)
     for (const f of [...s.idle, ...s.munch]) {
       expect(f.length).toBe(2)
@@ -39,28 +33,29 @@ test('stages grow wider as they evolve and every frame fits the track', async ()
     }
 })
 
-test('two big eyes, each a 2x2 hole with a lit sparkle, open in every frame', async () => {
+test('dot eyes, two little feet, tiny hands by its sides', async () => {
   for (const s of STAGES.slice(1)) {
-    const [, sparkled, hollow] = s.body
-    const holes = [...hollow.matchAll(/#(\.\.)#/g)]
-    expect(holes).toHaveLength(2)
-    for (const hole of holes) {
-      const x = hole.index! + 1
-      expect(sparkled.slice(x, x + 2)).toBe('.#')
-    }
-    // The shuffle and the mouth are on the chin; the eyes never change.
-    for (const f of [...s.idle, ...s.munch]) expect(f[0]).toBe(pack(s.body)[0])
+    const [, eyes, trunk, feet] = s.body
+    // Two single-pixel eyes, and two single-pixel feet.
+    expect(eyes.match(/#\.#/g)).toHaveLength(2)
+    expect(feet.match(/#/g)).toHaveLength(2)
+    // Hands: one pixel out past the trunk on each side, low by default.
+    expect(trunk.startsWith('##') && trunk.endsWith('##')).toBe(true)
+    expect(eyes[0]).toBe('.')
+    expect(eyes.at(-1)).toBe('.')
   }
-  // An egg has no face.
-  expect(STAGES[0]!.body[1]).not.toMatch(/#\.\.#/)
 })
 
-test('walking shuffles the chin, munching opens it', async () => {
-  for (const s of STAGES) {
-    expect(s.idle[0]).not.toEqual(s.idle[1])
-    expect(s.idle[0][0]).toBe(s.idle[1][0])
+test('the hands wave while walking and come to the mouth while eating', async () => {
+  for (const s of STAGES.slice(1)) {
+    // Walking: the hands swap between the eye row and the trunk row.
+    expect(s.idle[0][0]).not.toBe(s.idle[1][0])
+    expect(s.idle[0][1]).not.toBe(s.idle[1][1])
+    // Eating: the first frame has an open mouth, the second is the resting body.
+    expect(s.munch[0][1]).not.toBe(s.idle[0][1])
+    expect(s.munch[1]).toEqual(s.idle[0])
   }
-  for (const s of STAGES.slice(1)) expect(s.munch[0][1]).not.toBe(s.munch[1][1])
-  // An egg has no mouth.
+  // An egg cannot wave or eat, only wobble.
+  expect(STAGES[0]!.idle[0]).not.toEqual(STAGES[0]!.idle[1])
   expect(STAGES[0]!.munch).toEqual(STAGES[0]!.idle)
 })
