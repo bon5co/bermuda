@@ -790,3 +790,29 @@ test('review2: footer holds an empty checklist slot when no page is tracked, on 
     await ui.unmount()
   }
 })
+
+test('review2: listing the board does not pin the session to a page the listing names', async ($, on) => {
+  const pages = {
+    own: checklist('own task', 0),
+    other: checklist('other agent task', 0),
+  }
+  const { prompts, clock } = setup(on, {
+    run: argv => ok(pages[(argv[3] === '-raw' ? 'own' : argv[3]) as keyof typeof pages]),
+    files: () => [
+      { name: 'own.md', kind: 'file', size: 10, mtimeMs: clock.now() - 5, isLink: false },
+      { name: 'other.md', kind: 'file', size: 10, mtimeMs: clock.now() - 1, isLink: false },
+    ],
+    showPage: () => 'own',
+    toolResult: () => ({ result: 'ok', isReadOnly: true, text: 'other   other agent task   0/3 done\nown     own task   0/3 done\n' }),
+  })
+  await start($)
+  await $.tool.call(bash('bermuda check ls'))
+  await clock.settle()
+  await $.prompt.submit({ text: 'continue' } as never)
+  const note = prompts.at(-1)?.join('\n') ?? ''
+
+  expect({ own: note.includes('"own task"'), other: note.includes('"other agent task"') }).toEqual({
+    own: true,
+    other: false,
+  })
+})

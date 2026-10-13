@@ -17,6 +17,9 @@ export const isEdit = (tool: string): boolean => EDIT_TOOLS.has(tool)
 export const isMutating = (tool: string, isReadOnly: boolean | undefined): boolean =>
   isEdit(tool) || (tool === 'Bash' && isReadOnly !== true)
 
+/** `bermuda check` verbs that print the board's pages rather than work on one. */
+export const LISTING_VERBS: ReadonlySet<string> = new Set(['ls', 'list'])
+
 export type CheckCall = { verb: string; args: string[] }
 
 /** Shell words and the operators between commands, quotes and backslashes honoured. */

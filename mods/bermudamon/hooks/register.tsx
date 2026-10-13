@@ -9,6 +9,7 @@ import {
   type CheckCall,
   isEdit,
   isMutating,
+  LISTING_VERBS,
   noChecklistReminder,
   openItemsReminder,
   parseChecklist,
@@ -219,8 +220,10 @@ const follow = async (
     // A refused call (an ambiguous name, a bad number) changed nothing to follow.
     if (call.isError) return null
     changesSinceCheck = 0
+    // A listing names every page on the board: none of them is this session's.
+    const worked = calls.filter(c => !LISTING_VERBS.has(c.verb))
     // Off the result's path: the agent gets its tool result at once.
-    inBackground(afterChecklistCall($, startedAt, calls, call.output))
+    if (worked.length > 0) inBackground(afterChecklistCall($, startedAt, worked, call.output))
     return null
   }
   if (!isMutating(call.tool, call.isReadOnly)) return null
