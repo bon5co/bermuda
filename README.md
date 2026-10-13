@@ -132,6 +132,14 @@ told each time — see [for the agents](#for-the-agents):
 npx skills add bon5co/bermuda
 ```
 
+**Optional: the Claude Code mod.** [Bermudamon](docs/bermudamon.md), a footer pet that
+keeps your checklist in view:
+
+```
+/plugin marketplace add bon5co/bermuda
+/plugin install bermudamon@bermuda
+```
+
 Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
 file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
 and leaves your store alone.

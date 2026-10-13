@@ -1,0 +1,14 @@
+{
+  "name": "bermuda",
+  "owner": {
+    "name": "Lodimup"
+  },
+  "description": "Claude Code mods that ship with Bermuda",
+  "plugins": [
+    {
+      "name": "bermudamon",
+      "source": "./mods/bermudamon",
+      "description": "An inverted-triangle pet in the Claude Code footer that grows on your usage, shows your 5-hour and weekly limits, and keeps your bermuda checklist in view"
+    }
+  ]
+}
