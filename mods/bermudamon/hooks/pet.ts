@@ -28,52 +28,56 @@ export const pack = (pixels: Body): Sprite => {
   return [row(pixels[0], pixels[1]), row(pixels[2], pixels[3])]
 }
 
-const nudge = (row: string, by: 1 | -1): string => (by === 1 ? '.' + row.slice(0, -1) : row.slice(1) + '.')
-/** Walking shuffles the chin one pixel either way. */
-const withTip = (body: Body, by: 1 | -1): Body => [body[0], body[1], body[2], nudge(body[3], by)]
-/** Eating: the middle of the chin opens. */
-const withMouth = (body: Body): Body => {
-  const mid = body[3].length / 2
-  return [body[0], body[1], body[2], body[3].slice(0, mid - 1) + '..' + body[3].slice(mid + 1)]
-}
+const put = (row: string, x: number, c: '#' | '.'): string => row.slice(0, x) + c + row.slice(x + 1)
 
 /**
- * A round-cheeked face: a wide top, two big eyes and a narrow chin. Each eye
- * is a 2x2 hole whose upper-right pixel stays lit, the sparkle that makes it
- * look alive. `inset` is the body's margin on each side below the top row and
- * `eye` the column of the left eye; the right eye mirrors it.
+ * A square critter. Pixels are twice as tall as wide, so a body three rows
+ * tall and as many pixels wide as it is tall again reads as a square. `top`
+ * is the roof (its length is the sprite's width, its notches the ears), `eye`
+ * the column of the left dot eye and left foot; the right ones mirror them.
+ * The hands are single pixels on the outer columns: down by its side, or up.
  */
-const face = (top: string, inset: number, eye: number, chin: string): Body => {
-  const width = top.length
-  const body = (sparkle: boolean) =>
-    Array.from({ length: width }, (_, x) => {
-      if (x < inset || x >= width - inset) return '.'
-      const right = width - 2 - eye
-      const inEye = (x === eye || x === eye + 1 || x === right || x === right + 1) && !(sparkle && (x === eye + 1 || x === right + 1))
-      return inEye ? '.' : '#'
-    }).join('')
-  return [top, body(true), body(false), chin]
+const critter = (top: string, eye: number) => {
+  const far = top.length - 1
+  const right = far - eye
+  const trunk = Array.from({ length: top.length }, (_, x) => (x >= 1 && x < far ? '#' : '.')).join('')
+  const eyes = put(put(trunk, eye, '.'), right, '.')
+  const feet = put(put('.'.repeat(top.length), eye, '#'), right, '#')
+  const hands = (row: string) => put(put(row, 0, '#'), far, '#')
+  const mid = top.length / 2
+  const down: Body = [top, eyes, hands(trunk), feet]
+  const up: Body = [top, hands(eyes), trunk, feet]
+  const chewing: Body = [top, up[1], put(put(trunk, mid - 1, '.'), mid, '.'), feet]
+  return { down, up, chewing }
 }
 
-const stage = (name: string, xp: number, body: Body, canEat = true): Stage => {
-  const idle = [pack(withTip(body, -1)), pack(withTip(body, 1))] as const
-  return { name, xp, body, idle, munch: canEat ? [pack(withMouth(body)), pack(body)] : idle }
+const stage = (name: string, xp: number, top: string, eye: number): Stage => {
+  const { down, up, chewing } = critter(top, eye)
+  return { name, xp, body: down, idle: [pack(down), pack(up)], munch: [pack(chewing), pack(down)] }
+}
+
+/** Wobbles in place: it cannot walk, eat or wave yet. */
+const egg = (): Stage => {
+  const body: Body = ['.####.', '.####.', '######', '..##..']
+  const wobble: Body = [body[0], body[1], body[2], '...##.']
+  const idle = [pack(body), pack(wobble)] as const
+  return { name: 'Egg', xp: 0, body, idle, munch: idle }
 }
 
 /**
- * Evolution line: each stage unlocks at `xp`. A cute inverted-trapezoid
- * critter that grows from a seed to a big-eyed mascot: a wide top (ears
- * notched in from Rookie on), two sparkling eyes and a narrow chin. Walking
- * shuffles the chin, munching opens it. Every glyph is one column wide.
+ * Evolution line: each stage unlocks at `xp`. A square critter with dot
+ * eyes, little feet and tiny hands that wave while it walks and come up to
+ * its mouth while it eats. It grows a little wider and earns ears and a
+ * crown along the way. Every glyph is one column wide.
  */
 export const STAGES: readonly Stage[] = [
-  stage('Egg', 0, ['######', '.####.', '.####.', '..##..'], false),
-  stage('Baby', 15, face('.########.', 1, 2, '...####...')),
-  stage('In-Training', 60, face('.##########.', 1, 3, '....####....')),
-  stage('Rookie', 200, face('##.########.##', 1, 3, '....######....')),
-  stage('Champion', 700, face('##..########..##', 1, 4, '.....######.....')),
-  stage('Ultimate', 2500, face('###..########..###', 1, 4, '......######......')),
-  stage('Mega', 8000, face('####..##########..####', 1, 5, '.......########.......')),
+  egg(),
+  stage('Baby', 15, '.######.', 2),
+  stage('In-Training', 60, '.##..##.', 2),
+  stage('Rookie', 200, '.########.', 3),
+  stage('Champion', 700, '.#.####.#.', 3),
+  stage('Ultimate', 2500, '.##########.', 3),
+  stage('Mega', 8000, '.#.######.#.', 3),
 ]
 
 /** Columns the pet walks in, sprite included. */

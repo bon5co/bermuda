@@ -89,7 +89,7 @@ test('using Claude Code feeds it, persists it, and the footer draws it', async (
   expect(toasts).toEqual(['✨ Bermudamon digivolved into Baby!'])
 
   const ui = await $.ui.mount({ plugin: 'bermudamon', surface: 'terminal', component: 'SessionMode', props: { modes: ['focus'] } })
-  expect(await ui.find({ type: 'Text', text: new RegExp(STAGES[1]!.idle[0][0].replace(/[|\\{}()[\]^$+*?.]/g, '\\$&')) })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: new RegExp(STAGES[1]!.idle.map(f => f[0]).join('|'), 'u') })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /76%/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /19%/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /focus/ })).toBeDefined()
