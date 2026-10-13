@@ -1,6 +1,6 @@
 # Bermudamon
 
-An inverted-triangle monster that lives in the Claude Code prompt footer. It is
+A round-cheeked critter that lives in the Claude Code prompt footer. It is
 a mod for Claude Code, shipped with [Bermuda](../../README.md).
 
 - **Grows as you work.** Every tool call and finished answer feeds it; it
@@ -9,7 +9,7 @@ a mod for Claude Code, shipped with [Bermuda](../../README.md).
 - **Keeps your checklist in view.** Follows the `bermuda check` page the
   session works against, shows `done/total`, reminds the agent of open items
   on each prompt, and pays the pet for every item ticked (once per item, ever).
-  Without the `bermuda` command on `PATH` the checklist part stays quiet and
+  Without a tracked page the slot reads `☐ --`; without the `bermuda` command on `PATH` it stays that way and
   the pet and bars still work.
 
 ## Install

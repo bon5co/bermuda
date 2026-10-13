@@ -371,7 +371,12 @@ export const register: Register = on => {
             <Text color="warning">☐ no list</Text>
             <Text> </Text>
           </Box>
-        ) : null}
+        ) : (
+          <Box flexDirection="column" marginRight={1}>
+            <Text dimColor>☐ --</Text>
+            <Text> </Text>
+          </Box>
+        )}
         <Box flexDirection="column" marginRight={1}>
           {meters.map(m => (
             <Box key={m.label}>
