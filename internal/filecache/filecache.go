@@ -72,9 +72,7 @@ func (c *Cache[T]) Listing(dir string, entries []os.DirEntry) {
 	if c == nil {
 		return
 	}
-	// Cleaned, because the paths files are cached under are joined, and so
-	// clean: a dir given as /vault/ would otherwise prefix none of them, and
-	// nothing deleted from it would ever be forgotten.
+	// Cleaned, so /vault and /vault/ — or . and ./ — are one listing.
 	dir = filepath.Clean(dir)
 	names := make([]string, len(entries))
 	for i, e := range entries {
@@ -89,18 +87,13 @@ func (c *Cache[T]) Listing(dir string, entries []os.DirEntry) {
 	if old, ok := c.dirs[dir]; ok && slices.Equal(old, names) {
 		return
 	}
-	prefix := dir
-	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
-		// A root such as / already ends in one.
-		prefix += string(filepath.Separator)
-	}
 	for path := range c.files {
-		if strings.HasPrefix(path, prefix) {
+		if within(dir, path) {
 			delete(c.files, path)
 		}
 	}
 	for d := range c.dirs {
-		if strings.HasPrefix(d, prefix) {
+		if within(dir, d) {
 			delete(c.dirs, d)
 		}
 	}
@@ -144,4 +137,20 @@ func (c *Cache[T]) Parses() int64 {
 		return 0
 	}
 	return c.parses.Load()
+}
+
+// within reports whether p lies under dir, at any depth, and is not dir itself.
+//
+// Both are compared as paths, not as strings. A string prefix has to agree
+// with every caller on how the directory was spelled, and spellings differ —
+// /vault/ against joined keys under /vault, . against bare names, child/..
+// against the directory it means — and each disagreement leaves files deleted
+// from disk cached forever. It also has to remember that /a/notes2 is not
+// inside /a/notes. filepath.Rel already knows all of that.
+func within(dir, p string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(p))
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

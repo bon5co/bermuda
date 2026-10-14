@@ -170,3 +170,41 @@ func TestNilCacheParsesEveryTime(t *testing.T) {
 		t.Fatalf("nil cache: %d calls, %d parses; want 2 and 0", calls, c.Parses())
 	}
 }
+
+// within decides what a listing change forgets, so every way a directory can
+// be spelled has to agree with the joined paths files are cached under.
+func TestWithinAgreesAcrossSpellings(t *testing.T) {
+	for _, tc := range []struct {
+		dir, p string
+		want   bool
+	}{
+		{"/", "/vault/a.md", true},
+		{"/", "/", false},
+		{"/vault", "/vault/a.md", true},
+		{"/vault", "/vault/notes/a.md", true},
+		{"/vault", "/vault", false},
+		{"/vault/", "/vault/a.md", true},
+		{"/vault/", "/vault", false},
+		{"/vault", "/a.md", false},
+		{".", "a.md", true},
+		{".", "notes/a.md", true},
+		{".", ".", false},
+		{".", "../a.md", false},
+		{"./", "a.md", true},
+		{"", "a.md", true},
+		{"notes", "notes/a.md", true},
+		{"notes", "notes2/a.md", false},
+		{"notes", "a.md", false},
+		{"child/..", "a.md", true},
+		{"child/..", "child/a.md", true},
+		{"/a/notes", "/a/notes2/a.md", false},
+		{"/a/notes", "/a/notes2", false},
+		{"/a/notes", "/a/notes/x/a.md", true},
+		{"/vault", "vault/a.md", false}, // absolute against relative never matches
+	} {
+		dir, p := filepath.FromSlash(tc.dir), filepath.FromSlash(tc.p)
+		if got := within(dir, p); got != tc.want {
+			t.Errorf("within(%q, %q) = %v, want %v", tc.dir, tc.p, got, tc.want)
+		}
+	}
+}
