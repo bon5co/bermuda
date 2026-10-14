@@ -46,13 +46,13 @@ test('dot eyes, two little feet, tiny hands by its sides', async () => {
   }
 })
 
-test('the hands wave while walking and come to the mouth while eating', async () => {
+test('the hands wave while walking and go up first while eating', async () => {
   for (const s of STAGES.slice(1)) {
     // Walking: the hands swap between the eye row and the trunk row.
     expect(s.idle[0][0]).not.toBe(s.idle[1][0])
     expect(s.idle[0][1]).not.toBe(s.idle[1][1])
-    // Eating: the first frame has an open mouth, the second is the resting body.
-    expect(s.munch[0][1]).not.toBe(s.idle[0][1])
+    // Eating: the hands start up, then drop to its sides. No mouth is drawn.
+    expect(s.munch[0]).toEqual(s.idle[1])
     expect(s.munch[1]).toEqual(s.idle[0])
   }
   // An egg cannot wave or eat, only wobble.
