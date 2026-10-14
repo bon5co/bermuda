@@ -10,10 +10,13 @@
 package memory
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/bon5co/bermuda/v3/internal/filecache"
 )
 
 // Dir resolves where memory notes live: $BERMUDA_MEMORY_DIR, else memory/
@@ -69,6 +72,13 @@ type Stats struct {
 // they call for different advice, and collapsing them would hide which one
 // the reader is looking at.
 func Read(dir string) Stats {
+	return ReadCached(dir, nil)
+}
+
+// ReadCached is Read for a reader that asks again and again: notes that have
+// not changed since cache last saw them are not opened again to count their
+// links. A nil cache opens every note.
+func ReadCached(dir string, cache *filecache.Cache[int]) Stats {
 	st := Stats{Dir: dir}
 
 	if target, err := os.Readlink(dir); err == nil {
@@ -90,7 +100,7 @@ func Read(dir string) Stats {
 		}
 	}
 
-	walk(dir, "", &st)
+	walk(dir, "", &st, cache)
 	return st
 }
 
@@ -101,11 +111,12 @@ func Read(dir string) Stats {
 // It is written by hand rather than with filepath.WalkDir because the root is
 // normally a symlink to a vault, and WalkDir does not follow those — the whole
 // walk would end at the link. os.ReadDir resolves it.
-func walk(dir, rel string, st *Stats) {
+func walk(dir, rel string, st *Stats, cache *filecache.Cache[int]) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
+	cache.Listing(dir, entries)
 	for _, e := range entries {
 		name := e.Name()
 		path := filepath.Join(dir, name)
@@ -120,7 +131,7 @@ func walk(dir, rel string, st *Stats) {
 			if strings.HasPrefix(name, ".") {
 				continue
 			}
-			walk(path, child, st)
+			walk(path, child, st, cache)
 			continue
 		}
 		if !isNote(name) || name == IndexName {
@@ -132,16 +143,32 @@ func walk(dir, rel string, st *Stats) {
 		}
 
 		st.Notes++
-		if fi, err := e.Info(); err == nil {
+		fi, err := e.Info()
+		if err == nil {
 			st.Bytes += fi.Size()
 			if fi.ModTime().After(st.Written) {
 				st.Written = fi.ModTime()
 				st.Newest = strings.TrimSuffix(child, ".md")
 			}
 		}
-		if b, err := os.ReadFile(path); err == nil {
-			st.Links += strings.Count(string(b), "[[")
+		links := func() (int, error) {
+			b, err := os.ReadFile(path)
+			if err != nil {
+				return 0, err
+			}
+			return strings.Count(string(b), "[["), nil
 		}
+		// The note is read through a link, so a link is keyed on its target.
+		if err == nil && e.Type()&fs.ModeSymlink != 0 {
+			fi, err = os.Stat(path)
+		}
+		var n int
+		if err == nil {
+			n, _ = cache.Get(path, fi, links)
+		} else {
+			n, _ = links()
+		}
+		st.Links += n
 	}
 }
 

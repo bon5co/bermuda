@@ -31,17 +31,40 @@ func (m *Model) window(content string) string {
 // spent rows on chrome, and a body that measured itself against the whole pane
 // would push that chrome off the bottom.
 func (m *Model) windowBody(content string, avail int) string {
+	lines := strings.Split(content, "\n")
+	cursor := func() int {
+		// Follow the selection: find the marked row and pull the window to it.
+		for i, l := range lines {
+			if !m.isCardFeed() && m.focus != focusChecklists && strings.Contains(l, cursorMark) {
+				return i
+			}
+		}
+		return -1
+	}
+	return m.windowSpan(len(lines), avail, cursor,
+		func(from, to int) []string { return lines[from:to] })
+}
+
+// windowLines trims a body that is drawn on demand to avail rows. Only the rows
+// that land on screen are ever asked for. A body like this has no selected row
+// to follow: it is the card feeds, which scroll and do not select.
+func (m *Model) windowLines(b bodyLines, avail int) string {
+	return m.windowSpan(b.total, avail, nil, b.slice)
+}
+
+// windowSpan is the window itself, for a body of total rows that slice can
+// produce any range of. cursor, when not nil, finds the selected row.
+func (m *Model) windowSpan(total, avail int, cursor func() int, slice func(from, to int) []string) string {
 	if avail < 1 {
 		avail = 1
 	}
-	lines := strings.Split(content, "\n")
 
-	if len(lines) <= avail {
+	if total <= avail {
 		m.scroll = 0
 		// Everything fits, so the newest message is already on screen.
 		m.threadFollow = true
-		m.hitRows = len(lines)
-		return content
+		m.hitRows = total
+		return strings.Join(slice(0, total), "\n")
 	}
 
 	// One of the rows goes to the scroll hint, since there is now something to
@@ -55,13 +78,9 @@ func (m *Model) windowBody(content string, avail int) string {
 		view = avail - 1
 	}
 
-	// Follow the selection: find the marked row and pull the window to it.
 	cursorLine := -1
-	for i, l := range lines {
-		if !m.isCardFeed() && m.focus != focusChecklists && strings.Contains(l, cursorMark) {
-			cursorLine = i
-			break
-		}
+	if cursor != nil {
+		cursorLine = cursor()
 	}
 	if cursorLine >= 0 {
 		if cursorLine < m.scroll+1 {
@@ -72,7 +91,7 @@ func (m *Model) windowBody(content string, avail int) string {
 		}
 	}
 
-	maxScroll := len(lines) - view
+	maxScroll := total - view
 	if m.scroll > maxScroll {
 		m.scroll = maxScroll
 	}
@@ -86,16 +105,16 @@ func (m *Model) windowBody(content string, avail int) string {
 	m.threadFollow = m.scroll >= maxScroll
 
 	end := m.scroll + view
-	if end > len(lines) {
-		end = len(lines)
+	if end > total {
+		end = total
 	}
 	// How many of the rows on screen are content. The scroll hint below them is
 	// not a row of anything, and a click on it must not reach the line it is
 	// counting — the first one that did not fit. See mouse.go.
 	m.hitRows = end - m.scroll
-	out := strings.Join(lines[m.scroll:end], "\n")
+	out := strings.Join(slice(m.scroll, end), "\n")
 
-	above, below := m.scroll, len(lines)-end
+	above, below := m.scroll, total-end
 	if hinted && (above > 0 || below > 0) {
 		out += "\n" + dimStyle.Render(scrollHint(above, below))
 	}

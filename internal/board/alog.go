@@ -89,24 +89,23 @@ func (m *Model) improvePane(p pane) pane {
 
 func (m *Model) feedPane(p pane, feed cardFeed) pane {
 	entries := m.visibleFeed(feed.entries)
-	var body strings.Builder
+	var head []string
 	if feed.err != nil {
-		body.WriteString(outcomeStyles["failed"].Render(m.alogText(
-			"Cannot read " + feed.label + ": " + feed.err.Error() + ". Fix the file or directory, then press r.")))
-		body.WriteString("\n\n")
+		head = append(strings.Split(outcomeStyles["failed"].Render(m.alogText(
+			"Cannot read "+feed.label+": "+feed.err.Error()+". Fix the file or directory, then press r.")), "\n"), "")
 	}
-	if len(entries) == 0 && feed.err == nil {
-		if m.query != "" {
-			body.WriteString(m.alogText("No entries match. Esc clears search."))
-		} else {
-			body.WriteString(m.alogText(feed.empty))
+	if len(entries) == 0 {
+		if feed.err == nil {
+			if m.query != "" {
+				head = []string{m.alogText("No entries match. Esc clears search.")}
+			} else {
+				head = []string{m.alogText(feed.empty)}
+			}
 		}
+		p.body = strings.Join(head, "\n")
+	} else {
+		p.lines = m.cardLines(head, entries)
 	}
-	for _, entry := range entries {
-		body.WriteString(m.alogCard(entry))
-		body.WriteString("\n")
-	}
-	p.body = strings.TrimSuffix(body.String(), "\n")
 	status := itoa(len(entries)) + " entries · newest first"
 	if m.query != "" {
 		status = itoa(len(entries)) + " of " + itoa(len(feed.entries)) + " match · newest first"
@@ -114,6 +113,109 @@ func (m *Model) feedPane(p pane, feed cardFeed) pane {
 	p.bottom = dimStyle.Render(m.alogText(status)) + "\n" + m.renderFooter() +
 		"\n" + helpStyle.Render(m.alogText("tab lists · / search · j/k scroll · [ ] page · "+feed.latestKey+" latest · r refresh · M mouse · q quit"))
 	return p
+}
+
+// cardLines lays a feed out as head rows followed by one card per entry, each
+// card followed by a blank row, and draws only the cards the window asks for.
+//
+// Every card's height is known before any card is drawn — measuring is a wrap
+// of plain text, drawing is lipgloss — and both are kept per card, so a frame
+// over a feed that has not changed measures nothing and draws only what is on
+// screen.
+func (m *Model) cardLines(head []string, entries []alog.Entry) *bodyLines {
+	memos := make([]*cardMemo, len(entries))
+	total := len(head)
+	for i, e := range entries {
+		memos[i] = m.cardMemo(e)
+		total += memos[i].height + 1
+	}
+	return &bodyLines{total: total, slice: func(from, to int) []string {
+		out := make([]string, 0, to-from)
+		at := 0
+		take := func(rows []string) {
+			for _, r := range rows {
+				if at >= from && at < to {
+					out = append(out, r)
+				}
+				at++
+			}
+		}
+		take(head)
+		for _, memo := range memos {
+			if at >= to {
+				break
+			}
+			if at+memo.height+1 <= from {
+				at += memo.height + 1
+				continue
+			}
+			take(m.drawCard(memo))
+			take([]string{""})
+		}
+		return out
+	}}
+}
+
+// cardMemo is one card as measured, and as drawn once it has been on screen.
+// It belongs to one entry at one width: an entry that changes, or a pane that
+// is resized, gets a new one.
+type cardMemo struct {
+	entry  alog.Entry
+	height int
+	// lines is the drawn card, nil until it has been asked for.
+	lines []string
+}
+
+type cardKey struct {
+	path  string
+	width int
+}
+
+func (m *Model) cardMemo(e alog.Entry) *cardMemo {
+	key := cardKey{path: e.Path, width: m.alogWidth()}
+	if memo, ok := m.cards[key]; ok && memo.entry == e {
+		return memo
+	}
+	if m.cards == nil {
+		m.cards = map[cardKey]*cardMemo{}
+	}
+	m.cardMeasures++
+	memo := &cardMemo{entry: e, height: m.cardHeight(e)}
+	m.cards[key] = memo
+	return memo
+}
+
+func (m *Model) drawCard(memo *cardMemo) []string {
+	if memo.lines == nil {
+		m.cardDraws++
+		memo.lines = strings.Split(strings.TrimSuffix(m.alogCard(memo.entry), "\n"), "\n")
+	}
+	return memo.lines
+}
+
+// forgetCards drops the memo once it holds far more than the feeds do, which
+// is what cards deleted from disk and widths the pane no longer has leave
+// behind. Everything still on screen is re-measured on the next frame.
+func (m *Model) forgetCards() {
+	if len(m.cards) > 2*(len(m.alogEntries)+len(m.improveEntries))+64 {
+		m.cards = nil
+	}
+}
+
+// cardHeight is how many rows alogCard draws for e, worked out from the same
+// wrapping without the styling.
+func (m *Model) cardHeight(e alog.Entry) int {
+	width := min(m.alogWidth(), threadBubbleMax+4)
+	if width < 6 {
+		return len(wrapText(alogPlain(e.Repo+" · "+e.Branch+"\n"+cardTopic(e)+"\n"+e.Body+"\n"+
+			alogStamp(e)), m.alogWidth()))
+	}
+	textWidth := width - 4
+	rows := 2 // the top and bottom of the frame
+	for _, text := range []string{e.Repo + " · " + e.Branch, cardTopic(e), alogStamp(e), "", e.Body} {
+		rows += len(wrapText(alogPlain(text), textWidth))
+	}
+	return rows
 }
 
 // alogPlain strips terminal commands before fitting and styling file content.

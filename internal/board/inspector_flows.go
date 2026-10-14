@@ -47,10 +47,10 @@ func (m *Model) renderFlowInspector(width int) string {
 	f := fr.flow
 
 	var b strings.Builder
-	b.WriteString(titleStyle.Render(fitMarquee(f.ID, width, m.frame)) + "\n")
+	b.WriteString(titleStyle.Render(m.marquee(f.ID, width)) + "\n")
 	// The path scrolls rather than being cut. A truncated path loses its tail,
 	// which is the filename — the one part of it the reader was going to type.
-	b.WriteString(dimStyle.Render(fitMarquee(f.Path, width, m.frame)) + "\n")
+	b.WriteString(dimStyle.Render(m.marquee(f.Path, width)) + "\n")
 
 	if about := strings.TrimSpace(f.About); about != "" {
 		b.WriteString("\n" + wrap(about, width, 2) + "\n")
@@ -64,7 +64,7 @@ func (m *Model) renderFlowInspector(width int) string {
 		if strings.TrimSpace(v) == "" {
 			return
 		}
-		b.WriteString(headerStyle.Render(pad(k, 7)) + " " + fitMarquee(v, width-8, m.frame) + "\n")
+		b.WriteString(headerStyle.Render(pad(k, 7)) + " " + m.marquee(v, width-8) + "\n")
 	}
 
 	if f.TakesInput() {
@@ -131,7 +131,7 @@ func (m *Model) renderBrokenFlow(err error, width int) string {
 	b.WriteString(outcomeStyles["failed"].Render(fit("does not parse", width)) + "\n")
 	path, complaint := flowErrorParts(err)
 	if path != "" {
-		b.WriteString(dimStyle.Render(fitMarquee(path, width, m.frame)) + "\n")
+		b.WriteString(dimStyle.Render(m.marquee(path, width)) + "\n")
 	}
 	b.WriteString("\n" + outcomeStyles["failed"].Render(wrap(complaint, width, 8)) + "\n")
 	b.WriteString("\n" + dimStyle.Render(fit("fix the file, r reloads", width)) + "\n")

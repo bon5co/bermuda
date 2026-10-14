@@ -76,3 +76,45 @@ func fitMarquee(s string, w, frame int) string {
 	}
 	return pad(b.String(), w)
 }
+
+// marquee fits a cell the way fitMarquee does, and notes when the cell is one
+// that scrolls.
+//
+// The note is what lets the tick stop. Every frame the tick asks for is a full
+// render of the board, and on a board where everything fits each of those
+// renders draws the same picture as the last — three times a second, for as
+// long as the pane is open. So the tick only runs while the last frame had
+// something in it that moves.
+func (m *Model) marquee(s string, w int) string {
+	if w > 0 && lipgloss.Width(s) > w {
+		m.scrolling = true
+	}
+	return fitMarquee(s, w, m.frame)
+}
+
+// armMarquee restarts the tick after a frame that found text to scroll while
+// the tick was stopped.
+//
+// It runs at the end of View, which cannot return a command, so the tick is
+// delivered to the program from outside the event loop instead. Without that
+// the first scroll after, say, the selection moving onto a long name would
+// wait for whatever message happened to come next — up to a whole refresh.
+func (m *Model) armMarquee() {
+	if !m.scrolling || m.marqueeOn || m.send == nil {
+		return
+	}
+	m.marqueeOn = true
+	send := m.send
+	time.AfterFunc(marqueeInterval, func() { send(marqueeTickMsg{}) })
+}
+
+// onMarqueeTick advances the scroll, or lets the tick lapse when the last
+// frame had nothing that scrolls.
+func (m *Model) onMarqueeTick() tea.Cmd {
+	if !m.scrolling {
+		m.marqueeOn = false
+		return nil
+	}
+	m.frame++
+	return marqueeTick()
+}

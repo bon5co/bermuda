@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bon5co/bermuda/v3/internal/filecache"
 	"github.com/bon5co/bermuda/v3/internal/lockfile"
 	"github.com/bon5co/bermuda/v3/internal/statefs"
 	"gopkg.in/yaml.v3"
@@ -184,7 +185,19 @@ func List(dir string) (entries []Entry, err error) {
 	return activity.List(dir)
 }
 
+// ListCached is List for a reader that asks again and again: cards that have
+// not changed since cache last saw them are not opened or parsed again. See
+// filecache for what counts as changed.
+func ListCached(dir string, cache *filecache.Cache[Entry]) (entries []Entry, err error) {
+	return activity.ListCached(dir, cache)
+}
+
 func (feed Feed) List(dir string) (entries []Entry, err error) {
+	return feed.ListCached(dir, nil)
+}
+
+// ListCached is List through a cache; a nil cache reads every card.
+func (feed Feed) ListCached(dir string, cache *filecache.Cache[Entry]) (entries []Entry, err error) {
 	entries = []Entry{}
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return entries, nil
@@ -194,12 +207,22 @@ func (feed Feed) List(dir string) (entries []Entry, err error) {
 		if err != nil {
 			return err
 		}
+		cache.Listing(dir, files)
 		var problems []error
 		for _, file := range files {
 			if !strings.HasSuffix(file.Name(), ".md") || file.IsDir() {
 				continue
 			}
-			e, err := feed.read(dir, file.Name())
+			name := file.Name()
+			path := filepath.Join(dir, name)
+			// Lstat rather than Stat: read refuses anything that is not a
+			// regular file, so the link's own times are what its answer
+			// depends on.
+			info, err := os.Lstat(path)
+			var e Entry
+			if err == nil {
+				e, err = cache.Get(path, info, func() (Entry, error) { return feed.read(dir, name) })
+			}
 			if err != nil {
 				problems = append(problems, err)
 				continue

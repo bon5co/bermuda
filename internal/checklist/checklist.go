@@ -39,6 +39,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bon5co/bermuda/v3/internal/filecache"
 	"github.com/bon5co/bermuda/v3/internal/statefs"
 )
 
@@ -391,6 +392,13 @@ func splitBlocked(body string) (text, who, why string) {
 // other nine invisible, and the unreadable one is exactly what the reader needs
 // told.
 func All(dir string) ([]List, []error) {
+	return AllCached(dir, nil)
+}
+
+// AllCached is All for a reader that asks again and again: pages that have not
+// changed since cache last saw them are not opened or parsed again. A nil cache
+// reads every page.
+func AllCached(dir string, cache *filecache.Cache[List]) ([]List, []error) {
 	entries, err := os.ReadDir(dir)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
@@ -398,13 +406,23 @@ func All(dir string) ([]List, []error) {
 	if err != nil {
 		return nil, []error{err}
 	}
+	cache.Listing(dir, entries)
 	var out []List
 	var bad []error
 	for _, e := range entries {
 		if e.IsDir() || !strings.HasSuffix(e.Name(), Ext) {
 			continue
 		}
-		l, err := Load(filepath.Join(dir, e.Name()))
+		path := filepath.Join(dir, e.Name())
+		// Stat rather than Lstat: Load reads through a link, so the target's
+		// times are the ones that say whether the page changed.
+		var l List
+		if info, statErr := os.Stat(path); statErr == nil {
+			l, err = cache.Get(path, info, func() (List, error) { return Load(path) })
+		} else {
+			// Nothing to key a cache on; Load says what is wrong with it.
+			l, err = Load(path)
+		}
 		if err != nil {
 			bad = append(bad, err)
 			continue

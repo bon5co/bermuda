@@ -81,8 +81,8 @@ func (m *Model) renderInspector(width int) string {
 	if strings.TrimSpace(title) == "" {
 		title = j.ID
 	}
-	b.WriteString(titleStyle.Render(fitMarquee(title, width, m.frame)) + "\n")
-	b.WriteString(dimStyle.Render(fitMarquee(j.ID, width, m.frame)) + "\n\n")
+	b.WriteString(titleStyle.Render(m.marquee(title, width)) + "\n")
+	b.WriteString(dimStyle.Render(m.marquee(j.ID, width)) + "\n\n")
 
 	// Labels are short so the values get the room; this panel exists to be
 	// read at a glance, not to be complete.
@@ -91,7 +91,7 @@ func (m *Model) renderInspector(width int) string {
 			return
 		}
 		label := headerStyle.Render(pad(k, 9))
-		b.WriteString(label + " " + fitMarquee(v, width-10, m.frame) + "\n")
+		b.WriteString(label + " " + m.marquee(v, width-10) + "\n")
 	}
 
 	state := "enabled"
