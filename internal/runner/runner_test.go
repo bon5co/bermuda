@@ -223,6 +223,18 @@ func TestResultNoteWinsOverBermudasOwn(t *testing.T) {
 	}
 }
 
+func TestContextNoteDoesNotRepeatBermudaPrefixOnRunError(t *testing.T) {
+	run := &Run{
+		Err:            errors.New("wait for existing agent: timeout"),
+		Context:        "resumed",
+		ContextSession: "session-1",
+	}
+	want := "bermuda: wait for existing agent: timeout; context: resumed (session-1)"
+	if got := run.Note(); got != want {
+		t.Errorf("Note() = %q, want %q", got, want)
+	}
+}
+
 // A park bermuda observed nothing about stays silent. The reason is already a
 // column of its own, and restating it as prose would put words in the mouth of
 // a run that saw nothing — which is how an unclassified failure turns into a

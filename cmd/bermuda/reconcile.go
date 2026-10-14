@@ -117,8 +117,8 @@ func reconcileOneParked(ctx context.Context, s *store.Store, r store.Run) (bool,
 			r.Outcome = "failed"
 		}
 		r.ParkReason = ""
-		if res.Note != "" {
-			r.Note = res.Note
+		if res.Note != "" || r.Context != "" {
+			r.Note = runner.FormatContextNote(res.Note, r.Context, r.ContextSession, r.ContextNote)
 		}
 		r.EndedAt = endedAt(dir)
 		return true, s.PutRun(ctx, r)
@@ -183,8 +183,8 @@ func resolveRun(ctx context.Context, r store.Run, h *herdrcli.Client) (store.Run
 			if res.Status != "ok" {
 				r.Outcome = "failed"
 			}
-			if res.Note != "" {
-				r.Note = res.Note
+			if res.Note != "" || r.Context != "" {
+				r.Note = runner.FormatContextNote(res.Note, r.Context, r.ContextSession, r.ContextNote)
 			}
 			// The result file's timestamp is when the work actually ended,
 			// which is closer to the truth than the moment anyone noticed.

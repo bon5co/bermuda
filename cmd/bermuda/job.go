@@ -47,10 +47,11 @@ type jobFlags struct {
 	catchup  *string
 	timeout  *time.Duration
 
-	enabled     *bool
-	favorite    *bool
-	persistent  *bool
-	keepContext *bool
+	enabled       *bool
+	favorite      *bool
+	persistent    *bool
+	keepContext   *bool
+	onContextLoss *string
 }
 
 func registerJobFlags(fs *flag.FlagSet) *jobFlags {
@@ -81,9 +82,10 @@ func registerJobFlags(fs *flag.FlagSet) *jobFlags {
 		catchup:  fs.String("catchup", "latest", "missed-fire policy: latest|all|skip"),
 		timeout:  fs.Duration("timeout", 15*time.Minute, "run deadline"),
 
-		enabled:    fs.Bool("enabled", true, "whether the job may run"),
-		favorite:   fs.Bool("favorite", false, "pin to the top of the board"),
-		persistent: fs.Bool("persistent", false, "reuse one agent across runs (context cleared each run)"),
+		enabled:       fs.Bool("enabled", true, "whether the job may run"),
+		favorite:      fs.Bool("favorite", false, "pin to the top of the board"),
+		persistent:    fs.Bool("persistent", false, "reuse one agent across runs (context cleared each run)"),
+		onContextLoss: fs.String("on-context-loss", "fresh", "when context cannot be recovered: fresh|park"),
 		keepContext: fs.Bool("keep-context", false,
 			"with --persistent, carry the conversation across runs instead of clearing it"),
 	}
@@ -137,6 +139,10 @@ func (f *jobFlags) apply(fs *flag.FlagSet, j *store.Job) error {
 	assign("favorite", func() { j.Favorite = *f.favorite })
 	assign("persistent", func() { j.Persistent = *f.persistent })
 	assign("keep-context", func() { j.KeepContext = *f.keepContext })
+	assign("on-context-loss", func() { j.OnContextLoss = *f.onContextLoss })
+	if j.OnContextLoss != "" && j.OnContextLoss != "fresh" && j.OnContextLoss != "park" {
+		return errors.New("--on-context-loss must be fresh or park")
+	}
 	// Refused rather than quietly implied. Keeping context without an agent to
 	// keep it in does nothing, and a job that was told to remember and does
 	// not is worse than one that was refused: it looks like it is carrying the
@@ -343,6 +349,7 @@ func jobShow(argv []string) error {
 	line("favorite", j.Favorite)
 	line("persistent", j.Persistent)
 	line("keep-context", j.KeepContext)
+	line("on-context-loss", j.OnContextLoss)
 	line("cwd", j.CWD)
 	line("kind", j.Kind)
 	line("timeout", j.Timeout)
@@ -731,7 +738,7 @@ func disableOneShot(ctx context.Context, s *store.Store, j store.Job, run *runne
 
 // executePrompt runs a single-prompt job as one agent.
 func executePrompt(ctx context.Context, s *store.Store, j store.Job, trigger string) (*runner.Run, error) {
-	r := &runner.Runner{Herdr: herdrcli.New(), StateDir: stateDir()}
+	r := &runner.Runner{Herdr: herdrcli.New(), StateDir: stateDir(), Store: s}
 	runID := newRunID(j.ID)
 
 	// Record the run as started before doing any work. Without this a long run

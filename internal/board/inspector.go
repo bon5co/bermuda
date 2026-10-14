@@ -106,6 +106,9 @@ func (m *Model) renderInspector(width int) string {
 	}
 
 	field("state", state)
+	if j.KeepContext {
+		field("on loss", j.OnContextLoss)
+	}
 	field("schedule", j.ScheduleLabel())
 	field("next", m.nextFireLabel(j))
 	// What this job actually does when it fires, which is the difference between
@@ -135,6 +138,9 @@ func (m *Model) renderInspector(width int) string {
 	if r, ok := m.last[j.ID]; ok {
 		b.WriteString("\n" + headerStyle.Render("LAST RUN") + "\n")
 		b.WriteString(styleOutcome(r.Outcome) + dimStyle.Render(" · "+ago(r.StartedAt)) + "\n")
+		if r.Context != "" {
+			field("context", r.Context)
+		}
 		detail := r.Note
 		if r.Outcome == "parked" && r.ParkReason != "" {
 			detail = "waiting: " + r.ParkReason

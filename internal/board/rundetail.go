@@ -92,6 +92,9 @@ func (m *Model) renderRunDetail() string {
 	if r.ParkReason != "" {
 		row("waiting on", outcomeStyles["parked"].Render(r.ParkReason))
 	}
+	row("context", r.Context)
+	row("session", r.ContextSession)
+	row("context note", r.ContextNote)
 	row("trigger", r.Trigger)
 	row("agent state", r.Status)
 	row("started", r.StartedAt.Format("2006-01-02 15:04:05"))

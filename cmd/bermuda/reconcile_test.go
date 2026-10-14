@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -262,5 +263,31 @@ func TestParkedSingleRunAdoptsALateResult(t *testing.T) {
 	got, _ := s.Run(ctx, "r4")
 	if got.Outcome != "done" || got.Note != "finished after we stopped looking" {
 		t.Fatalf("run is %q/%q, want done with the result's note", got.Outcome, got.Note)
+	}
+}
+
+func TestReconcileKeepsContextWarningWithLateResult(t *testing.T) {
+	for _, prior := range []struct{ outcome, reason string }{
+		{"running", ""}, {"parked", "no_result"},
+	} {
+		t.Run(prior.outcome, func(t *testing.T) {
+			s := newStore(t)
+			ctx := context.Background()
+			dir := writeResult(t, filepath.Join(t.TempDir(), "run"), `{"status":"ok","note":"finished later"}`)
+			if err := s.PutRun(ctx, store.Run{ID: "late", JobID: "mail", Outcome: prior.outcome,
+				ParkReason: prior.reason, RunDir: dir, StartedAt: time.Now(),
+				Context: "lost", ContextSession: "previous", ContextNote: "resume failed",
+				Note: "bermuda: context: lost (previous); resume failed"}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := reconcileRuns(ctx, s, nil); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Run(ctx, "late")
+			if err != nil || got.Outcome != "done" || !strings.Contains(got.Note, "finished later") ||
+				!strings.Contains(got.Note, "context: lost (previous); resume failed") {
+				t.Fatalf("late result erased context: %+v %v", got, err)
+			}
+		})
 	}
 }
