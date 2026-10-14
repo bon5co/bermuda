@@ -267,6 +267,10 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE INDEX IF NOT EXISTS runs_job_started ON runs(job_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS runs_outcome ON runs(outcome);
+-- The newest runs of every job together, which the board asks for on every
+-- refresh. Without this the whole table is read and sorted each time, and a
+-- board left open pays that every three seconds for as long as it is open.
+CREATE INDEX IF NOT EXISTS runs_started ON runs(started_at DESC, id DESC);
 
 -- One row per declared step of a flow run, written pending before the
 -- flow starts so the board can say "2 of 4" rather than counting only the

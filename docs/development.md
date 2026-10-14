@@ -230,3 +230,16 @@ skills, rather than being copied into every session's instructions.
 ---
 
 [← back to the README](../README.md)
+
+## Profiling the board
+
+An open board is a process that runs for days, so what it costs while idle
+matters. To see where that goes, give it a file to write a CPU profile to:
+
+```bash
+BERMUDA_CPUPROFILE=/tmp/board.pprof bermuda board   # leave it idle, then quit with q
+go tool pprof -top -cum /tmp/board.pprof
+```
+
+The profile is written only when the variable is set, and to a file, not a
+listening port. It is flushed when the board quits or reloads into a newer build.

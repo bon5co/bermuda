@@ -20,6 +20,14 @@ import (
 
 // View renders the board, windowed to the pane height.
 func (m *Model) View() string {
+	m.scrolling = false
+	out := m.render()
+	m.armMarquee()
+	return out
+}
+
+// render is View without the marquee bookkeeping around it.
+func (m *Model) render() string {
 	// The previous frame's clickable rows go with the previous frame. Every
 	// view that has any records its own below; one that records none is a view
 	// where a click does nothing, which is the correct answer for the editor

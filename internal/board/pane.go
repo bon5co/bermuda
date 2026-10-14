@@ -28,6 +28,23 @@ type pane struct {
 	// bottom is pinned under the body: the error or status line, the search
 	// line, the compose box, and the help.
 	bottom string
+	// lines, when set, stands in for body: a body too long to build whole,
+	// asked only for the rows the window is about to show. See bodyLines.
+	lines *bodyLines
+}
+
+// bodyLines is a body known by its length and drawn a slice at a time.
+//
+// A card feed is the case it exists for. A.LOG only ever grows, and building
+// every card in it to show the twenty rows that fit cost a board left open in
+// a split most of a core: the render ran on every frame, for cards nobody
+// could see. With this the window asks for the rows it will show, so what a
+// frame costs depends on the pane, not on how long the history has become.
+type bodyLines struct {
+	// total is how many rows the whole body would be.
+	total int
+	// slice returns rows [from, to) of that body.
+	slice func(from, to int) []string
 }
 
 // renderPane stacks the chrome around the body and trims the body to the rows
@@ -45,7 +62,12 @@ func (m *Model) renderPane(p pane) string {
 		avail = 1
 	}
 	out := append([]string{}, top...)
-	body := m.windowBody(p.body, avail)
+	var body string
+	if p.lines != nil {
+		body = m.windowLines(*p.lines, avail)
+	} else {
+		body = m.windowBody(p.body, avail)
+	}
 	// Where the body ended up, for the mouse: the chrome above it is the offset,
 	// and the scroll the window just settled on is what the first visible line
 	// is. Recorded after the window has run, because that is when the second of
@@ -89,4 +111,14 @@ func blockLines(block string) []string {
 // blockRows is how many rows a block takes.
 func blockRows(block string) int {
 	return len(blockLines(block))
+}
+
+// text is the whole body, however it was given: the string, or every row of a
+// body drawn on demand. Building all of it is what the window exists to avoid,
+// so this is for asking what a pane holds, not for drawing it.
+func (p pane) text() string {
+	if p.lines != nil {
+		return strings.Join(p.lines.slice(0, p.lines.total), "\n")
+	}
+	return p.body
 }

@@ -14,6 +14,7 @@ import (
 
 	"github.com/bon5co/bermuda/v3/internal/alog"
 	"github.com/bon5co/bermuda/v3/internal/checklist"
+	"github.com/bon5co/bermuda/v3/internal/filecache"
 	"github.com/bon5co/bermuda/v3/internal/flow"
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
 	"github.com/bon5co/bermuda/v3/internal/improve"
@@ -193,6 +194,25 @@ type Model struct {
 	// test that used the real one would type into whichever agents happen to be
 	// running on this machine.
 	mentions mention.Herd
+	// cards is every A.LOG and IMPROVE card measured so far, and drawn once it
+	// has been on screen; see cardLines. cardMeasures and cardDraws count the
+	// work done filling it, so tests can say a frame did none.
+	cards        map[cardKey]*cardMemo
+	cardMeasures int
+	cardDraws    int
+	// scrolling is whether the last frame drew any text too long for its
+	// column, and marqueeOn whether the marquee tick is running. send hands the
+	// program a message from outside the event loop; it is nil in tests. See
+	// marquee.go.
+	scrolling bool
+	marqueeOn bool
+	send      func(tea.Msg)
+	// The file readers' caches, one per directory kind, so a refresh over
+	// a store that has not changed opens none of its files. See filecache.
+	alogCache    *filecache.Cache[alog.Entry]
+	improveCache *filecache.Cache[alog.Entry]
+	checkCache   *filecache.Cache[checklist.List]
+	memoryCache  *filecache.Cache[int]
 }
 
 type focus int
@@ -282,6 +302,10 @@ func New(s *store.Store, h *herdrcli.Client, deps Deps) *Model {
 		// The thread opens on its newest message: one that opened at the
 		// oldest line would show a board full of history that is over.
 		threadFollow: true,
+		alogCache:    filecache.New[alog.Entry](),
+		improveCache: filecache.New[alog.Entry](),
+		checkCache:   filecache.New[checklist.List](),
+		memoryCache:  filecache.New[int](),
 	}
 }
 
@@ -346,6 +370,7 @@ type runDoneMsg struct {
 
 // Init starts the refresh loop.
 func (m *Model) Init() tea.Cmd {
+	m.marqueeOn = true
 	return tea.Batch(m.load(), tick(), marqueeTick())
 }
 
@@ -365,9 +390,9 @@ func (m *Model) load() tea.Cmd {
 	// after the reader has moved on can be recognised and dropped.
 	thread := m.currentThread()
 	return func() tea.Msg {
-		entries, alogErr := alog.List(m.deps.ALogDir)
-		lessons, improveErr := improve.List(m.deps.ImproveDir)
-		lists, checkErrs := checklist.All(m.deps.CheckDir)
+		entries, alogErr := alog.ListCached(m.deps.ALogDir, m.alogCache)
+		lessons, improveErr := improve.ListCached(m.deps.ImproveDir, m.improveCache)
+		lists, checkErrs := checklist.AllCached(m.deps.CheckDir, m.checkCache)
 		checklist.Newest(lists)
 		fail := func(err error) dataMsg {
 			return dataMsg{err: err, alogEntries: entries, alogErr: alogErr,
@@ -426,7 +451,7 @@ func (m *Model) load() tea.Cmd {
 		// Memory is counted on this goroutine for the same reason: it is a
 		// directory walk, and walking a vault on the event loop would stall
 		// every keystroke behind somebody else's file tree.
-		mem := memory.Read(m.deps.MemoryDir)
+		mem := memory.ReadCached(m.deps.MemoryDir, m.memoryCache)
 		// The index is read from its manifest, never by scanning the vault:
 		// this goroutine may block, but it runs every three seconds, and
 		// hashing a vault on that cadence would burn a percent of a core for
@@ -494,8 +519,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.checkDaemon(), tick())
 
 	case marqueeTickMsg:
-		m.frame++
-		return m, marqueeTick()
+		return m, m.onMarqueeTick()
 
 	case daemonMsg:
 		m.daemonUp = bool(msg)
@@ -513,6 +537,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncChecks()
 		m.alogEntries, m.alogErr = msg.alogEntries, msg.alogErr
 		m.improveEntries, m.improveErr = msg.improveEntries, msg.improveErr
+		m.forgetCards()
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
@@ -660,12 +685,21 @@ const (
 
 // Run starts the board TUI, restarting into a newer build if one appears.
 func Run(s *store.Store, h *herdrcli.Client, deps Deps) error {
+	stopProfile, err := startCPUProfile()
+	if err != nil {
+		return err
+	}
 	m := New(s, h, deps)
 	// Cell motion rather than all motion: the board has nothing that responds to
 	// the pointer merely passing over it, and reporting every idle movement
 	// wakes the event loop for frames that would render identically.
 	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion())
-	if _, err := p.Run(); err != nil {
+	m.send = p.Send
+	_, err = p.Run()
+	// The profile is flushed before a reload too: exec replaces the process,
+	// and a profile still open at that point is lost.
+	stopProfile()
+	if err != nil {
 		return err
 	}
 	if m.reloading && m.watcher != nil {

@@ -68,7 +68,7 @@ func TestALogRefreshReadsNewFilesAndEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.apply(t, m.load()())
-	view := ansi.Strip(m.alogPane(pane{}).body)
+	view := ansi.Strip(m.alogPane(pane{}).text())
 	if !strings.Contains(view, "broken.md") || !strings.Contains(view, "Filesystem edit.") || m.err != nil {
 		t.Fatalf("A.LOG error hid valid cards or broke other tabs:\n%s", view)
 	}
@@ -152,7 +152,7 @@ func TestALogSearchAndKeyboardMouseScroll(t *testing.T) {
 		}
 	}
 	m.query = "no-such-entry"
-	if !strings.Contains(m.alogPane(pane{}).body, "No entries match") {
+	if !strings.Contains(m.alogPane(pane{}).text(), "No entries match") {
 		t.Fatal("search empty state missing")
 	}
 }

@@ -341,7 +341,7 @@ func (m *Model) renderHolds(now time.Time) string {
 			store.ShortDuration(now.Sub(c.Since)), c.Why}
 		sized := make([]string, len(cells))
 		for k, cell := range cells {
-			sized[k] = fitMarquee(cell, widths[k], m.frame)
+			sized[k] = m.marquee(cell, widths[k])
 		}
 		sized[0] = selectedStyle.Render(sized[0])
 		// The expiry is what a reader is really checking, so it is coloured by

@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/bon5co/bermuda/v3/internal/alog"
+	"github.com/bon5co/bermuda/v3/internal/filecache"
 )
 
 const (
@@ -25,4 +26,9 @@ func Write(dir string, entry Entry) (Entry, error)    { return learning.Write(di
 func Edit(dir, id string, entry Entry) (Entry, error) { return learning.Edit(dir, id, entry) }
 func Update(dir, id string, change func(*Entry) error) (Entry, error) {
 	return learning.Update(dir, id, change)
+}
+
+// ListCached is List through a cache; see alog.ListCached.
+func ListCached(dir string, cache *filecache.Cache[Entry]) ([]Entry, error) {
+	return learning.ListCached(dir, cache)
 }

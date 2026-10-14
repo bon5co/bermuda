@@ -194,7 +194,7 @@ func (m *Model) renderFlows(start, end int) string {
 		// width, so colour is applied to the already-sized cell.
 		sized := make([]string, len(cells))
 		for k, c := range cells {
-			sized[k] = fitMarquee(c, widths[k], m.frame)
+			sized[k] = m.marquee(c, widths[k])
 		}
 		if selected {
 			// One bright style across the whole row, so it reads as a single

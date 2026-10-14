@@ -82,7 +82,7 @@ func (m *Model) renderJobs(start, end int) string {
 		// width, so colour is applied to the already-sized cell.
 		sized := make([]string, len(cells))
 		for k, c := range cells {
-			sized[k] = fitMarquee(c, widths[k], m.frame)
+			sized[k] = m.marquee(c, widths[k])
 		}
 		selected := m.focus == focusJobs && i == m.cursor
 		sized[0] = favoriteStyle.Render(sized[0])
@@ -294,7 +294,7 @@ func (m *Model) renderRuns(start, end int) string {
 		cells := []string{r.JobID, r.Outcome, ago(r.StartedAt), detail}
 		sized := make([]string, len(cells))
 		for k, c := range cells {
-			sized[k] = fitMarquee(c, widths[k], m.frame)
+			sized[k] = m.marquee(c, widths[k])
 		}
 		if m.focus == focusRuns && i == m.cursor {
 			for k := range sized {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -777,5 +778,65 @@ func TestEffectiveModel(t *testing.T) {
 				t.Fatalf("EffectiveModel() = %q, want %q", got, c.want)
 			}
 		})
+	}
+}
+
+// The board asks for the newest runs of all jobs on every refresh. That read
+// must walk an index, not read the whole table and sort it, or what an open
+// board costs grows with every run the store has ever recorded.
+func TestNewestRunsReadAnIndexNotASort(t *testing.T) {
+	s, ctx := openStore(t)
+	rows, err := s.db.QueryContext(ctx, `EXPLAIN QUERY PLAN SELECT `+runColumns+
+		` FROM runs ORDER BY started_at DESC, id DESC LIMIT ?`, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var plan []string
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err := rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, detail)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	joined := strings.Join(plan, "; ")
+	if strings.Contains(joined, "TEMP B-TREE") || !strings.Contains(joined, "runs_started") {
+		t.Fatalf("newest-runs query does not use runs_started: %s", joined)
+	}
+}
+
+// runs_started is created by Open on every start, so it must be safe for the
+// daemon, the board and a CLI command to open one database at once — the case
+// on every machine that already has a store when this index first ships.
+func TestRunsStartedIndexIsSafeOnConcurrentOpens(t *testing.T) {
+	dir := t.TempDir()
+	first, err := Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	errs := make(chan error, 4)
+	for range 4 {
+		go func() {
+			s, err := Open(dir)
+			if err == nil {
+				err = s.Close()
+			}
+			errs <- err
+		}()
+	}
+	for range 4 {
+		if err := <-errs; err != nil {
+			t.Fatalf("concurrent open over a live store: %v", err)
+		}
+	}
+	var n int
+	if err := first.db.QueryRow(`SELECT count(*) FROM sqlite_master WHERE type='index' AND name='runs_started'`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("runs_started present %d times (err %v), want once", n, err)
 	}
 }

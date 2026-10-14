@@ -76,7 +76,7 @@ func TestImproveRefreshPreservesKindOrderAndCreationWhileALogStaysSeparate(t *te
 		t.Fatal(err)
 	}
 	m.apply(t, m.load()())
-	body := ansi.Strip(m.improvePane(pane{}).body)
+	body := ansi.Strip(m.improvePane(pane{}).text())
 	for _, want := range []string{"broken.md", "Filesystem correction.", "DISCOVERY", "RECOVERY", "editedtail"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("refresh misses %q", want)
@@ -129,7 +129,7 @@ func TestImproveLongBodyKindSearchAndScrollingReachTheEnd(t *testing.T) {
 		}
 	}
 	m.query = "not found"
-	if !strings.Contains(m.improvePane(pane{}).body, "No entries match") {
+	if !strings.Contains(m.improvePane(pane{}).text(), "No entries match") {
 		t.Fatal("no-match state is missing")
 	}
 	m.pressSpecial(t, tea.KeyEsc)
