@@ -72,6 +72,10 @@ func (c *Cache[T]) Listing(dir string, entries []os.DirEntry) {
 	if c == nil {
 		return
 	}
+	// Cleaned, because the paths files are cached under are joined, and so
+	// clean: a dir given as /vault/ would otherwise prefix none of them, and
+	// nothing deleted from it would ever be forgotten.
+	dir = filepath.Clean(dir)
 	names := make([]string, len(entries))
 	for i, e := range entries {
 		names[i] = e.Name()
@@ -85,7 +89,11 @@ func (c *Cache[T]) Listing(dir string, entries []os.DirEntry) {
 	if old, ok := c.dirs[dir]; ok && slices.Equal(old, names) {
 		return
 	}
-	prefix := dir + string(filepath.Separator)
+	prefix := dir
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		// A root such as / already ends in one.
+		prefix += string(filepath.Separator)
+	}
 	for path := range c.files {
 		if strings.HasPrefix(path, prefix) {
 			delete(c.files, path)
