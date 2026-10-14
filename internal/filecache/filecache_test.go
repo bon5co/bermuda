@@ -107,7 +107,7 @@ func TestAListingChangeRereadsTheDirectory(t *testing.T) {
 	}
 }
 
-func TestParseErrorsAreCachedUntilTheFileChanges(t *testing.T) {
+func TestParseErrorsAreTriedAgain(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "bad.md")
 	write(t, path, "bad")
@@ -116,14 +116,42 @@ func TestParseErrorsAreCachedUntilTheFileChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := New[string]()
-	bad := errors.New("will not parse")
+	// A failed read — a permission, an I/O error — can clear without anything
+	// a stat compares changing, so a failure is never kept.
+	bad := errors.New("will not read")
 	for range 3 {
 		if _, err := c.Get(path, info, func() (string, error) { return "", bad }); !errors.Is(err, bad) {
-			t.Fatalf("got %v, want the parse error", err)
+			t.Fatalf("got %v, want the read error", err)
 		}
 	}
-	if c.Parses() != 1 {
-		t.Fatalf("an unchanged bad file was parsed %d times, want 1", c.Parses())
+	if c.Parses() != 3 {
+		t.Fatalf("an unreadable, unchanged file was tried %d times over three reads, want 3", c.Parses())
+	}
+	got, err := c.Get(path, info, func() (string, error) { return "repaired", nil })
+	if err != nil || got != "repaired" {
+		t.Fatalf("after the failure cleared: %q, %v", got, err)
+	}
+}
+
+// Size and mtime are not enough: a restore that keeps the timestamp of an
+// equal-size file must still read as a change.
+func TestAnEditThatKeepsSizeAndMtimeIsParsedAgain(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "a.md")
+	write(t, path, "alpha")
+	before, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := New[string]()
+	read(t, c, dir)
+	time.Sleep(10 * time.Millisecond)
+	write(t, path, "bravo")
+	if err := os.Chtimes(path, before.ModTime(), before.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, c, dir); got["a.md"] != "bravo" {
+		t.Fatalf("equal-size edit with the old mtime served %q", got["a.md"])
 	}
 }
 
