@@ -28,4 +28,4 @@ claude plugin test mods/bermudamon
 
 The sprites are pixel grids in `hooks/pet.ts`; `pack` turns them into the
 quadrant blocks the footer draws. The tests hold every stage to the shape:
-square, mirror symmetric, dot eyes, two feet, hands that wave and come up to eat.
+square, mirror symmetric, dot eyes, two feet, hands that wave and go up to eat.

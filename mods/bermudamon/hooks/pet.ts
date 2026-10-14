@@ -44,16 +44,14 @@ const critter = (top: string, eye: number) => {
   const eyes = put(put(trunk, eye, '.'), right, '.')
   const feet = put(put('.'.repeat(top.length), eye, '#'), right, '#')
   const hands = (row: string) => put(put(row, 0, '#'), far, '#')
-  const mid = top.length / 2
   const down: Body = [top, eyes, hands(trunk), feet]
   const up: Body = [top, hands(eyes), trunk, feet]
-  const chewing: Body = [top, up[1], put(put(trunk, mid - 1, '.'), mid, '.'), feet]
-  return { down, up, chewing }
+  return { down, up }
 }
 
 const stage = (name: string, xp: number, top: string, eye: number): Stage => {
-  const { down, up, chewing } = critter(top, eye)
-  return { name, xp, body: down, idle: [pack(down), pack(up)], munch: [pack(chewing), pack(down)] }
+  const { down, up } = critter(top, eye)
+  return { name, xp, body: down, idle: [pack(down), pack(up)], munch: [pack(up), pack(down)] }
 }
 
 /** Wobbles in place: it cannot walk, eat or wave yet. */
@@ -66,8 +64,8 @@ const egg = (): Stage => {
 
 /**
  * Evolution line: each stage unlocks at `xp`. A square critter with dot
- * eyes, little feet and tiny hands that wave while it walks and come up to
- * its mouth while it eats. It grows a little wider and earns ears and a
+ * eyes, little feet and tiny hands that wave while it walks and come up
+ * while it eats. It grows a little wider and earns ears and a
  * crown along the way. Every glyph is one column wide.
  */
 export const STAGES: readonly Stage[] = [
