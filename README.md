@@ -132,13 +132,18 @@ told each time — see [for the agents](#for-the-agents):
 npx skills add bon5co/bermuda
 ```
 
-**Optional: the Claude Code mod.** [Bermudamon](docs/bermudamon.md), a footer pet that
-keeps your checklist in view:
+**Optional: the Claude Code mod.** [Bermudamon](docs/bermudamon.md) is a footer
+pet that keeps your checklist in view (`☑ done/total`) and grows as you tick
+items off. Inside Claude Code:
 
 ```
 /plugin marketplace add bon5co/bermuda
 /plugin install bermudamon@bermuda
+/reload-plugins
 ```
+
+Update later with `/plugin update bermudamon@bermuda`. It reads the same store
+as the `bermuda` command, so finish steps 1 and 2 above first.
 
 Everything lives in `~/.bermuda` (`$BERMUDA_STATE_DIR` overrides). No config
 file, no daemon to install. `herdr plugin uninstall bon5co/bermuda` removes it
