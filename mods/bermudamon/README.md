@@ -28,6 +28,9 @@ claude plugin validate mods/bermudamon
 claude plugin test mods/bermudamon
 ```
 
+The screenshot in the main README is drawn from the mod's own code:
+`bun screenshots/footer.ts | uv run screenshots/render.py ../../assets/bermudamon-footer.png`.
+
 The sprites are pixel grids in `hooks/pet.ts`; `pack` turns them into the
 quadrant blocks the footer draws. The tests hold every stage to the shape:
 square, mirror symmetric, dot eyes, two feet, hands that wave and go up to eat.
