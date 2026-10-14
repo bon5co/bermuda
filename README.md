@@ -142,6 +142,8 @@ items off. Inside Claude Code:
 /reload-plugins
 ```
 
+![Bermudamon in the prompt footer at four terminal widths: everything, then the usage bars drop, then the pet, then the checklist](assets/bermudamon-footer.png)
+
 Update later with `/plugin update bermudamon@bermuda`. It reads the same store
 as the `bermuda` command, so finish steps 1 and 2 above first.
 
