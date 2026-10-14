@@ -61,6 +61,82 @@ func storedJob(t *testing.T, m *Model, id string) store.Job {
 	return *j
 }
 
+func TestJobDetailAdvertisesEditingWhileHistoryScrolls(t *testing.T) {
+	m := newTestModel(t)
+	m.focus, m.height = focusJobs, 24
+	m.pressSpecial(t, tea.KeyEnter)
+	if m.detail == nil {
+		t.Fatal("Enter did not open job detail")
+	}
+	for i := 0; i < 50; i++ {
+		m.detailRuns = append(m.detailRuns, store.Run{ID: "history", JobID: "alpha", Outcome: "done"})
+	}
+	for _, cursor := range []int{0, 40} {
+		m.cursor = cursor
+		out := m.View()
+		if !strings.Contains(out, "e edit job") {
+			t.Fatalf("edit action is hidden at run %d:\n%s", cursor, out)
+		}
+		if blockRows(out) > 24 {
+			t.Fatalf("detail exceeds pane: %d rows", blockRows(out))
+		}
+	}
+}
+
+func TestJobDetailEditsTheFilteredJob(t *testing.T) {
+	m := newTestModel(t)
+	m.focus, m.query, m.cursor = focusJobs, "Beta", 0
+	m.pressSpecial(t, tea.KeyEnter)
+	m.press(t, "e")
+	if m.editor == nil || m.editor.job.ID != "beta" {
+		t.Fatal("editor did not target filtered beta job")
+	}
+}
+
+func TestFilteredJobDetailDoesNotPromiseEscapeClearsSearch(t *testing.T) {
+	m := newTestModel(t)
+	m.focus, m.query, m.cursor = focusJobs, "Beta", 0
+	m.pressSpecial(t, tea.KeyEnter)
+	m.status = "job saved"
+	out := m.View()
+	if strings.Contains(out, "esc clears") {
+		t.Fatal("job detail advertises a search key it does not handle")
+	}
+	if !strings.Contains(out, "job saved") || !strings.Contains(out, "e edit job") {
+		t.Fatal("detail lost status or edit help")
+	}
+	m.pressSpecial(t, tea.KeyEsc)
+	if m.detail != nil || m.query != "Beta" {
+		t.Fatal("Escape changed the filtered list when leaving detail")
+	}
+}
+
+func TestJobReachedThroughARunCanBeEdited(t *testing.T) {
+	m := newTestModel(t)
+	m.focus, m.cursor = focusRuns, 0
+	m.pressSpecial(t, tea.KeyEnter)
+	if m.runDetail == nil {
+		t.Fatal("run detail did not open")
+	}
+	m.press(t, "l")
+	if m.detail == nil {
+		t.Fatal("run's job detail did not open")
+	}
+	m.press(t, "e")
+	if m.editor == nil || m.editor.job.ID != "alpha" {
+		t.Fatal("editor did not target run's owner")
+	}
+}
+
+func TestEditOnAnEmptyJobsListDoesNothing(t *testing.T) {
+	m := newTestModel(t)
+	m.focus, m.query = focusJobs, "no matching job"
+	m.press(t, "e")
+	if m.editor != nil {
+		t.Fatal("empty jobs list opened an editor")
+	}
+}
+
 // An abandoned edit must leave nothing behind. The form works on a copy so a
 // run scheduled mid-edit still uses the definition on disk.
 func TestAbandoningAnEditLeavesTheStoredJobAlone(t *testing.T) {
@@ -106,6 +182,235 @@ func TestSavingWritesTheEditedFieldsToTheStore(t *testing.T) {
 	}
 }
 
+func TestControlSSavesTheActiveJobField(t *testing.T) {
+	for _, key := range []string{"name", "prompt"} {
+		t.Run(key, func(t *testing.T) {
+			m := newTestModel(t)
+			e := openEditorOn(t, m, "alpha", key)
+			e.beginField()
+			if key == "prompt" {
+				m.pressSpecial(t, tea.KeyEnter)
+			}
+			m.typeText(t, "updated")
+			m.pressSpecial(t, tea.KeyCtrlS)
+			if m.editor != nil {
+				t.Fatal("Ctrl+S did not save and close the active field")
+			}
+			got := storedJob(t, m, "alpha")
+			if key == "name" && got.Name != "Alpha jobupdated" {
+				t.Fatalf("name = %q", got.Name)
+			}
+			if key == "prompt" && got.Prompt != "p\nupdated" {
+				t.Fatalf("prompt = %q", got.Prompt)
+			}
+		})
+	}
+}
+
+func TestTabCommitsAFieldAndMovesThroughTheForm(t *testing.T) {
+	m := newTestModel(t)
+	e := openEditorOn(t, m, "alpha", "name")
+	e.beginField()
+	m.typeText(t, " updated")
+	m.pressSpecial(t, tea.KeyTab)
+	if e.active >= 0 || e.cursor != 1 || e.job.Name != "Alpha job updated" {
+		t.Fatal("Tab did not commit and advance")
+	}
+	m.pressSpecial(t, tea.KeyShiftTab)
+	if e.cursor != 0 {
+		t.Fatal("Shift+Tab did not go back")
+	}
+	m.pressSpecial(t, tea.KeyShiftTab)
+	if e.cursor != 0 {
+		t.Fatal("Shift+Tab crossed the first field")
+	}
+	e.cursor = len(e.fields) - 1
+	m.pressSpecial(t, tea.KeyTab)
+	if e.cursor != len(e.fields)-1 {
+		t.Fatal("Tab crossed the last field")
+	}
+	e.cursor = fieldIndex(t, e, "prompt")
+	e.beginField()
+	m.pressSpecial(t, tea.KeyEnter)
+	m.typeText(t, "another line")
+	m.pressSpecial(t, tea.KeyShiftTab)
+	if e.active >= 0 || e.cursor != 2 || e.job.Prompt != "p\nanother line" {
+		t.Fatal("Shift+Tab did not commit prompt and move back")
+	}
+}
+
+func TestInvalidActiveInputBlocksSaveAndNavigation(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyCtrlS, tea.KeyTab, tea.KeyShiftTab, tea.KeyEnter} {
+		t.Run(tea.KeyMsg{Type: key}.String(), func(t *testing.T) {
+			m := newTestModel(t)
+			e := openEditorOn(t, m, "alpha", "timeout")
+			e.beginField()
+			e.input.SetValue("soon")
+			cursor := e.cursor
+			m.pressSpecial(t, key)
+			if m.editor != e || e.active != cursor || e.cursor != cursor || e.input.Value() != "soon" || !e.input.Focused() || e.errMsg == "" {
+				t.Fatal("invalid input lost its value, focus, or error")
+			}
+			if got := storedJob(t, m, "alpha").Timeout; got != 0 {
+				t.Fatalf("invalid timeout persisted: %v", got)
+			}
+			e.input.SetValue("2m")
+			m.pressSpecial(t, tea.KeyCtrlS)
+			if m.editor != nil || storedJob(t, m, "alpha").Timeout != 2*time.Minute {
+				t.Fatal("correcting the rejected input did not save")
+			}
+		})
+	}
+}
+
+func TestFlowJobCanSaveWithoutAPrompt(t *testing.T) {
+	m := newTestModel(t)
+	j := storedJob(t, m, "beta")
+	j.Flow, j.Input, j.Prompt = "daily", "original input", ""
+	if err := m.store.PutJob(context.Background(), j); err != nil {
+		t.Fatal(err)
+	}
+	m.apply(t, m.load()())
+	e := openEditorOn(t, m, "beta", "description")
+	e.beginField()
+	m.typeText(t, "updated description")
+	m.pressSpecial(t, tea.KeyCtrlS)
+	if m.editor != nil {
+		t.Fatal("valid flow job refused to save")
+	}
+	got := storedJob(t, m, "beta")
+	if got.Description != "updated description" || got.Flow != "daily" || got.Input != "original input" || got.Prompt != "" {
+		t.Fatalf("flow job was not preserved: %+v", got)
+	}
+}
+
+func TestEmptyFlowPromptCanBeCommittedAndSaved(t *testing.T) {
+	for _, key := range []tea.KeyType{tea.KeyTab, tea.KeyCtrlS} {
+		t.Run(tea.KeyMsg{Type: key}.String(), func(t *testing.T) {
+			m := newTestModel(t)
+			j := storedJob(t, m, "beta")
+			j.Flow, j.Input, j.Prompt = "daily", "saved input", ""
+			if err := m.store.PutJob(context.Background(), j); err != nil {
+				t.Fatal(err)
+			}
+			m.apply(t, m.load()())
+			e := openEditorOn(t, m, "beta", "prompt")
+			e.beginField()
+			m.pressSpecial(t, key)
+			if key == tea.KeyTab {
+				if e.active >= 0 {
+					t.Fatal("empty flow prompt traps field navigation")
+				}
+				m.pressSpecial(t, tea.KeyCtrlS)
+			}
+			if m.editor != nil {
+				t.Fatal("empty active flow prompt prevents saving")
+			}
+			got := storedJob(t, m, "beta")
+			if got.Flow != "daily" || got.Input != "saved input" || got.Prompt != "" {
+				t.Fatal("flow definition changed")
+			}
+		})
+	}
+}
+
+func TestPendingSaveOwnsTheFormUntilItsResult(t *testing.T) {
+	m := newTestModel(t)
+	e := openEditorOn(t, m, "alpha", "name")
+	e.beginField()
+	m.typeText(t, " saved")
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlS})
+	if cmd == nil {
+		t.Fatal("active save returned no write command")
+	}
+	for _, key := range []tea.KeyMsg{{Type: tea.KeyCtrlS}, {Type: tea.KeyEsc}, {Type: tea.KeyTab}, {Type: tea.KeyRunes, Runes: []rune("q")}, {Type: tea.KeyRunes, Runes: []rune("e")}} {
+		_, extra := m.Update(key)
+		if extra != nil || m.editor != e || e.job.Name != "Alpha job saved" {
+			t.Fatal("a key modified or dismissed the form during save")
+		}
+	}
+	m.apply(t, cmd())
+	if m.editor != nil || storedJob(t, m, "alpha").Name != "Alpha job saved" {
+		t.Fatal("pending save did not finish")
+	}
+}
+
+func TestStoreSaveFailureAppearsInTheFormAndAllowsRetry(t *testing.T) {
+	m := newTestModel(t)
+	e := openEditorOn(t, m, "alpha", "description")
+	e.job.Description = "unsaved draft"
+	if err := m.store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	m.pressSpecial(t, tea.KeyCtrlS)
+	if m.editor != e || e.errMsg == "" || e.job.Description != "unsaved draft" {
+		t.Fatal("failed save did not preserve draft and show error in form")
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	if e.active != e.cursor {
+		t.Fatal("failed save left form unable to edit")
+	}
+}
+
+func TestDuplicateNameSaveKeepsTheDraft(t *testing.T) {
+	m := newTestModel(t)
+	e := openEditorOn(t, m, "alpha", "name")
+	e.beginField()
+	e.input.SetValue("Beta job")
+	m.pressSpecial(t, tea.KeyCtrlS)
+	if m.editor != e || !strings.Contains(e.errMsg, "named") {
+		t.Fatal("duplicate name failure was not shown")
+	}
+	if storedJob(t, m, "alpha").Name != "Alpha job" {
+		t.Fatal("duplicate name changed stored job")
+	}
+	m.pressSpecial(t, tea.KeyEnter)
+	e.input.SetValue("Unique job")
+	m.pressSpecial(t, tea.KeyCtrlS)
+	if m.editor != nil || storedJob(t, m, "alpha").Name != "Unique job" {
+		t.Fatal("duplicate-name retry failed")
+	}
+}
+
+// Drain only the finite commands generated by a user action, including reload batches.
+func drainEditAction(t *testing.T, m *Model, msg tea.Msg) {
+	t.Helper()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, cmd := range batch {
+			if cmd != nil {
+				drainEditAction(t, m, cmd())
+			}
+		}
+		return
+	}
+	if msg != nil {
+		if _, cmd := m.Update(msg); cmd != nil {
+			drainEditAction(t, m, cmd())
+		}
+	}
+}
+
+func TestSaveFromDetailRefreshesTheJobAndPreservesRuns(t *testing.T) {
+	m := newTestModel(t)
+	m.focus = focusJobs
+	m.pressSpecial(t, tea.KeyEnter)
+	m.press(t, "e")
+	e := m.editor
+	e.cursor = fieldIndex(t, e, "description")
+	e.beginField()
+	m.typeText(t, "new description")
+	drainEditAction(t, m, tea.KeyMsg{Type: tea.KeyCtrlS})
+	if m.editor != nil || m.detail == nil || m.detail.ID != "alpha" || m.detail.Description != "new description" {
+		t.Fatal("saved detail did not refresh")
+	}
+	if len(m.detailRuns) != 1 || m.detailRuns[0].ID != "r1" {
+		t.Fatal("save changed run history")
+	}
+	if storedJob(t, m, "alpha").Description != "new description" {
+		t.Fatal("detail save did not persist")
+	}
+}
+
 // One esc abandons the whole form, even with a field open. Neither a schedule
 // changed earlier in the form nor text still being typed may reach the store.
 func TestEscapeFromActiveFieldAbandonsTheWholeJobEdit(t *testing.T) {
@@ -146,9 +451,9 @@ func TestEnterCommitsALineButAddsOneInsideTheTextArea(t *testing.T) {
 		t.Fatal("enter closed the prompt instead of adding a line")
 	}
 	m.typeText(t, "second")
-	m.apply(t, tea.KeyMsg{Type: tea.KeyCtrlS})
+	m.apply(t, tea.KeyMsg{Type: tea.KeyTab})
 	if e.active >= 0 {
-		t.Fatal("ctrl+s should close the prompt field")
+		t.Fatal("tab should close the prompt field")
 	}
 	if !strings.Contains(e.job.Prompt, "\n") {
 		t.Errorf("prompt is %q — enter did not add a line", e.job.Prompt)
