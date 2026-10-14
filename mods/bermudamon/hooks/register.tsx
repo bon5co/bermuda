@@ -29,6 +29,7 @@ import {
   stageIndex,
   wander,
   width,
+  fit,
 } from './pet'
 
 const pet = atom({ plugin: 'bermudamon', key: 'pet' } as const, null)
@@ -357,12 +358,15 @@ export const register: Register = on => {
     ])
     const { Box, Text } = $.ui.resolve(e)
     const meters = [meter(windows, 'five_hour', '5h'), meter(windows, 'seven_day', 'wk')]
+    const modesText = e.props.modes.length > 0 ? `${e.props.modes.join(' & ')}  ` : ''
+    const show = fit(e.viewport?.columns, modesText.length)
+    if (!show.list && !show.pet && !show.meters && modesText === '') return next(e)
     const rows = petRows(current, at, tick, working > 0, food)
 
     return (
       <Box alignItems="flex-end">
-        {e.props.modes.length > 0 ? <Text dimColor>{e.props.modes.join(' & ')}  </Text> : null}
-        {list !== null ? (
+        {modesText !== '' ? <Text dimColor>{modesText}</Text> : null}
+        {!show.list ? null : list !== null ? (
           <Box flexDirection="column" marginRight={1}>
             <Text color={list.open.length === 0 ? 'success' : 'warning'}>
               ☑ {list.done}/{list.total}
@@ -380,7 +384,7 @@ export const register: Register = on => {
             <Text> </Text>
           </Box>
         )}
-        <Box flexDirection="column" marginRight={1}>
+        {show.meters ? <Box flexDirection="column" marginRight={1}>
           {meters.map(m => (
             <Box key={m.label}>
               <Text dimColor>{m.label} </Text>
@@ -388,8 +392,8 @@ export const register: Register = on => {
               <Text dimColor>{(m.remaining === null ? '--' : `${m.remaining}%`).padStart(5)}</Text>
             </Box>
           ))}
-        </Box>
-        <Box flexDirection="column">
+        </Box> : null}
+        {show.pet ? <Box flexDirection="column">
           {rows.map((row, i) => (
             <Box key={`row${i}`}>
               <Text>{' '.repeat(row.pad)}</Text>
@@ -397,7 +401,7 @@ export const register: Register = on => {
               <Text color="claude">{row.body}</Text>
             </Box>
           ))}
-        </Box>
+        </Box> : null}
       </Box>
     )
   })
