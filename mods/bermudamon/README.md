@@ -11,6 +11,8 @@ a mod for Claude Code, shipped with [Bermuda](../../README.md).
   on each prompt, and pays the pet for every item ticked (once per item, ever).
   Without a tracked page the slot reads `☐ --`; without the `bermuda` command on `PATH` it stays that way and
   the pet and bars still work.
+- **Steps aside on a narrow terminal.** Like Claude Code's own pills, it drops parts
+  rather than wrap: the usage bars first, then the pet, then the checklist.
 
 ## Install
 

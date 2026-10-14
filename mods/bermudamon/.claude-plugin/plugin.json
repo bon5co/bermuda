@@ -1,6 +1,6 @@
 {
   "name": "bermudamon",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "A cute pet in the prompt footer that eats your Claude Code usage and shows your 5-hour and weekly limits",
   "types": "./types/index.d.ts",
   "author": {

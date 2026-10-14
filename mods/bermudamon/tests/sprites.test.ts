@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { STAGES, TRACK, pack, width } from '../hooks/pet'
+import { STAGES, TRACK, fit, pack, width } from '../hooks/pet'
 
 test('pack turns pixels into quadrant blocks, two pixels per cell', async () => {
   expect(pack(['##..', '##..', '....', '....'])).toEqual(['█ ', '  '])
@@ -58,4 +58,14 @@ test('the hands wave while walking and go up first while eating', async () => {
   // An egg cannot wave or eat, only wobble.
   expect(STAGES[0]!.idle[0]).not.toEqual(STAGES[0]!.idle[1])
   expect(STAGES[0]!.munch).toEqual(STAGES[0]!.idle)
+})
+
+test('a narrow terminal drops the usage bars, then the pet, then the checklist', async () => {
+  expect(fit(undefined, 0)).toEqual({ list: true, meters: true, pet: true })
+  expect(fit(120, 0)).toEqual({ list: true, meters: true, pet: true })
+  expect(fit(80, 0)).toEqual({ list: true, meters: false, pet: true })
+  expect(fit(60, 0)).toEqual({ list: true, meters: false, pet: false })
+  expect(fit(45, 0)).toEqual({ list: false, meters: false, pet: false })
+  // The mode labels keep their room first.
+  expect(fit(80, 20)).toEqual({ list: true, meters: false, pet: false })
 })

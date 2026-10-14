@@ -191,3 +191,27 @@ export const meter = (limits: readonly Limit[], kind: string, label: string): Me
 
 export const meterColor = (remaining: number | null): 'success' | 'warning' | 'error' | 'inactive' =>
   remaining === null ? 'inactive' : remaining > 50 ? 'success' : remaining > 20 ? 'warning' : 'error'
+
+/** Columns the prompt line keeps for Claude Code's own hints on the left. */
+const LEFT_RESERVE = 40
+const LIST_COLS = 10
+const METER_COLS = 17
+const PET_COLS = TRACK + 1
+
+export type Fit = { list: boolean; meters: boolean; pet: boolean }
+
+/**
+ * Which footer parts fit in `columns` once the mode labels (`modesWidth`)
+ * and Claude Code's own hints have their room. Claude Code drops its pills
+ * rather than wrap when the terminal is narrow; so do we: the usage bars go
+ * first, then the pet, then the checklist. No width known: everything shows.
+ */
+export const fit = (columns: number | undefined, modesWidth: number): Fit => {
+  if (columns === undefined) return { list: true, meters: true, pet: true }
+  let room = columns - LEFT_RESERVE - modesWidth
+  const list = room >= LIST_COLS
+  if (list) room -= LIST_COLS
+  const pet = room >= PET_COLS
+  if (pet) room -= PET_COLS
+  return { list, pet, meters: room >= METER_COLS }
+}

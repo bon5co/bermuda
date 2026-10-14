@@ -195,3 +195,22 @@ test('session.end lands a completed turn whose feed is still running', async ($,
   expect(atEnd).toBe(20 + FEED.turn.xp)
 })
 
+
+test('on a narrow terminal the footer draws nothing of ours', async ($, on) => {
+  mock.clock(on, { now: 1_000_000 })
+  mock.store(on, { pet: { ...hatch(0), xp: 200, at: 1_000_000 } })
+  on('session.start', () => ({ cwd: '/' }))
+  on('session.usage', () => ({ value: { startedAt: 0, context: { window: 200_000 }, rateLimits: LIMITS } }))
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+
+  const mount = (columns: number) =>
+    $.ui.mount({ plugin: 'bermudamon', surface: 'terminal', component: 'SessionMode', props: { modes: ['focus'] }, viewport: { columns, rows: 40 } } as never)
+  const wide = await mount(160)
+  expect(await wide.find({ type: 'Text', text: /76%/ })).toBeDefined()
+  await wide.unmount()
+  const narrow = await mount(40)
+  expect(await narrow.find({ type: 'Text', text: /focus/ })).toBeDefined()
+  expect(await narrow.find({ type: 'Text', text: /76%/ })).toBeUndefined()
+  expect(await narrow.find({ type: 'Text', text: /☐|☑/ })).toBeUndefined()
+  await narrow.unmount()
+})
