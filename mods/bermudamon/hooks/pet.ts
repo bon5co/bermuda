@@ -195,7 +195,7 @@ export const meterColor = (remaining: number | null): 'success' | 'warning' | 'e
 /** Columns the prompt line keeps for Claude Code's own hints on the left. */
 const LEFT_RESERVE = 40
 const LIST_COLS = 10
-const METER_COLS = 17
+const METER_COLS = 22
 const PET_COLS = TRACK + 1
 
 export type Fit = { list: boolean; meters: boolean; pet: boolean }
