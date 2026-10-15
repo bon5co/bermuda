@@ -380,7 +380,7 @@ export const register: Register = on => {
             <Box key={m.label}>
               <Text dimColor>{m.label} </Text>
               <Text color={meterColor(m.remaining)}>{m.bar}</Text>
-              <Text dimColor>{(m.remaining === null ? '--' : `${m.remaining}%`).padStart(5)}</Text>
+              <Text dimColor>{(m.remaining === null ? '--' : `${m.remaining}% left`).padStart(10)}</Text>
             </Box>
           ))}
         </Box> : null}

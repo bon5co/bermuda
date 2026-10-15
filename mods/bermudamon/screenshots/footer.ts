@@ -22,7 +22,7 @@ const footer = (columns: number): Cell[][] => {
     const rows = [meter(limits, 'five_hour', '5h'), meter(limits, 'seven_day', 'wk')].map(m => [
       ...text(`${m.label} `, 'dim'),
       ...text(m.bar, color(m.remaining)),
-      ...text(`${m.remaining}%`.padStart(5), 'dim'),
+      ...text(`${m.remaining}% left`.padStart(10), 'dim'),
     ])
     parts.push(rows)
   }
