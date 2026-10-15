@@ -132,9 +132,10 @@ The file path is the key and the content hash is the test. Every sweep walks
 the vault, takes the SHA-256 of each file, and compares it against a manifest
 of what was indexed at which digest:
 
-- **new or changed** — every chunk under that path is deleted and the file is
-  chunked again, so a note that lost three paragraphs does not leave them
-  searchable;
+- **new or changed** — the file is chunked again. Exact embedding inputs
+  (title, heading and text) reuse vectors from a persistent local cache. All
+  needed vectors are ready before current records are upserted; only obsolete
+  chunk IDs are deleted, so removed paragraphs stop appearing in searches;
 - **gone** — the path's chunks are deleted;
 - **unchanged** — nothing happens, and this is the case that matters. The
   whole staleness check is a directory walk and a hash. **No Python process
@@ -182,14 +183,38 @@ Bermuda finds a Python itself, in this order:
 3. a `python3` that can already `import chromadb`.
 
 Embeddings are Chroma's default: `all-MiniLM-L6-v2`, ONNX, on the CPU, cached
-under `~/.cache/chroma` on first use. Nothing leaves the machine — Chroma's
-telemetry is turned off in the helper, and no API key is involved anywhere.
+under `~/.cache/chroma` on first use. Inference uses one intra-op and one
+inter-op ONNX thread, sequential execution and no thread spinning, for both
+indexing and queries. Tokenization, normalization and cosine distance are
+unchanged. Nothing leaves the machine — Chroma's telemetry is turned off in
+the helper, and no API key is involved anywhere.
+
+Exact-input vectors persist in `index/chroma/embeddings.sqlite3`, private like
+the index itself. The cache keys include the actual model/tokenizer bytes and
+the installed embedding pipeline version. Duplicate input shares a vector;
+changing a title or heading changes the input. Existing collections and
+manifests remain usable, with no automatic destructive rebuild. The first
+changed-note sweep fills its cache; later edits reuse unchanged inputs. Sweep
+progress, JSON reports and daemon logs report embedded and reused counts.
+Checksum, shape or non-finite cache corruption fails explicitly; remove the
+cache file to refill it from the model without dropping the collection. Cache
+reads and inference hold no writer lock, so a warm query can run during a
+long index fill. Concurrent cold misses may compute the same input, while
+cache commits serialize safely.
+
+The daemon runs one background index sweep at a time. Ticks during that sweep
+coalesce into one pending follow-up, leaving scheduling and reconciliation
+free to run. Shutdown cancels and waits for indexing, discards pending sweeps,
+and still lets already-running jobs finish. Helper cancellation stops the process
+tree, including Python launched through uv, and bounds inherited output-pipe
+waits. The five-minute timer is unchanged.
 
 Find none of the three and there is simply no search: every other bermuda
 command is unaffected, `--status` says so, and the daemon says it once and
 stops trying.
 
-Measured on a 5-core VM with no GPU: 567 notes / 22 MB indexed cold as 5,052
+Earlier baseline, before bounded inference and chunk reuse, on a 5-core VM
+with no GPU: 567 notes / 22 MB indexed cold as 5,052
 chunks in **2m57s**; one note changed and reindexed in **1.3s**; a sweep with
 nothing to do, **81ms** and no process started.
 

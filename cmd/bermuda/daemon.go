@@ -172,30 +172,38 @@ func (d *daemon) sweepIndex(ctx context.Context) {
 	if d.indexOff {
 		return
 	}
+	d.indexOff = d.performIndexSweep(ctx)
+}
+
+// performIndexSweep runs in the index worker and returns the missing-Python
+// latch. Only run's event loop owns indexOff during daemon operation.
+func (d *daemon) performIndexSweep(ctx context.Context) (off bool) {
 	fn := d.indexVault
 	if fn == nil {
 		c := indexClient()
 		if _, err := os.Stat(c.Root()); err != nil {
 			// No vault, nothing to index, and no index directory created for
 			// an install that never asked for one.
-			return
+			return false
 		}
 		fn = func(ctx context.Context) (index.Report, error) { return c.Sweep(ctx, false, nil) }
 	}
 	rep, err := fn(ctx)
 	if err != nil {
 		if errors.Is(err, index.ErrNoPython) {
-			d.indexOff = true
 			fmt.Fprintln(os.Stderr, "bermuda: vault search is off —", helperHowTo)
-			return
+			return true
 		}
-		fmt.Fprintln(os.Stderr, "bermuda: index sweep:", err)
-		return
+		if ctx.Err() == nil {
+			fmt.Fprintln(os.Stderr, "bermuda: index sweep:", err)
+		}
+		return false
 	}
 	if rep.Indexed > 0 || rep.Removed > 0 {
-		fmt.Printf("bermuda: indexed %d note(s), removed %d, %d chunk(s) in %s\n",
-			rep.Indexed, rep.Removed, rep.Chunks, rep.Took.Round(time.Millisecond))
+		fmt.Printf("bermuda: indexed %d note(s), removed %d, %d chunk(s), %d embedded, %d reused in %s\n",
+			rep.Indexed, rep.Removed, rep.Chunks, rep.Embedded, rep.Reused, rep.Took.Round(time.Millisecond))
 	}
+	return false
 }
 
 // reconcileStale corrects the runs that were parked for want of a result which
@@ -245,9 +253,26 @@ func (d *daemon) run(ctx context.Context) {
 	}
 	it := time.NewTicker(indexEvery)
 	defer it.Stop()
+	// One worker, one pending bit. The event loop owns both and indexOff;
+	// completion carries the worker's result rather than sharing mutable state.
+	// This worker never uses the job WaitGroup: shutdown still lets started
+	// jobs finish, while cancelling and waiting for indexing independently.
+	var indexing chan bool
+	pending := false
+	startIndex := func() {
+		if d.indexOff || ctx.Err() != nil {
+			return
+		}
+		done := make(chan bool, 1)
+		indexing = done
+		go func() { done <- d.performIndexSweep(ctx) }()
+	}
 	for {
 		select {
 		case <-ctx.Done():
+			if indexing != nil {
+				d.indexOff = <-indexing
+			}
 			// Let running jobs finish: killing an agent mid-turn would leave a
 			// run that is neither done nor parked.
 			d.wg.Wait()
@@ -257,7 +282,18 @@ func (d *daemon) run(ctx context.Context) {
 		case <-rt.C:
 			d.reconcileStale(ctx)
 		case <-it.C:
-			d.sweepIndex(ctx)
+			if indexing != nil {
+				pending = true
+			} else {
+				startIndex()
+			}
+		case off := <-indexing:
+			d.indexOff = off
+			indexing = nil
+			if pending {
+				pending = false
+				startIndex()
+			}
 		}
 	}
 }

@@ -178,3 +178,23 @@ printf '{"ok":true,"count":7}' > "$out"
 		t.Errorf("resp = %v", resp)
 	}
 }
+
+// A process may write ok:true and then fail during finalization. Such a call
+// must leave the manifest stale, just like a helper that returned ok:false.
+func TestCallRejectsNonzeroExitEvenAfterSuccessResponse(t *testing.T) {
+	script, _ := fakeHelper(t, `{"ok":true}`)
+	f, err := os.OpenFile(script, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.WriteString("\nexit 1\n"); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+	c := New(filepath.Join(t.TempDir(), "index"), t.TempDir())
+	if _, err := c.call(context.Background(), queryTimeout, map[string]any{"op": "stats"}); err == nil {
+		t.Fatal("nonzero helper exit reported success")
+	}
+}

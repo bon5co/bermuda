@@ -147,13 +147,20 @@ func (c *Client) call(ctx context.Context, timeout time.Duration, req map[string
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	cmd.Stdout = nil
+	// uv is a wrapper around Python. Cancelling only uv leaves inference and
+	// its inherited stderr pipe alive, so bound I/O waits and stop its tree.
+	cmd.WaitDelay = time.Second
+	stopProcess := configureHelperProcess(cmd)
 	runErr := cmd.Run()
+	if runErr != nil {
+		stopProcess()
+	}
+	if ctx.Err() != nil {
+		return nil, fmt.Errorf("chroma helper interrupted: %w", ctx.Err())
+	}
 
 	raw, readErr := os.ReadFile(out.Name())
 	if readErr != nil || len(raw) == 0 {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("chroma helper timed out after %s", timeout)
-		}
 		return nil, fmt.Errorf("chroma helper wrote no response (%v): %s",
 			runErr, lastLines(stderr.String(), 5))
 	}
@@ -167,6 +174,9 @@ func (c *Client) call(ctx context.Context, timeout time.Duration, req map[string
 			msg = "unknown error"
 		}
 		return nil, errors.New(msg)
+	}
+	if runErr != nil {
+		return nil, fmt.Errorf("chroma helper failed after writing a response: %w: %s", runErr, lastLines(stderr.String(), 5))
 	}
 	return resp, nil
 }
