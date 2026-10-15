@@ -53,8 +53,8 @@ type Chunk struct {
 // ID is the chunk's key in the collection: the file path, then the ordinal.
 //
 // The path is the unique key for a *file*, so everything belonging to a file
-// can be deleted by path alone without knowing how many chunks it had last
-// time — which is what makes a reindex a delete-then-insert instead of a diff.
+// can be removed by path. Reindexing upserts current IDs and deletes only
+// obsolete IDs; ordinal shifts reuse vectors by exact embedding input.
 func (c Chunk) ID(path string) string {
 	return path + "#" + itoa(c.Ord)
 }

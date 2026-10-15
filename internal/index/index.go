@@ -84,6 +84,8 @@ type Report struct {
 	Unchanged int
 	Removed   int // files gone from disk, deleted from the collection
 	Chunks    int // chunks written this sweep
+	Embedded  int // distinct exact inputs inferred by the helper
+	Reused    int // chunk vectors reused, including duplicate inputs
 	Skipped   []File
 	Rebuilt   bool
 	Why       string // why a rebuild happened, when one did
@@ -156,9 +158,6 @@ func (c *Client) Sweep(ctx context.Context, rebuild bool, progress func(string))
 	// process of their own: a note deleted in the same edit that changed
 	// another one is the ordinary case, and two spawns for it is one too many.
 	pending := append([]string{}, plan.Gone...)
-	for _, f := range plan.Changed {
-		pending = append(pending, f.Path)
-	}
 
 	stale2 := plan.Stale()
 	for i := 0; i < len(stale2) || len(pending) > 0; i += filesPerCall {
@@ -167,6 +166,8 @@ func (c *Client) Sweep(ctx context.Context, rebuild bool, progress func(string))
 
 		docs := make([]map[string]any, 0, len(batch)*8)
 		counts := make([]int, len(batch))
+		read := make([]bool, len(batch))
+		replacements := make([]string, 0, len(batch))
 		for j, f := range batch {
 			b, err := ReadIn(root, f.Path)
 			if err != nil {
@@ -175,6 +176,8 @@ func (c *Client) Sweep(ctx context.Context, rebuild bool, progress func(string))
 				continue
 			}
 			note := Parse(strings.TrimSuffix(filepath.Base(f.Path), ".md"), string(b))
+			read[j] = true
+			replacements = append(replacements, f.Path)
 			counts[j] = len(note.Chunks)
 			for _, ch := range note.Chunks {
 				docs = append(docs, map[string]any{
@@ -195,16 +198,26 @@ func (c *Client) Sweep(ctx context.Context, rebuild bool, progress func(string))
 			}
 		}
 
-		if len(docs) > 0 || len(pending) > 0 {
+		if len(replacements) > 0 || len(pending) > 0 {
+			// Changed paths apply only to this batch. Explicit replacements
+			// also represent notes that now have zero indexable chunks.
+			paths := append(append([]string{}, pending...), replacements...)
 			progress(fmt.Sprintf("indexing %d file(s), %d chunk(s)%s",
 				len(batch), len(docs), removalNote(len(pending))))
-			if _, err := c.call(ctx, writeTimeout, map[string]any{
-				"op":           "upsert",
-				"delete_paths": pending,
-				"docs":         docs,
-			}); err != nil {
+			resp, err := c.call(ctx, writeTimeout, map[string]any{
+				"op":            "upsert",
+				"delete_paths":  paths,
+				"replace_paths": replacements,
+				"docs":          docs,
+			})
+			if err != nil {
 				return rep, err
 			}
+			embedded, _ := resp["embedded"].(float64)
+			reused, _ := resp["reused"].(float64)
+			rep.Embedded += int(embedded)
+			rep.Reused += int(reused)
+			progress(fmt.Sprintf("embeddings: %d embedded, %d reused", int(embedded), int(reused)))
 		}
 		pending = nil
 
@@ -213,12 +226,15 @@ func (c *Client) Sweep(ctx context.Context, rebuild bool, progress func(string))
 		// recorded-but-absent. Re-running the sweep is then always the fix.
 		now := time.Now()
 		for j, f := range batch {
+			if !read[j] {
+				continue // leave unread notes stale so a retry can converge
+			}
 			if err := man.Record(f, counts[j], now); err != nil {
 				return rep, err
 			}
 			rep.Chunks += counts[j]
+			rep.Indexed++
 		}
-		rep.Indexed += len(batch)
 		if err := man.Forget(plan.Gone...); err != nil {
 			return rep, err
 		}

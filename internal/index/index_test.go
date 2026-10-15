@@ -2,8 +2,11 @@ package index
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -250,5 +253,90 @@ func TestSweepRecordsItselfEvenWhenItHadNothingToDo(t *testing.T) {
 	}
 	if second.Seen != 1 {
 		t.Errorf("Seen = %d, want the files it hashed", second.Seen)
+	}
+}
+
+func TestSweepSendsAnEmptyReplacementAndReportsEmbeddingReuse(t *testing.T) {
+	c, root, log := client(t, `{"ok":true,"embedded":2,"reused":7}`)
+	write(t, root, "a.md", "# A\n\nOriginal indexable content, long enough to stand alone.\n")
+	rep, err := c.Sweep(context.Background(), false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Embedded != 2 || rep.Reused != 7 {
+		t.Fatalf("report=%+v", rep)
+	}
+	write(t, root, "a.md", "# Empty\n")
+	if _, err := c.Sweep(context.Background(), false, nil); err != nil {
+		t.Fatal(err)
+	}
+	reqs := requests(t, log)
+	var req struct {
+		Replace []string `json:"replace_paths"`
+		Docs    []any    `json:"docs"`
+	}
+	if err := json.Unmarshal([]byte(reqs[len(reqs)-1]), &req); err != nil {
+		t.Fatal(err)
+	}
+	if len(req.Replace) != 1 || req.Replace[0] != "a.md" || len(req.Docs) != 0 {
+		t.Fatalf("empty replacement not represented: %+v", req)
+	}
+	man, err := OpenManifest(c.Dir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer man.Close()
+	rows, err := man.Digests()
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("digests=%v err=%v", rows, err)
+	}
+}
+
+func TestSweepBatchesOnlyDeletePathsWhoseReplacementIsReady(t *testing.T) {
+	c, root, log := client(t, ok)
+	for i := range filesPerCall + 1 {
+		write(t, root, fmt.Sprintf("%04d.md", i), "# Note\n\nOriginal content that is long enough to be an indexed paragraph.\n")
+	}
+	if _, err := c.Sweep(context.Background(), false, nil); err != nil {
+		t.Fatal(err)
+	}
+	before := len(requests(t, log))
+	for i := range filesPerCall + 1 {
+		write(t, root, fmt.Sprintf("%04d.md", i), "# Note\n\nChanged content that is long enough to be an indexed paragraph.\n")
+	}
+	if _, err := c.Sweep(context.Background(), false, nil); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range requests(t, log)[before:] {
+		var req struct {
+			Delete  []string `json:"delete_paths"`
+			Replace []string `json:"replace_paths"`
+		}
+		if err := json.Unmarshal([]byte(raw), &req); err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(req.Delete, req.Replace) {
+			t.Fatalf("deleted paths outside the current replacement batch: delete=%d replace=%d", len(req.Delete), len(req.Replace))
+		}
+	}
+}
+
+func TestSweepHelperFailureRetriesSameDigestBeforeRecordingSuccess(t *testing.T) {
+	c, root, _ := client(t, `{"ok":false,"error":"partial write"}`)
+	write(t, root, "a.md", "# A\n\nOriginal content that is long enough to stand alone as a paragraph.\n")
+	if _, err := c.Sweep(context.Background(), false, nil); err == nil {
+		t.Fatal("expected helper failure")
+	}
+	fakeHelper(t, ok)
+	rep, err := c.Sweep(context.Background(), false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Indexed != 1 || rep.New != 1 {
+		t.Fatalf("retry skipped unrecorded note: %+v", rep)
+	}
+	rep, err = c.Sweep(context.Background(), false, nil)
+	if err != nil || rep.Indexed != 0 || rep.Unchanged != 1 {
+		t.Fatalf("post retry: %+v err=%v", rep, err)
 	}
 }
