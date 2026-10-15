@@ -86,7 +86,7 @@ test('using Claude Code feeds it, persists it, and the footer draws it', async (
   // 14 + tool 1 + turn 3 = 18 xp: hatched from Egg to Baby.
   const saved = writes.filter(w => w.key === 'pet').at(-1)?.value as { xp: number }
   expect(saved.xp).toBe(14 + FEED.tool.xp + FEED.turn.xp)
-  expect(toasts).toEqual(['✨ Bermudamon digivolved into Baby!'])
+  expect(toasts).toEqual([])
 
   const ui = await $.ui.mount({ plugin: 'bermudamon', surface: 'terminal', component: 'SessionMode', props: { modes: ['focus'] } })
   expect(await ui.find({ type: 'Text', text: new RegExp(STAGES[1]!.idle.map(f => f[0]).join('|'), 'u') })).toBeDefined()

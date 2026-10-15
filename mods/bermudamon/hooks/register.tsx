@@ -1,7 +1,7 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Checklist, Limit, OpenItem, Pet } from '../types'
+import type { Checklist, Limit, OpenItem } from '../types'
 import {
   NUDGE_EVERY,
   TICK_FOOD,
@@ -72,17 +72,8 @@ const flush = async () => {
 
 const eat = async ($: EngineInterface, food: { xp: number; fullness: number }) => {
   const now = await $.clock.now()
-  let before: Pet | null = null
-  const after = await update($, pet, current => {
-    before = current
-    return feed(current ?? hatch(now), food, now)
-  })
-  if (!after) return
-  persist($)
-
-  const was = before === null ? 0 : stageIndex((before as Pet).xp)
-  const is = stageIndex(after.xp)
-  if (is > was) $.ui.toast(`✨ Bermudamon digivolved into ${STAGES[is]!.name}!`)
+  const after = await update($, pet, current => feed(current ?? hatch(now), food, now))
+  if (after) persist($)
 }
 
 // The bermuda checklist this session works against. The agent's own
