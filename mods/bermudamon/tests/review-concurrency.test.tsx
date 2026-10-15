@@ -155,7 +155,7 @@ test('review: reordered parallel pet writes never regress persisted xp', async (
 
   expect(writes).toEqual([...writes].sort((a, b) => a - b))
   expect(writes.at(-1)).toBe(15)
-  expect(toasts).toEqual(['✨ Bermudamon digivolved into Baby!'])
+  expect(toasts).toEqual([])
   expect((stored as { xp: number }).xp).toBe(15)
 })
 
@@ -196,7 +196,7 @@ test('review: a delayed earlier feed never moves the decay timestamp backward', 
   expect((stored as { at: number }).at).toBe(1_000_100)
 })
 
-test('review: a failed evolution write does not permanently lose its toast', async ($, on) => {
+test('review: a failed evolution write loses nothing and shows no toast', async ($, on) => {
   const clock = mock.clock(on, { now: 1_000_000 })
   let stored: unknown = { ...hatch(1_000_000), xp: 14 }
   const toasts: string[] = []
@@ -219,7 +219,7 @@ test('review: a failed evolution write does not permanently lose its toast', asy
   await clock.settle()
 
   expect((stored as { xp: number }).xp).toBe(16)
-  expect(toasts).toEqual(['✨ Bermudamon digivolved into Baby!'])
+  expect(toasts).toEqual([])
 })
 
 test('review: an old-shape stored pet is replaced with a valid hatch', async ($, on) => {
