@@ -131,6 +131,42 @@ pruning loses the schedule, not the record of what happened.
 one each run, skipping tab and startup cost. The agent's context is cleared
 with `/clear` before every run, so runs stay independent.
 
+Add `--keep-context` to carry one conversation across those runs. Bermuda
+captures the harness session reported by Herdr and saves it per job. If the
+agent disappears, Bermuda first adopts a live agent holding that session in
+the job's workspace, then tries the harness's resume arguments. Codex and
+Claude resume by ID; Pi/OMP resume by ID or session path.
+
+```sh
+bermuda job add --id followups --prompt 'Check pending follow-ups' \
+  --persistent --keep-context --on-context-loss park
+bermuda job run followups
+bermuda run show <run-id>
+```
+
+Every context-enabled run records `fresh`, `kept`, `adopted`, `resumed`,
+or `lost`. The status, session and explanation appear in the run record,
+run note and `context.json` artifact; the job inspector shows the status.
+A new session in a reused pane (for example `/new`) replaces the saved one.
+
+`--on-context-loss fresh|park` is editable on the CLI and board. The default
+is `fresh`: unsupported resumes or failed readiness start a new conversation
+and record `lost`. `park` sends no job prompt and retains the saved session
+for a human to recover. A conversation held outside the job's workspace
+always parks, to avoid prompting somebody else's pane or duplicating it.
+Failed resume tabs are closed before a fresh replacement is started.
+Observation errors preserve the resumed pane and park for inspection rather
+than discard a conversation that may still be healthy. Missing optional session
+metadata after a successful resume is recorded as unconfirmed; it does not
+force a fresh conversation.
+
+Herdr must report `agent_session` for durable recovery. Older Herdr still
+reuses live agents, but cannot save their conversations for later resume.
+Enable the harness's Herdr integration where required. A first run after
+enabling context starts fresh when there is no live agent or saved session;
+if a later context-enabled run loses its agent without a captured session,
+it reports `lost`. Non-context jobs and flow steps do not capture or resume.
+
 The jobs tab fills the space to the right of the table with an inspector for
 the selected job: state, schedule, when it next fires, model, timeout, tags,
 working directory, permissions, and how the last run went. It is a summary —
