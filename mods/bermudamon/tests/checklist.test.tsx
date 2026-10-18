@@ -146,7 +146,10 @@ test('a bermuda check call resets the count, follows the page it wrote, and a ti
 
   const ui = await $.ui.mount({ plugin: 'bermudamon', surface: 'terminal', component: 'SessionMode', props: { modes: [] } })
   expect(await ui.find({ type: 'Text', text: /3\/5/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /⚑ 1/ })).toBeDefined()
+  const flag = await ui.find({ type: 'Text', text: /⚑ 1/ })
+  expect(flag).toBeDefined()
+  // blocked items wait on someone: red, not dimmed, so the eye finds them
+  expect(JSON.stringify(flag)).toContain('"error"')
   await ui.unmount()
 })
 
