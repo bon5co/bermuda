@@ -362,7 +362,7 @@ export const register: Register = on => {
             <Text color={list.open.length === 0 ? 'success' : 'warning'}>
               ☑ {list.done}/{list.total}
             </Text>
-            <Text dimColor>{list.blocked > 0 ? `⚑ ${list.blocked}` : ' '}</Text>
+            <Text color="error">{list.blocked > 0 ? `⚑ ${list.blocked}` : ' '}</Text>
           </Box>
         ) : isUntracked ? (
           <Box flexDirection="column" marginRight={1}>
