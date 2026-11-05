@@ -856,7 +856,9 @@ func boolToInt(b bool) int {
 // filesystem that does not carry Unix modes at all — a mounted share, most
 // often — is a store bermuda should still open rather than refuse.
 func tighten(dir, path string) {
-	_ = os.Chmod(dir, statefs.Dir)
+	// A directory needs its execute bit to be entered at all; statefs.Dir is
+	// 0700, owner-only like every file mode here, which is what G302 asks for.
+	_ = os.Chmod(dir, statefs.Dir) // #nosec G302 -- 0700 directory, owner-only
 	for _, p := range []string{path, path + "-wal", path + "-shm"} {
 		if _, err := os.Stat(p); err == nil {
 			_ = os.Chmod(p, statefs.File)
