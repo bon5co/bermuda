@@ -13,14 +13,15 @@ import (
 // caller hand-assembling argv.
 func FromStore(j store.Job) Job {
 	return Job{
-		ID:          j.ID,
-		Prompt:      j.Prompt,
-		CWD:         j.CWD,
-		Kind:        j.Kind,
-		Timeout:     j.Timeout,
-		AgentArgs:   BuildAgentArgs(j),
-		Persistent:  j.Persistent,
-		KeepContext: j.KeepContext,
+		ID:            j.ID,
+		Prompt:        j.Prompt,
+		CWD:           j.CWD,
+		Kind:          j.Kind,
+		Timeout:       j.Timeout,
+		AgentArgs:     BuildAgentArgs(j),
+		Persistent:    j.Persistent,
+		KeepContext:   j.KeepContext,
+		OnContextLoss: j.OnContextLoss,
 	}
 }
 

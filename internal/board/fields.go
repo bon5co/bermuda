@@ -280,6 +280,24 @@ func jobFields() []field {
 			get:  func(j *store.Job) string { return boolStr(j.KeepContext) },
 			set:  func(j *store.Job, v string) error { j.KeepContext = v == "true"; return nil },
 		},
+		{
+			key: "on-context-loss", label: "On context loss", kind: fieldChoice,
+			help:    "start fresh or park for a human when the conversation cannot be recovered",
+			options: []string{"fresh", "park"},
+			get: func(j *store.Job) string {
+				if j.OnContextLoss == "" {
+					return "fresh"
+				}
+				return j.OnContextLoss
+			},
+			set: func(j *store.Job, v string) error {
+				if v != "fresh" && v != "park" {
+					return fmt.Errorf("context loss must be fresh or park")
+				}
+				j.OnContextLoss = v
+				return nil
+			},
+		},
 	}
 }
 

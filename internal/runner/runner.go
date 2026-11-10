@@ -13,6 +13,7 @@ package runner
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"os"
@@ -24,6 +25,7 @@ import (
 
 	"github.com/bon5co/bermuda/v3/internal/herdrcli"
 	"github.com/bon5co/bermuda/v3/internal/statefs"
+	"github.com/bon5co/bermuda/v3/internal/store"
 )
 
 // WorkspaceLabel is the dedicated workspace bermuda owns. Runs only ever
@@ -67,10 +69,11 @@ const (
 type ParkReason string
 
 const (
-	ParkBlocked   ParkReason = "blocked"    // agent waiting on human input
-	ParkTimeout   ParkReason = "timeout"    // exceeded the job's deadline
-	ParkNoResult  ParkReason = "no_result"  // agent ended without result.json
-	ParkBadResult ParkReason = "bad_result" // result.json present but unparseable
+	ParkBlocked     ParkReason = "blocked"   // agent waiting on human input
+	ParkTimeout     ParkReason = "timeout"   // exceeded the job's deadline
+	ParkNoResult    ParkReason = "no_result" // agent ended without result.json
+	ParkContextLost ParkReason = "context_lost"
+	ParkBadResult   ParkReason = "bad_result" // result.json present but unparseable
 	// ParkAgentLost means bermuda stopped being able to observe the agent —
 	// herdr reported it gone, or the control call failed — and no result.json
 	// had appeared by the job's deadline. It is deliberately not no_result:
@@ -118,7 +121,8 @@ type Job struct {
 	// The cost is that the conversation grows every run and is replayed every
 	// run. Auto-compact is the bound; a job that keeps context without one
 	// ends up spending its window on its own history.
-	KeepContext bool
+	KeepContext   bool
+	OnContextLoss string
 }
 
 // persistentAgentName is the stable agent name for a persistent job. It does
@@ -152,19 +156,22 @@ type Result struct {
 
 // Run is the record of a single execution.
 type Run struct {
-	JobID      string
-	RunID      string
-	RunDir     string
-	Outcome    Outcome
-	ParkReason ParkReason
-	Status     herdrcli.AgentStatus
-	Result     *Result
-	AgentName  string
-	TabID      string
-	PaneID     string
-	StartedAt  time.Time
-	EndedAt    time.Time
-	Err        error
+	Context        string
+	ContextSession string
+	ContextNote    string
+	JobID          string
+	RunID          string
+	RunDir         string
+	Outcome        Outcome
+	ParkReason     ParkReason
+	Status         herdrcli.AgentStatus
+	Result         *Result
+	AgentName      string
+	TabID          string
+	PaneID         string
+	StartedAt      time.Time
+	EndedAt        time.Time
+	Err            error
 	// MetaErr records a failure to label the pane. It is cosmetic and never
 	// changes the run's outcome.
 	MetaErr error
@@ -239,6 +246,8 @@ func parkNote(reason ParkReason) string {
 		return "the agent did not finish within the job's timeout"
 	case ParkAgentLost:
 		return "bermuda lost sight of the agent and no result.json appeared before the deadline"
+	case ParkContextLost:
+		return "the recorded conversation could not be recovered; see the run's context note"
 	}
 	return ""
 }
@@ -347,6 +356,16 @@ func (r *Run) recordPark() {
 // restating it as prose would put words in the mouth of a run that observed
 // nothing.
 func (r *Run) Note() string {
+	note := r.resultNote()
+	if r.Result == nil && note != "" {
+		if label := r.ContextLabel(); label != "" {
+			return note + "; " + label
+		}
+	}
+	return FormatContextNote(note, r.Context, r.ContextSession, r.ContextNote)
+}
+
+func (r *Run) resultNote() string {
 	if r.Result != nil {
 		return r.Result.Note
 	}
@@ -383,6 +402,8 @@ func (r *Run) quotaRefusal() string {
 // Runner executes jobs against a herdr server.
 type Runner struct {
 	Herdr *herdrcli.Client
+	// Store records sessions; nil opens StateDir for keep-context jobs.
+	Store SessionStore
 	// StateDir holds per-run directories. It is bermuda's own state directory,
 	// not herdr's: the command layer resolves it and deliberately ignores
 	// HERDR_PLUGIN_STATE_DIR, because the scheduler runs with no herdr server
@@ -452,30 +473,85 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 	}
 	run.RunDir = runDir
 
+	var session *store.JobSession
+	if job.Persistent && job.KeepContext {
+		if job.OnContextLoss != "" && job.OnContextLoss != "fresh" && job.OnContextLoss != "park" {
+			return run, run.fail(fmt.Errorf("on-context-loss must be fresh or park"))
+		}
+		run.Context = "fresh"
+		if r.Store == nil {
+			db, err := store.Open(r.StateDir)
+			if err != nil {
+				return run, run.fail(fmt.Errorf("open session store: %w", err))
+			}
+			defer db.Close()
+			copy := *r
+			copy.Store = db
+			r = &copy
+		}
+		var err error
+		session, err = r.loadSession(ctx, run, job)
+		if err != nil {
+			return run, run.fail(fmt.Errorf("load job session: %w", err))
+		}
+		defer func() {
+			run.ContextNote = strings.TrimPrefix(strings.TrimSpace(run.ContextNote), "; ")
+			b, _ := json.MarshalIndent(map[string]string{"context": run.Context, "session": run.ContextSession, "note": run.ContextNote}, "", "  ")
+			_ = os.WriteFile(filepath.Join(runDir, "context.json"), append(b, '\n'), statefs.File)
+		}()
+	}
+
 	if job.Persistent {
 		run.AgentName = persistentAgentName(job.ID)
-		// Reuse the live agent when it is still there and free. A blocked
-		// agent is deliberately not reused: it is waiting on a human, and
-		// prompting it would answer its question with the next job prompt.
-		if ag, err := r.Herdr.AgentGet(ctx, run.AgentName); err == nil {
-			switch ag.AgentStatus {
-			case herdrcli.StatusBlocked:
-				run.Outcome, run.ParkReason = OutcomeParked, ParkBlocked
-				run.TabID, run.PaneID, run.Status = ag.TabID, ag.PaneID, ag.AgentStatus
-				run.EndedAt = time.Now()
-				run.recordPark()
-				return run, nil
-			default:
-				run.TabID, run.PaneID = ag.TabID, ag.PaneID
-				// A job that keeps context is deliberately not cleared: its
-				// whole point is that this run can see what the last one did.
-				if !job.KeepContext {
-					if err := r.clearAgent(ctx, run.AgentName); err != nil {
-						return run, run.fail(fmt.Errorf("clear agent: %w", err))
-					}
-				}
-				return r.promptAndClassify(ctx, run, job, runDir)
+		ag, getErr := r.Herdr.AgentGet(ctx, run.AgentName)
+		if getErr == nil {
+			return r.reuseContext(ctx, run, job, ag, "kept")
+		}
+		if job.KeepContext && !missingAgent(getErr) {
+			return run, run.fail(fmt.Errorf("find persistent agent: %w", getErr))
+		}
+		if job.KeepContext && session != nil {
+			agents, err := r.Herdr.AgentList(ctx)
+			if err != nil {
+				return run, run.fail(fmt.Errorf("find restored agent: %w", err))
 			}
+			var matching *herdrcli.Agent
+			for i := range agents {
+				if harnessKind(job.Kind) == harnessKind(session.Harness) && matchesSession(&agents[i], session) {
+					if matching != nil && matching.PaneID != agents[i].PaneID {
+						run.ContextSession = session.Value
+						run.loseContext("multiple live agents hold the recorded conversation; choose one before retrying")
+						run.parkContext()
+						return run, nil
+					}
+					matching = &agents[i]
+				}
+			}
+			if matching != nil {
+				run.ContextSession = session.Value
+				return r.reuseContext(ctx, run, job, matching, "adopted")
+			}
+		}
+	}
+	originalArgs := withRunDirAccess(job.Kind, job.AgentArgs, runDir)
+	job.AgentArgs = originalArgs
+	if job.Persistent && job.KeepContext && session != nil {
+		args, err := resumeArgs(job.Kind, *session, originalArgs)
+		run.ContextSession = session.Value
+		if err != nil {
+			run.loseContext(err.Error())
+		} else {
+			job.AgentArgs = args
+			run.Context = "resumed"
+		}
+	}
+	if run.Context == "lost" && job.OnContextLoss == "park" {
+		run.parkContext()
+		return run, nil
+	}
+	if run.Context == "lost" && session != nil {
+		if err := r.Store.DeleteJobSession(ctx, job.ID); err != nil {
+			return run, run.fail(fmt.Errorf("forget obsolete job session: %w", err))
 		}
 	}
 
@@ -499,14 +575,57 @@ func (r *Runner) ExecuteIn(ctx context.Context, job Job, runID, runDir string) (
 	if startTimeout == 0 {
 		startTimeout = 60 * time.Second
 	}
-	job.AgentArgs = withRunDirAccess(job.Kind, job.AgentArgs, runDir)
-	if err := r.startAgent(ctx, run, job, pane.PaneID, startTimeout); err != nil {
-		// The agent never ran, so there is nothing here for a human to attend
-		// to. Reclaim the tab rather than leaking one per failed start.
-		if closeErr := r.Herdr.TabClose(ctx, run.TabID); closeErr == nil {
-			run.TabID = ""
+
+	startErr := r.startAgent(ctx, run, job, pane.PaneID, startTimeout)
+	if startErr == nil && run.Context == "resumed" {
+		ag, err := r.resumedAgent(ctx, run, session, startTimeout)
+		if err != nil {
+			if !errors.Is(err, errResumeMismatch) && !missingAgent(err) {
+				run.ParkReason, run.Status = ParkAgentLost, herdrcli.StatusUnknown
+				run.ContextNote = "could not observe resumed agent: " + err.Error()
+				return run, run.fail(fmt.Errorf("verify resumed agent: %w", err))
+			}
+			startErr = err
+		} else {
+			reused, reuseErr := r.reuseContext(ctx, run, job, ag, "resumed")
+			if !errors.Is(reuseErr, errResumeMismatch) {
+				return reused, reuseErr
+			}
+			startErr = reuseErr
 		}
-		return run, run.fail(fmt.Errorf("start agent: %w", err))
+	}
+
+	if startErr != nil {
+		resuming := run.Context == "resumed"
+		if resuming {
+			run.loseContext("resume failed: " + startErr.Error())
+		}
+		if err := r.Herdr.TabClose(ctx, run.TabID); err != nil {
+			return run, run.fail(fmt.Errorf("start agent: %v; close failed-start tab: %w", startErr, err))
+		}
+		run.TabID, run.PaneID = "", ""
+		if !resuming {
+			return run, run.fail(fmt.Errorf("start agent: %w", startErr))
+		}
+		if job.OnContextLoss == "park" || ctx.Err() != nil {
+			run.parkContext()
+			return run, nil
+		}
+		if err := r.Store.DeleteJobSession(ctx, job.ID); err != nil {
+			return run, run.fail(fmt.Errorf("forget obsolete job session: %w", err))
+		}
+		job.AgentArgs = originalArgs
+		pane, err = r.Herdr.TabCreate(ctx, spaceID, job.ID, job.CWD, env)
+		if err != nil {
+			return run, run.fail(fmt.Errorf("create fresh tab: %w", err))
+		}
+		run.TabID, run.PaneID = pane.TabID, pane.PaneID
+		if err := r.startAgent(ctx, run, job, pane.PaneID, startTimeout); err != nil {
+			if closeErr := r.Herdr.TabClose(ctx, run.TabID); closeErr == nil {
+				run.TabID, run.PaneID = "", ""
+			}
+			return run, run.fail(fmt.Errorf("start fresh agent: %w", err))
+		}
 	}
 
 	return r.promptAndClassify(ctx, run, job, runDir)
@@ -595,6 +714,9 @@ func (r *Runner) promptAndClassify(ctx context.Context, run *Run, job Job, runDi
 
 	r.classify(run, status, promptErr)
 	run.EndedAt = time.Now()
+	if job.Persistent && job.KeepContext {
+		r.captureSession(ctx, run, job)
+	}
 
 	// Re-label with the outcome. A parked pane stays open, so this is what it
 	// will read as until a human deals with it.

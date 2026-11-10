@@ -49,6 +49,9 @@ func (m *Model) renderDetail() string {
 	row("schedule", j.ScheduleLabel())
 	row("catchup", j.Catchup)
 	row("state", state)
+	if j.KeepContext {
+		row("context loss", j.OnContextLoss)
+	}
 	row("cwd", j.CWD)
 	row("agent", j.Kind)
 	row("timeout", j.Timeout.String())
@@ -91,6 +94,9 @@ func (m *Model) renderDetail() string {
 		detail := r.Note
 		if r.Outcome == "parked" && r.ParkReason != "" {
 			detail = "waiting: " + r.ParkReason
+		}
+		if r.Context != "" {
+			detail = "[" + r.Context + "] " + detail
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s %s %s\n", cursor,
 			styleOutcome(pad(r.Outcome, 8)),

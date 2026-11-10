@@ -41,18 +41,28 @@ type Workspace struct {
 
 // Agent is an agent attached to a pane.
 type Agent struct {
-	Name             string      `json:"name"`
-	Agent            string      `json:"agent"`
-	AgentStatus      AgentStatus `json:"agent_status"`
-	PaneID           string      `json:"pane_id"`
-	TabID            string      `json:"tab_id"`
-	WorkspaceID      string      `json:"workspace_id"`
-	InteractiveReady bool        `json:"interactive_ready"`
-	TerminalTitle    string      `json:"terminal_title_stripped"`
+	AgentSession     *AgentSession `json:"agent_session,omitempty"`
+	Name             string        `json:"name"`
+	Agent            string        `json:"agent"`
+	AgentStatus      AgentStatus   `json:"agent_status"`
+	PaneID           string        `json:"pane_id"`
+	TabID            string        `json:"tab_id"`
+	WorkspaceID      string        `json:"workspace_id"`
+	InteractiveReady bool          `json:"interactive_ready"`
+	TerminalTitle    string        `json:"terminal_title_stripped"`
 	// CWD is where the agent is working. An agent started outside bermuda
 	// usually has no name, so this is often the only thing that identifies it
 	// as "the one on dotfiles".
 	CWD string `json:"cwd"`
+}
+
+// AgentSession is the harness conversation Herdr detected in a pane.
+// Older Herdr versions omit it; absence means unknown, not a fresh session.
+type AgentSession struct {
+	Agent  string `json:"agent"`
+	Kind   string `json:"kind"` // id or path
+	Source string `json:"source"`
+	Value  string `json:"value"`
 }
 
 // AgentList lists every agent herdr currently knows about.
