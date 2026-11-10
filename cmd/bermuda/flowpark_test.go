@@ -23,10 +23,11 @@ import (
 // suite happens to have open.
 
 type fakeKeeper struct {
-	panes   []herdrcli.Pane
-	renamed []string
-	closed  []string
-	tabs    []struct {
+	panes       []herdrcli.Pane
+	renamed     []string
+	closed      []string
+	spaceClosed []string
+	tabs        []struct {
 		label, cwd string
 		env        map[string]string
 	}
@@ -34,6 +35,11 @@ type fakeKeeper struct {
 
 func (f *fakeKeeper) TabClose(_ context.Context, tabID string) error {
 	f.closed = append(f.closed, tabID)
+	return nil
+}
+
+func (f *fakeKeeper) WorkspaceClose(_ context.Context, workspaceID string) error {
+	f.spaceClosed = append(f.spaceClosed, workspaceID)
 	return nil
 }
 
@@ -332,5 +338,45 @@ func TestAResumedParkClosesNoTabs(t *testing.T) {
 
 	if len(k.closed) != 0 {
 		t.Errorf("a resumed park closed %v; it knows of no root tab to reap", k.closed)
+	}
+}
+
+// A stable line asks not to keep a room per park: the space closes, the thread
+// still carries the ending and the resume command, and nothing is opened first.
+func TestAFlowWithCloseOnParkClosesItsSpace(t *testing.T) {
+	s := flowStore(t)
+	k := withKeeper(t)
+	ctx := context.Background()
+	space, def, rec := parkedRun(t, s)
+	def.CloseOnPark = true
+
+	wr := &runner.FlowRun{JobID: "heals", RunID: rec.ID, Outcome: runner.OutcomeParked,
+		ParkReason: runner.ParkLoopExhausted, StoppedAt: "verify", Total: 2}
+	parkFlowSpace(ctx, s, space, def, rec, wr)
+
+	if len(k.spaceClosed) != 1 || k.spaceClosed[0] != space.WorkspaceID {
+		t.Fatalf("space closes = %v, want [%s]", k.spaceClosed, space.WorkspaceID)
+	}
+	if len(k.tabs) != 0 || len(k.renamed) != 0 {
+		t.Errorf("a closing park still opened tabs %v or renamed %v", k.tabs, k.renamed)
+	}
+	msgs, err := s.ThreadLog(ctx, store.ThreadFilter{Thread: space.Thread, Limit: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) == 0 || !strings.Contains(msgs[len(msgs)-1].Body, "flow resume "+rec.ID) {
+		t.Error("the thread lost the ending when the space closed")
+	}
+}
+
+// Without the flag nothing changes: a parked room stays for its operator.
+func TestAParkKeepsTheSpaceByDefault(t *testing.T) {
+	s := flowStore(t)
+	k := withKeeper(t)
+	space, def, rec := parkedRun(t, s)
+	parkFlowSpace(context.Background(), s, space, def, rec,
+		&runner.FlowRun{Outcome: runner.OutcomeParked, StoppedAt: "verify"})
+	if len(k.spaceClosed) != 0 {
+		t.Errorf("a default park closed the space: %v", k.spaceClosed)
 	}
 }

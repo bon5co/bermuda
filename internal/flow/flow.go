@@ -67,6 +67,16 @@ type Flow struct {
 	// flow has one; nil means the defaults, not "none". See overwatch.go.
 	Overwatch *Overwatch `yaml:"overwatch,omitempty"`
 
+	// CloseOnPark closes this flow's space when a run parks, instead of leaving
+	// it open for an operator to acknowledge.
+	//
+	// Off by default, because a parked room is how a human finds out a run needs
+	// them. A flow whose line is stable and whose parks are reported elsewhere —
+	// the thread, the run record, `bermuda flow status` — turns it on so a run
+	// that parked does not leave a window behind every day. The thread still
+	// gets the ending and the resume command, and stays open for a resume.
+	CloseOnPark bool `yaml:"close_on_park,omitempty"`
+
 	// Steps run in order.
 	Steps []store.Step `yaml:"steps"`
 }
