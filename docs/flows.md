@@ -185,6 +185,11 @@ line rather than a transcript. The thread carries the evidence.
   know. Herdr refuses to close the last tab in a workspace, so the room outlives
   every tab in it and there is exactly one gesture that ends it. A resume takes
   the verdict back off the label, so a room that says parked is parked.
+- **Unless the flow says `close_on_park: true`.** A stable line whose parks are
+  read from the thread and `bermuda flow status` sets it at the top of the file,
+  so a daily run that parks does not leave a window behind. The thread still
+  gets the ending and the resume command and stays open; a resume opens a fresh
+  space, the same as when somebody closed the old one by hand.
 - **No herdr, no space, and the flow still runs.** The thread is how steps
   compare notes; it is not what makes them run in order. Every failure on this
   path degrades to what happened before the feature existed, with one line on

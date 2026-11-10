@@ -181,6 +181,7 @@ type spaceKeeper interface {
 	TabCreate(ctx context.Context, workspaceID, label, cwd string, env map[string]string) (*herdrcli.Pane, error)
 	TabClose(ctx context.Context, tabID string) error
 	WorkspaceRename(ctx context.Context, workspaceID, label string) error
+	WorkspaceClose(ctx context.Context, workspaceID string) error
 }
 
 // keeper returns the herdr client, or nil when there is none. A variable so a
@@ -202,7 +203,7 @@ var keeper = func() spaceKeeper {
 // in the room can read it — the thread gets the ending, the label gets the
 // verdict, and one tab lands on the artifacts.
 //
-// The space is not closed here and never will be: closing it is how the
+// The space is not closed here unless the flow sets close_on_park: closing it is how the
 // operator acknowledges the run, which is a thing only they can do. Herdr
 // refuses to close the last tab in a workspace, so the room outlives every tab
 // in it and the ack is unambiguous.
@@ -229,6 +230,16 @@ func parkFlowSpace(ctx context.Context, s *store.Store, space *runner.FlowSpace,
 
 	h := keeper()
 	if h == nil {
+		return
+	}
+	if def.CloseOnPark {
+		// The flow asked not to keep the room: its parks are read from the thread
+		// and the run record, and a resume opens a fresh space when this one is gone.
+		if err := h.WorkspaceClose(ctx, space.WorkspaceID); err != nil {
+			fmt.Fprintln(os.Stderr, "bermuda: this flow closes its space on park, but it is still open:", err)
+			return
+		}
+		fmt.Fprintf(os.Stderr, "bermuda: this run parked; its space is closed (close_on_park).\n  bermuda flow status %s\n", rec.ID)
 		return
 	}
 	if label := strings.TrimSpace(space.Label); label != "" {
