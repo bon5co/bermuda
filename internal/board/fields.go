@@ -62,7 +62,7 @@ func jobFields() []field {
 			help: "what the agent is told to do",
 			get:  func(j *store.Job) string { return j.Prompt },
 			set: func(j *store.Job, v string) error {
-				if strings.TrimSpace(v) == "" {
+				if j.Flow == "" && strings.TrimSpace(v) == "" {
 					return fmt.Errorf("prompt cannot be empty")
 				}
 				j.Prompt = v
@@ -299,7 +299,7 @@ func validateJob(j store.Job) error {
 			return fmt.Errorf("schedule is once but no run-at time is set")
 		}
 	}
-	if strings.TrimSpace(j.Prompt) == "" {
+	if j.Flow == "" && strings.TrimSpace(j.Prompt) == "" {
 		return fmt.Errorf("prompt cannot be empty")
 	}
 	if strings.TrimSpace(j.CWD) == "" {

@@ -99,14 +99,19 @@ func (m *Model) renderDetail() string {
 			dimStyle.Render(truncate(detail, 40))))
 	}
 
-	if m.err != nil {
-		b.WriteString("\n" + outcomeStyles["failed"].Render("error: "+m.err.Error()) + "\n")
-	} else if m.status != "" {
-		b.WriteString("\n" + dimStyle.Render(m.status) + "\n")
-	}
-	b.WriteString("\n" + helpStyle.Render(
-		"h/← back · j/k move · l/→ attach agent · R run now · p pause/resume · q quit"))
 	return b.String()
+}
+
+// detailPane keeps actions visible while the configuration and history scroll.
+func (m *Model) detailPane() pane {
+	bottom := ""
+	if m.err != nil {
+		bottom = outcomeStyles["failed"].Render("error: "+m.err.Error()) + "\n"
+	} else if m.status != "" {
+		bottom = dimStyle.Render(m.status) + "\n"
+	}
+	bottom += helpStyle.Render("e edit job · h/← back · j/k move · l/→ attach agent · R run now · p pause/resume · q quit")
+	return pane{body: m.renderDetail(), bottom: bottom}
 }
 
 // promptPreview trims a prompt to a few lines for display.

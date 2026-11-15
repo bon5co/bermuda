@@ -145,24 +145,36 @@ its own phase.
 
 ## Editing from the board
 
-Jobs are fully editable in the TUI — no CLI round trip needed.
+Select a job in JOBS and press `enter` to view it, then `e` to edit. You can
+also press `e` directly on the jobs list. The detail page keeps its edit action
+visible while you scroll through the run history.
 
 | key | action |
 |-----|--------|
 | `n` | new job (id is derived from the name) |
-| `e` | edit the selected job |
+| `e` | edit the selected job, from the list or its detail page |
 | `D` | delete the job (run history is kept) |
 | `l` `→` `enter` | descend: jobs → job → agent, or runs → run → its job |
 | `h` `←` `esc` | ascend one level |
 | `tab` | cycle the THREADS / JOBS / RUNS tabs |
 | `space` | toggle a yes/no field |
-| `ctrl+s` | save (in a text field: commit the field; otherwise: save the job) |
+| `ctrl+s` | save the whole job, including the field being typed |
+| `tab` / `shift+tab` in the form | commit the field and move forwards / backwards |
+| `enter` in a text field | commit a single line; insert a newline in Prompt |
+| `esc` in the form | abandon all unsaved edits, including the active field |
+| `h` / `←` in the form, outside a text field | cycle a choice backwards; on other fields, abandon all unsaved edits |
 
 Edits are made against a copy and only reach the store on save, so abandoning
 an edit cannot leave a job half-changed, and a run scheduled mid-edit still
 uses the old definition. Cross-field rules are checked on save: a job set to
 `cron` with no expression is rejected rather than stored as something that can
 never fire.
+
+Invalid field input stays open with its error so you can correct it. The save
+controls and errors stay visible in short panes. While a save is in progress,
+the form shows `saving…` and waits for the result before accepting more edits
+or cancellation. A failed save keeps the draft; a successful save returns to
+the updated job detail or list with the job's ID and run history preserved.
 
 ---
 
